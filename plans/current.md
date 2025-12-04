@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 1 complete
+**Last updated**: Phase 2 complete
 
 ## What's Done
 
@@ -11,14 +11,16 @@
 - [x] Basic constructors: zeros(), ones()
 - [x] Python bindings with __array_interface__
 - [x] Test infrastructure with assert_eq helper
-- [x] All 22 tests passing
+- [x] Views: view_with(), slicing, reshape, transpose
+- [x] All 40 tests passing
 
 ## Key Files
 
-- `src/array/mod.rs` - RumpyArray struct and constructors
+- `src/array/mod.rs` - RumpyArray struct, constructors, views, slicing
 - `src/array/dtype.rs` - DType enum
-- `src/python/pyarray.rs` - Python class wrapper
+- `src/python/pyarray.rs` - Python class with __getitem__, reshape, T
 - `tests/helpers.py` - assert_eq for comparing against numpy
+- `tests/test_views.py` - slicing, reshape, transpose tests
 
 ## Building
 
@@ -32,17 +34,15 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: Views and Slicing
+## Next Phase: Element Access and Sequence Generation
 
 Priority order:
-1. `view_with()` - core view creation
-2. `__getitem__` for basic slicing (arr[1:5], arr[::2])
-3. `reshape()` - return view when contiguous
-4. `transpose()` / `.T` property
+1. `arange()` - generate sequences
+2. Single element access `arr[i, j]` (integer indexing)
+3. `linspace()` - evenly spaced values
 
 ## Future Phases
 
-- Phase 3: Element access, arange, linspace
 - Phase 4: Binary ops (add, mul) - same shape first
 - Phase 5: Broadcasting
 - Phase 6: Ufuncs framework

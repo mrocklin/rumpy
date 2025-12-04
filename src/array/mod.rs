@@ -9,6 +9,7 @@ pub use dtype::DType;
 pub use flags::ArrayFlags;
 
 /// Core N-dimensional array type.
+#[derive(Clone)]
 pub struct RumpyArray {
     /// Shared ownership of underlying buffer (enables views).
     buffer: Arc<ArrayBuffer>,
@@ -135,6 +136,80 @@ impl RumpyArray {
     pub fn is_f_contiguous(&self) -> bool {
         self.flags.contains(ArrayFlags::F_CONTIGUOUS)
     }
+
+    /// Create a view with new offset, shape, and strides, sharing the buffer.
+    pub fn view_with(&self, offset_delta: usize, shape: Vec<usize>, strides: Vec<isize>) -> Self {
+        let mut flags = ArrayFlags::WRITEABLE;
+        if is_c_contiguous(&shape, &strides, self.dtype.itemsize()) {
+            flags |= ArrayFlags::C_CONTIGUOUS;
+        }
+        if is_f_contiguous(&shape, &strides, self.dtype.itemsize()) {
+            flags |= ArrayFlags::F_CONTIGUOUS;
+        }
+
+        Self {
+            buffer: Arc::clone(&self.buffer),
+            offset: self.offset + offset_delta,
+            shape,
+            strides,
+            dtype: self.dtype,
+            flags,
+        }
+    }
+
+    /// Slice along one axis: arr[start:stop:step] for that axis.
+    /// Expects pre-normalized indices from PySlice.indices().
+    /// Returns a view (no copy).
+    pub fn slice_axis(&self, axis: usize, start: isize, stop: isize, step: isize) -> Self {
+        // Compute new length
+        let new_len = if step > 0 {
+            if stop > start { (stop - start + step - 1) / step } else { 0 }
+        } else {
+            if start > stop { (start - stop - step - 1) / (-step) } else { 0 }
+        };
+        let new_len = new_len.max(0) as usize;
+
+        // Compute offset delta (bytes to skip to reach start element)
+        let old_stride = self.strides[axis];
+        let offset_delta = (start as usize) * (old_stride.unsigned_abs());
+
+        // New stride = old_stride * step
+        let mut new_strides = self.strides.clone();
+        new_strides[axis] = old_stride * step;
+
+        let mut new_shape = self.shape.clone();
+        new_shape[axis] = new_len;
+
+        self.view_with(offset_delta, new_shape, new_strides)
+    }
+
+    /// Reshape array. Returns a view if contiguous, otherwise would need copy.
+    /// For now, only works on contiguous arrays.
+    pub fn reshape(&self, new_shape: Vec<usize>) -> Option<Self> {
+        let old_size: usize = self.shape.iter().product();
+        let new_size: usize = new_shape.iter().product();
+        if old_size != new_size {
+            return None;
+        }
+        if !self.is_c_contiguous() && !self.is_f_contiguous() {
+            return None; // Would need copy
+        }
+
+        let new_strides = if self.is_c_contiguous() {
+            compute_c_strides(&new_shape, self.dtype.itemsize())
+        } else {
+            compute_f_strides(&new_shape, self.dtype.itemsize())
+        };
+
+        Some(self.view_with(0, new_shape, new_strides))
+    }
+
+    /// Transpose the array (reverse axes). Returns a view.
+    pub fn transpose(&self) -> Self {
+        let new_shape: Vec<usize> = self.shape.iter().rev().copied().collect();
+        let new_strides: Vec<isize> = self.strides.iter().rev().copied().collect();
+        self.view_with(0, new_shape, new_strides)
+    }
 }
 
 /// Compute C-order (row-major) strides for given shape and itemsize.
@@ -163,4 +238,40 @@ pub fn compute_f_strides(shape: &[usize], itemsize: usize) -> Vec<isize> {
         stride *= shape[i] as isize;
     }
     strides
+}
+
+/// Check if shape/strides represent C-contiguous layout.
+fn is_c_contiguous(shape: &[usize], strides: &[isize], itemsize: usize) -> bool {
+    if shape.is_empty() {
+        return true;
+    }
+    let mut expected = itemsize as isize;
+    for i in (0..shape.len()).rev() {
+        if shape[i] == 0 {
+            return true; // Empty array is contiguous
+        }
+        if shape[i] != 1 && strides[i] != expected {
+            return false;
+        }
+        expected *= shape[i] as isize;
+    }
+    true
+}
+
+/// Check if shape/strides represent F-contiguous layout.
+fn is_f_contiguous(shape: &[usize], strides: &[isize], itemsize: usize) -> bool {
+    if shape.is_empty() {
+        return true;
+    }
+    let mut expected = itemsize as isize;
+    for i in 0..shape.len() {
+        if shape[i] == 0 {
+            return true;
+        }
+        if shape[i] != 1 && strides[i] != expected {
+            return false;
+        }
+        expected *= shape[i] as isize;
+    }
+    true
 }

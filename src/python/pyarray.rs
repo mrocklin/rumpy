@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{PyDict, PySlice, PyTuple};
 
 use crate::array::{DType, RumpyArray};
 
@@ -82,6 +82,55 @@ impl PyRumpyArray {
             self.inner.dtype().typestr()
         )
     }
+
+    /// Indexing and slicing.
+    fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // Handle tuple of slices for multi-dimensional indexing
+        if let Ok(tuple) = key.downcast::<PyTuple>() {
+            let mut result = self.inner.clone();
+            for (axis, item) in tuple.iter().enumerate() {
+                if axis >= result.ndim() {
+                    return Err(pyo3::exceptions::PyIndexError::new_err(
+                        "too many indices for array",
+                    ));
+                }
+                let slice = item.downcast::<PySlice>().map_err(|_| {
+                    pyo3::exceptions::PyTypeError::new_err("only slices supported for now")
+                })?;
+                let (start, stop, step) = extract_slice_indices(&slice, result.shape()[axis])?;
+                result = result.slice_axis(axis, start, stop, step);
+            }
+            return Ok(Self::new(result));
+        }
+
+        // Handle single slice for 1D indexing on axis 0
+        let slice = key.downcast::<PySlice>().map_err(|_| {
+            pyo3::exceptions::PyTypeError::new_err("only slices supported for now")
+        })?;
+        let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
+        Ok(Self::new(self.inner.slice_axis(0, start, stop, step)))
+    }
+
+    /// Reshape array. Returns a view if possible.
+    fn reshape(&self, shape: Vec<usize>) -> PyResult<Self> {
+        self.inner.reshape(shape).map(Self::new).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "cannot reshape array (size mismatch or non-contiguous)",
+            )
+        })
+    }
+
+    /// Transpose the array.
+    fn transpose(&self) -> Self {
+        Self::new(self.inner.transpose())
+    }
+
+    /// Transposed view (same as transpose()).
+    #[getter]
+    #[allow(non_snake_case)]
+    fn T(&self) -> Self {
+        self.transpose()
+    }
 }
 
 /// Parse dtype string to DType enum.
@@ -89,4 +138,13 @@ pub fn parse_dtype(s: &str) -> PyResult<DType> {
     DType::from_str(s).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err(format!("Unknown dtype: {}", s))
     })
+}
+
+/// Extract start, stop, step from a Python slice object.
+fn extract_slice_indices(
+    slice: &Bound<'_, PySlice>,
+    length: usize,
+) -> PyResult<(isize, isize, isize)> {
+    let indices = slice.indices(length as isize)?;
+    Ok((indices.start as isize, indices.stop as isize, indices.step as isize))
 }
