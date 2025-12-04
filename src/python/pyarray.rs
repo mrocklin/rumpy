@@ -84,9 +84,26 @@ impl PyRumpyArray {
     }
 
     /// Indexing and slicing.
-    fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
-        // Handle tuple of slices for multi-dimensional indexing
+    fn __getitem__<'py>(&self, py: Python<'py>, key: &Bound<'py, PyAny>) -> PyResult<PyObject> {
+        // Handle tuple for multi-dimensional indexing
         if let Ok(tuple) = key.downcast::<PyTuple>() {
+            // Check if all indices are integers (scalar access)
+            let all_ints = tuple.iter().all(|item| item.extract::<isize>().is_ok());
+
+            if all_ints && tuple.len() == self.inner.ndim() {
+                let indices: Vec<usize> = tuple
+                    .iter()
+                    .enumerate()
+                    .map(|(axis, item)| {
+                        let idx: isize = item.extract().unwrap();
+                        normalize_index(idx, self.inner.shape()[axis])
+                    })
+                    .collect();
+                let val = self.inner.get_element(&indices);
+                return Ok(val.into_pyobject(py)?.into_any().unbind());
+            }
+
+            // Otherwise, handle slices
             let mut result = self.inner.clone();
             for (axis, item) in tuple.iter().enumerate() {
                 if axis >= result.ndim() {
@@ -94,21 +111,39 @@ impl PyRumpyArray {
                         "too many indices for array",
                     ));
                 }
-                let slice = item.downcast::<PySlice>().map_err(|_| {
-                    pyo3::exceptions::PyTypeError::new_err("only slices supported for now")
-                })?;
-                let (start, stop, step) = extract_slice_indices(&slice, result.shape()[axis])?;
-                result = result.slice_axis(axis, start, stop, step);
+                if let Ok(idx) = item.extract::<isize>() {
+                    // Integer index: slice to single element, then squeeze later
+                    let idx = normalize_index(idx, result.shape()[axis]);
+                    result = result.slice_axis(axis, idx as isize, idx as isize + 1, 1);
+                } else if let Ok(slice) = item.downcast::<PySlice>() {
+                    let (start, stop, step) = extract_slice_indices(&slice, result.shape()[axis])?;
+                    result = result.slice_axis(axis, start, stop, step);
+                } else {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "indices must be integers or slices",
+                    ));
+                }
             }
-            return Ok(Self::new(result));
+            return Ok(Self::new(result).into_pyobject(py)?.into_any().unbind());
         }
 
-        // Handle single slice for 1D indexing on axis 0
-        let slice = key.downcast::<PySlice>().map_err(|_| {
-            pyo3::exceptions::PyTypeError::new_err("only slices supported for now")
-        })?;
-        let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
-        Ok(Self::new(self.inner.slice_axis(0, start, stop, step)))
+        // Handle single integer index
+        if let Ok(idx) = key.extract::<isize>() {
+            let idx = normalize_index(idx, self.inner.shape()[0]);
+            let result = self.inner.slice_axis(0, idx as isize, idx as isize + 1, 1);
+            return Ok(Self::new(result).into_pyobject(py)?.into_any().unbind());
+        }
+
+        // Handle single slice
+        if let Ok(slice) = key.downcast::<PySlice>() {
+            let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
+            let result = self.inner.slice_axis(0, start, stop, step);
+            return Ok(Self::new(result).into_pyobject(py)?.into_any().unbind());
+        }
+
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "indices must be integers or slices",
+        ))
     }
 
     /// Reshape array. Returns a view if possible.
@@ -147,4 +182,13 @@ fn extract_slice_indices(
 ) -> PyResult<(isize, isize, isize)> {
     let indices = slice.indices(length as isize)?;
     Ok((indices.start as isize, indices.stop as isize, indices.step as isize))
+}
+
+/// Normalize a negative index to positive.
+fn normalize_index(idx: isize, len: usize) -> usize {
+    if idx < 0 {
+        (len as isize + idx) as usize
+    } else {
+        idx as usize
+    }
 }

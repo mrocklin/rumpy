@@ -2,25 +2,26 @@
 
 # Current Development Status
 
-**Last updated**: Phase 2 complete
+**Last updated**: Phase 3 complete
 
 ## What's Done
 
 - [x] Project scaffolding (Cargo.toml, pyproject.toml, maturin)
 - [x] Core types: DType, ArrayFlags, ArrayBuffer, RumpyArray
-- [x] Basic constructors: zeros(), ones()
+- [x] Basic constructors: zeros(), ones(), arange()
 - [x] Python bindings with __array_interface__
 - [x] Test infrastructure with assert_eq helper
 - [x] Views: view_with(), slicing, reshape, transpose
-- [x] All 40 tests passing
+- [x] Integer indexing: arr[i], arr[i, j] returns scalar
+- [x] All 55 tests passing
 
 ## Key Files
 
-- `src/array/mod.rs` - RumpyArray struct, constructors, views, slicing
+- `src/array/mod.rs` - RumpyArray struct, constructors, views, arange
 - `src/array/dtype.rs` - DType enum
 - `src/python/pyarray.rs` - Python class with __getitem__, reshape, T
+- `src/python/mod.rs` - Module-level functions (zeros, ones, arange)
 - `tests/helpers.py` - assert_eq for comparing against numpy
-- `tests/test_views.py` - slicing, reshape, transpose tests
 
 ## Building
 
@@ -34,16 +35,15 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: Element Access and Sequence Generation
+## Next Phase: Binary Operations
 
 Priority order:
-1. `arange()` - generate sequences
-2. Single element access `arr[i, j]` (integer indexing)
-3. `linspace()` - evenly spaced values
+1. Element-wise add, sub, mul, div (same shape)
+2. Scalar operations (arr + 5)
+3. Unary ops (neg, abs)
 
 ## Future Phases
 
-- Phase 4: Binary ops (add, mul) - same shape first
 - Phase 5: Broadcasting
 - Phase 6: Ufuncs framework
 - Phase 7: Reductions (sum, mean, max)

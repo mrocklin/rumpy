@@ -210,6 +210,72 @@ impl RumpyArray {
         let new_strides: Vec<isize> = self.strides.iter().rev().copied().collect();
         self.view_with(0, new_shape, new_strides)
     }
+
+    /// Create array with evenly spaced values [start, start+step, start+2*step, ...).
+    pub fn arange(start: f64, stop: f64, step: f64, dtype: DType) -> Self {
+        let n = ((stop - start) / step).ceil().max(0.0) as usize;
+        let mut arr = Self::zeros(vec![n], dtype);
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        unsafe {
+            match dtype {
+                DType::Float64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, n);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = start + (i as f64) * step;
+                    }
+                }
+                DType::Float32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, n);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = (start + (i as f64) * step) as f32;
+                    }
+                }
+                DType::Int64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, n);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = (start + (i as f64) * step) as i64;
+                    }
+                }
+                DType::Int32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, n);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = (start + (i as f64) * step) as i32;
+                    }
+                }
+                DType::Bool => {
+                    let slice = std::slice::from_raw_parts_mut(ptr, n);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = ((start + (i as f64) * step) != 0.0) as u8;
+                    }
+                }
+            }
+        }
+        arr
+    }
+
+    /// Get single element by indices. Returns as f64 for simplicity.
+    pub fn get_element(&self, indices: &[usize]) -> f64 {
+        assert_eq!(indices.len(), self.ndim(), "wrong number of indices");
+        let mut byte_offset = self.offset;
+        for (i, &idx) in indices.iter().enumerate() {
+            assert!(idx < self.shape[i], "index out of bounds");
+            byte_offset = (byte_offset as isize + (idx as isize) * self.strides[i]) as usize;
+        }
+
+        let ptr = self.buffer.as_ptr();
+        unsafe {
+            match self.dtype {
+                DType::Float64 => *ptr.add(byte_offset).cast::<f64>(),
+                DType::Float32 => *ptr.add(byte_offset).cast::<f32>() as f64,
+                DType::Int64 => *ptr.add(byte_offset).cast::<i64>() as f64,
+                DType::Int32 => *ptr.add(byte_offset).cast::<i32>() as f64,
+                DType::Bool => *ptr.add(byte_offset) as f64,
+            }
+        }
+    }
 }
 
 /// Compute C-order (row-major) strides for given shape and itemsize.
