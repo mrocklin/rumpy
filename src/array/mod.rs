@@ -343,6 +343,61 @@ impl RumpyArray {
         let ptr = self.buffer.as_ptr();
         unsafe { self.dtype.ops().read_element(ptr, byte_offset) }
     }
+
+    /// Select elements where mask is true. Returns a 1D array.
+    /// Mask must have same shape as self (broadcasting not supported for boolean indexing).
+    pub fn select_by_mask(&self, mask: &RumpyArray) -> Option<Self> {
+        use dtype::DTypeKind;
+
+        // Mask must be bool dtype
+        if mask.dtype().kind() != DTypeKind::Bool {
+            return None;
+        }
+
+        // Shapes must match exactly
+        if self.shape() != mask.shape() {
+            return None;
+        }
+
+        let size = self.size();
+        if size == 0 {
+            return Some(Self::zeros(vec![0], self.dtype()));
+        }
+
+        // First pass: count true elements
+        let mut count = 0usize;
+        let mut mask_indices = vec![0usize; mask.ndim()];
+        for _ in 0..size {
+            if mask.get_element(&mask_indices) != 0.0 {
+                count += 1;
+            }
+            increment_indices(&mut mask_indices, mask.shape());
+        }
+
+        // Create result array
+        let mut result = Self::zeros(vec![count], self.dtype());
+        if count == 0 {
+            return Some(result);
+        }
+
+        // Second pass: copy selected elements
+        let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+        let result_ptr = buffer.as_mut_ptr();
+        let ops = result.dtype.ops();
+
+        let mut src_indices = vec![0usize; self.ndim()];
+        let mut dst_idx = 0usize;
+        for _ in 0..size {
+            if mask.get_element(&src_indices) != 0.0 {
+                let val = self.get_element(&src_indices);
+                unsafe { ops.write_element(result_ptr, dst_idx, val); }
+                dst_idx += 1;
+            }
+            increment_indices(&mut src_indices, self.shape());
+        }
+
+        Some(result)
+    }
 }
 
 /// Compute C-order (row-major) strides for given shape and itemsize.

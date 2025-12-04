@@ -1,6 +1,6 @@
 //! Element-wise operations (ufunc-style).
 
-use crate::array::{broadcast_shapes, increment_indices, promote_dtype, write_element, RumpyArray};
+use crate::array::{broadcast_shapes, increment_indices, promote_dtype, write_element, DType, RumpyArray};
 use std::sync::Arc;
 
 /// Binary operation types.
@@ -10,6 +10,17 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+}
+
+/// Comparison operation types.
+#[derive(Clone, Copy)]
+pub enum ComparisonOp {
+    Gt,  // >
+    Lt,  // <
+    Ge,  // >=
+    Le,  // <=
+    Eq,  // ==
+    Ne,  // !=
 }
 
 // ============================================================================
@@ -64,6 +75,35 @@ where
     let mut indices = vec![0usize; out_shape.len()];
     for i in 0..size {
         let val = f(a.get_element(&indices), b.get_element(&indices));
+        unsafe { write_element(result_ptr, i, val, &dtype); }
+        increment_indices(&mut indices, &out_shape);
+    }
+    Some(result)
+}
+
+/// Apply a comparison function element-wise, returning bool array.
+fn map_compare<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
+where
+    F: Fn(f64, f64) -> bool,
+{
+    let out_shape = broadcast_shapes(a.shape(), b.shape())?;
+    let a = a.broadcast_to(&out_shape)?;
+    let b = b.broadcast_to(&out_shape)?;
+
+    let mut result = RumpyArray::zeros(out_shape.clone(), DType::bool());
+    let size = result.size();
+    if size == 0 {
+        return Some(result);
+    }
+
+    let dtype = result.dtype();
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    let mut indices = vec![0usize; out_shape.len()];
+    for i in 0..size {
+        let val = if f(a.get_element(&indices), b.get_element(&indices)) { 1.0 } else { 0.0 };
         unsafe { write_element(result_ptr, i, val, &dtype); }
         increment_indices(&mut indices, &out_shape);
     }
@@ -183,6 +223,26 @@ impl RumpyArray {
         }
     }
 
+    /// Element-wise comparison with broadcasting.
+    pub fn compare(&self, other: &RumpyArray, op: ComparisonOp) -> Option<RumpyArray> {
+        let f: fn(f64, f64) -> bool = match op {
+            ComparisonOp::Gt => |a, b| a > b,
+            ComparisonOp::Lt => |a, b| a < b,
+            ComparisonOp::Ge => |a, b| a >= b,
+            ComparisonOp::Le => |a, b| a <= b,
+            ComparisonOp::Eq => |a, b| a == b,
+            ComparisonOp::Ne => |a, b| a != b,
+        };
+        map_compare(self, other, f)
+    }
+
+    /// Scalar comparison (arr op scalar).
+    pub fn compare_scalar(&self, scalar: f64, op: ComparisonOp) -> RumpyArray {
+        // Create scalar array and use broadcasting
+        let scalar_arr = RumpyArray::full(vec![1], scalar, DType::float64());
+        self.compare(&scalar_arr, op).expect("scalar broadcast always succeeds")
+    }
+
     /// Negate each element.
     pub fn neg(&self) -> RumpyArray {
         map_unary(self, |x| -x)
@@ -279,4 +339,45 @@ impl RumpyArray {
     pub fn tan(&self) -> RumpyArray {
         map_unary(self, |x| x.tan())
     }
+}
+
+/// Conditional selection: where(condition, x, y).
+/// Returns elements from x where condition is true, else from y.
+/// All three arrays are broadcast together.
+pub fn where_select(condition: &RumpyArray, x: &RumpyArray, y: &RumpyArray) -> Option<RumpyArray> {
+    // Broadcast all three shapes together
+    let shape_cx = broadcast_shapes(condition.shape(), x.shape())?;
+    let out_shape = broadcast_shapes(&shape_cx, y.shape())?;
+
+    let cond = condition.broadcast_to(&out_shape)?;
+    let x = x.broadcast_to(&out_shape)?;
+    let y = y.broadcast_to(&out_shape)?;
+
+    // Result dtype is promoted from x and y
+    let result_dtype = promote_dtype(&x.dtype(), &y.dtype());
+    let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype);
+    let size = result.size();
+
+    if size == 0 {
+        return Some(result);
+    }
+
+    let dtype = result.dtype();
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    let mut indices = vec![0usize; out_shape.len()];
+    for i in 0..size {
+        let cond_val = cond.get_element(&indices);
+        let val = if cond_val != 0.0 {
+            x.get_element(&indices)
+        } else {
+            y.get_element(&indices)
+        };
+        unsafe { write_element(result_ptr, i, val, &dtype); }
+        increment_indices(&mut indices, &out_shape);
+    }
+
+    Some(result)
 }

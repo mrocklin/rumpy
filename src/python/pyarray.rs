@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PySlice, PyTuple};
 
 use crate::array::{DType, RumpyArray};
-use crate::ops::BinaryOp;
+use crate::ops::{BinaryOp, ComparisonOp};
 
 /// Result type for reductions that can return scalar or array.
 pub enum ReductionResult {
@@ -117,6 +117,19 @@ impl PyRumpyArray {
 
     /// Indexing and slicing.
     fn __getitem__<'py>(&self, py: Python<'py>, key: &Bound<'py, PyAny>) -> PyResult<PyObject> {
+        // Handle boolean array indexing
+        if let Ok(mask_arr) = key.extract::<PyRef<'_, PyRumpyArray>>() {
+            if mask_arr.inner.dtype().kind() == crate::array::dtype::DTypeKind::Bool {
+                return self.inner.select_by_mask(&mask_arr.inner)
+                    .map(|arr| Self::new(arr).into_pyobject(py).unwrap().into_any().unbind())
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyIndexError::new_err(
+                            "boolean index shape must match array shape"
+                        )
+                    });
+            }
+        }
+
         // Handle tuple for multi-dimensional indexing
         if let Ok(tuple) = key.downcast::<PyTuple>() {
             // Check if all indices are integers (scalar access)
@@ -243,6 +256,32 @@ impl PyRumpyArray {
         Self::new(self.inner.abs())
     }
 
+    // Comparison operations
+
+    fn __gt__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        comparison_op_dispatch(&self.inner, other, ComparisonOp::Gt)
+    }
+
+    fn __lt__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        comparison_op_dispatch(&self.inner, other, ComparisonOp::Lt)
+    }
+
+    fn __ge__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        comparison_op_dispatch(&self.inner, other, ComparisonOp::Ge)
+    }
+
+    fn __le__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        comparison_op_dispatch(&self.inner, other, ComparisonOp::Le)
+    }
+
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        comparison_op_dispatch(&self.inner, other, ComparisonOp::Eq)
+    }
+
+    fn __ne__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        comparison_op_dispatch(&self.inner, other, ComparisonOp::Ne)
+    }
+
     // Reductions
 
     #[pyo3(signature = (axis=None))]
@@ -360,6 +399,27 @@ fn rbinary_op_dispatch(
     } else {
         Err(pyo3::exceptions::PyTypeError::new_err(
             "operand must be a number",
+        ))
+    }
+}
+
+/// Dispatch comparison operation: array cmp (array or scalar).
+fn comparison_op_dispatch(
+    arr: &RumpyArray,
+    other: &Bound<'_, PyAny>,
+    op: ComparisonOp,
+) -> PyResult<PyRumpyArray> {
+    if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.compare(&other_arr.inner, op)
+            .map(PyRumpyArray::new)
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            })
+    } else if let Ok(scalar) = other.extract::<f64>() {
+        Ok(PyRumpyArray::new(arr.compare_scalar(scalar, op)))
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray or number",
         ))
     }
 }

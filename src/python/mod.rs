@@ -299,6 +299,44 @@ pub fn tan(x: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.tan())
 }
 
+/// Conditional selection: where(condition, x, y).
+/// Returns elements from x where condition is true, else from y.
+#[pyfunction]
+#[pyo3(name = "where")]
+pub fn where_fn(
+    condition: &PyRumpyArray,
+    x: &Bound<'_, pyo3::PyAny>,
+    y: &Bound<'_, pyo3::PyAny>,
+) -> PyResult<PyRumpyArray> {
+    // Extract x - could be array or scalar
+    let x_arr = if let Ok(arr) = x.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = x.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, DType::float64())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "x must be ndarray or number",
+        ));
+    };
+
+    // Extract y - could be array or scalar
+    let y_arr = if let Ok(arr) = y.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = y.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, DType::float64())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "y must be ndarray or number",
+        ));
+    };
+
+    crate::ops::where_select(&condition.inner, &x_arr, &y_arr)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together")
+        })
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
@@ -317,5 +355,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sin, m)?)?;
     m.add_function(wrap_pyfunction!(cos, m)?)?;
     m.add_function(wrap_pyfunction!(tan, m)?)?;
+    // Conditional
+    m.add_function(wrap_pyfunction!(where_fn, m)?)?;
     Ok(())
 }
