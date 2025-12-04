@@ -1,0 +1,20 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rumpy"
+version = "0.1.0"
+description = "NumPy reimplementation in Rust"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest", "numpy", "hypothesis"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "rumpy"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

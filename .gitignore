@@ -1,0 +1,18 @@
+# Rust
+/target/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+*.so
+
+# IDE
+.idea/
+.vscode/
+
+# Testing
+.pytest_cache/
+.hypothesis/
