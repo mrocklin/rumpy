@@ -233,6 +233,20 @@ fn flatten_nested_list(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<f6
 
 /// Parse dtype from numpy typestr.
 fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
+    // Handle datetime64: "<M8[ns]", "<M8[us]", etc.
+    if typestr.starts_with("<M8[") || typestr.starts_with(">M8[") {
+        return match typestr {
+            "<M8[ns]" | ">M8[ns]" => Ok(DType::datetime64_ns()),
+            "<M8[us]" | ">M8[us]" => Ok(DType::datetime64_us()),
+            "<M8[ms]" | ">M8[ms]" => Ok(DType::datetime64_ms()),
+            "<M8[s]" | ">M8[s]" => Ok(DType::datetime64_s()),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unsupported datetime64 unit: {}",
+                typestr
+            ))),
+        };
+    }
+
     // Format: "<f8" (little-endian float64), ">i4" (big-endian int32), etc.
     let kind = typestr.chars().nth(1).unwrap_or('f');
     let size: usize = typestr[2..].parse().unwrap_or(8);
@@ -242,7 +256,10 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
         ('f', 4) => Ok(DType::float32()),
         ('i', 8) => Ok(DType::int64()),
         ('i', 4) => Ok(DType::int32()),
-        ('b', 1) | ('u', 1) => Ok(DType::bool()),
+        ('u', 8) => Ok(DType::uint64()),
+        ('u', 4) => Ok(DType::uint32()),
+        ('u', 1) => Ok(DType::uint8()),
+        ('b', 1) => Ok(DType::bool()),
         _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Unsupported dtype: {}",
             typestr

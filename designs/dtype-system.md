@@ -31,16 +31,16 @@ Enable adding new dtypes with minimal code changes, including parametric types l
 // 1. Add to DTypeKind
 enum DTypeKind {
     // ...
-    DateTime(TimeUnit),
+    DateTime64(TimeUnit),
 }
 
 // 2. Create struct with parameter
-pub struct DateTimeOps {
-    pub unit: TimeUnit,
+struct DateTime64Ops {
+    unit: TimeUnit,
 }
 
-impl DTypeOps for DateTimeOps {
-    fn kind(&self) -> DTypeKind { DTypeKind::DateTime(self.unit) }
+impl DTypeOps for DateTime64Ops {
+    fn kind(&self) -> DTypeKind { DTypeKind::DateTime64(self.unit) }
     fn itemsize(&self) -> usize { 8 }
     fn name(&self) -> &'static str {
         match self.unit {
@@ -53,8 +53,8 @@ impl DTypeOps for DateTimeOps {
 
 // 3. Add constructor
 impl DType {
-    pub fn datetime(unit: TimeUnit) -> Self {
-        DType::new(DateTimeOps { unit })
+    pub fn datetime64(unit: TimeUnit) -> Self {
+        DType::new(DateTime64Ops { unit })
     }
 }
 ```
@@ -62,4 +62,4 @@ impl DType {
 ## Key Files
 
 - `src/array/dtype/mod.rs` - `DType`, `DTypeKind`, `DTypeOps` trait
-- `src/array/dtype/{float64,float32,int64,int32,bool}.rs` - dtype implementations
+- `src/array/dtype/*.rs` - dtype implementations (float64, int64, uint8, datetime64, etc.)

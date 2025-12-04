@@ -67,10 +67,10 @@ impl PyRumpyArray {
         self.inner.ndim()
     }
 
-    /// Data type string.
+    /// Data type string (human-readable name).
     #[getter]
     fn dtype(&self) -> &'static str {
-        self.inner.dtype().typestr()
+        self.inner.dtype().ops().name()
     }
 
     /// Total number of elements.
