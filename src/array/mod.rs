@@ -53,7 +53,7 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
-        let ops = dtype.ops();
+        let ops = arr.dtype.ops();
 
         for (i, &v) in data.iter().enumerate() {
             unsafe { ops.write_element(ptr, i, v); }
@@ -104,7 +104,7 @@ impl RumpyArray {
 
     /// Get element type.
     pub fn dtype(&self) -> DType {
-        self.dtype
+        self.dtype.clone()
     }
 
     /// Get total number of elements.
@@ -162,7 +162,7 @@ impl RumpyArray {
             offset: self.offset + offset_delta,
             shape,
             strides,
-            dtype: self.dtype,
+            dtype: self.dtype.clone(),
             flags,
         }
     }
@@ -261,7 +261,7 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
-        let ops = dtype.ops();
+        let ops = arr.dtype.ops();
 
         for i in 0..n {
             let val = start + (i as f64) * step;
@@ -280,7 +280,7 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
-        let ops = dtype.ops();
+        let ops = arr.dtype.ops();
 
         // step = (stop - start) / (num - 1) for num > 1, else 0
         let step = if num > 1 { (stop - start) / (num - 1) as f64 } else { 0.0 };
@@ -302,7 +302,7 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
-        let ops = dtype.ops();
+        let ops = arr.dtype.ops();
         let one = ops.one_value();
 
         for i in 0..n {
@@ -323,7 +323,7 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
-        let ops = dtype.ops();
+        let ops = arr.dtype.ops();
 
         for i in 0..size {
             unsafe { ops.write_element(ptr, i, value); }
@@ -422,13 +422,13 @@ pub(crate) fn increment_indices(indices: &mut [usize], shape: &[usize]) {
 
 /// Write a value to buffer at linear index.
 #[inline]
-pub(crate) unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: DType) {
+pub(crate) unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: &DType) {
     dtype.ops().write_element(ptr, idx, val);
 }
 
 /// Read element from buffer at byte offset.
 #[inline]
-pub(crate) unsafe fn read_element(ptr: *const u8, offset: isize, dtype: DType) -> f64 {
+pub(crate) unsafe fn read_element(ptr: *const u8, offset: isize, dtype: &DType) -> f64 {
     dtype.ops().read_element(ptr, offset)
 }
 

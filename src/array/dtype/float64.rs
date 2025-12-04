@@ -1,11 +1,12 @@
 //! Float64 dtype implementation.
 
-use super::DTypeOps;
+use super::{DTypeKind, DTypeOps};
 
 /// Float64 dtype operations.
 pub(super) struct Float64Ops;
 
 impl DTypeOps for Float64Ops {
+    fn kind(&self) -> DTypeKind { DTypeKind::Float64 }
     fn itemsize(&self) -> usize { 8 }
     fn typestr(&self) -> &'static str { "<f8" }
     fn format_char(&self) -> &'static str { "d" }

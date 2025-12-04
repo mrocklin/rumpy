@@ -1,7 +1,6 @@
 //! Extensible data type system for rumpy arrays.
 //!
-//! Each dtype is a unit struct implementing `DTypeOps`. The `DType` enum
-//! provides a lightweight handle that delegates to trait objects.
+//! `DType` wraps `Arc<dyn DTypeOps>`, enabling parametric types like datetime[ns].
 
 mod bool;
 mod float32;
@@ -15,12 +14,27 @@ use float64::Float64Ops;
 use int32::Int32Ops;
 use int64::Int64Ops;
 
+use std::sync::Arc;
+use std::hash::{Hash, Hasher};
+
+/// Identifies the kind of dtype for equality/hashing.
+/// Parametric types include their parameters.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DTypeKind {
+    Float32,
+    Float64,
+    Int32,
+    Int64,
+    Bool,
+    // Future: DateTime(TimeUnit), etc.
+}
+
 /// Trait defining all dtype-specific behavior.
 ///
-/// Implement this trait to add a new dtype. Then add a variant to `DType`
-/// and a single match arm in `DType::ops()`.
+/// Implement this trait to add a new dtype.
 pub trait DTypeOps: Send + Sync + 'static {
-    // === Metadata ===
+    /// The kind of this dtype (for equality/hashing).
+    fn kind(&self) -> DTypeKind;
 
     /// Size of one element in bytes.
     fn itemsize(&self) -> usize;
@@ -34,8 +48,6 @@ pub trait DTypeOps: Send + Sync + 'static {
     /// Human-readable name (e.g., "float64").
     fn name(&self) -> &'static str;
 
-    // === Element access ===
-
     /// Read element from buffer at byte offset, returning as f64.
     ///
     /// # Safety
@@ -48,87 +60,97 @@ pub trait DTypeOps: Send + Sync + 'static {
     /// Caller must ensure ptr points to valid memory for idx elements.
     unsafe fn write_element(&self, ptr: *mut u8, idx: usize, val: f64);
 
-    // === Value creation ===
-
     /// The zero value for this dtype (as f64).
-    fn zero_value(&self) -> f64 {
-        0.0
-    }
+    fn zero_value(&self) -> f64 { 0.0 }
 
     /// The one value for this dtype (as f64).
-    fn one_value(&self) -> f64 {
-        1.0
-    }
-
-    // === Type promotion ===
+    fn one_value(&self) -> f64 { 1.0 }
 
     /// Priority for type promotion. Higher priority wins.
-    /// Float64=100, Float32=90, Int64=80, Int32=70, Bool=10
     fn promotion_priority(&self) -> u8;
 }
 
-/// Data types supported by rumpy arrays.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum DType {
-    Float32,
-    Float64,
-    Int32,
-    Int64,
-    Bool,
-}
+/// Data type descriptor wrapping trait object.
+///
+/// Supports parametric types (e.g., datetime[ns]) via Arc<dyn DTypeOps>.
+#[derive(Clone)]
+pub struct DType(Arc<dyn DTypeOps>);
 
 impl DType {
-    /// Get the ops trait object for this dtype.
-    ///
-    /// This is the single dispatch point - all dtype-specific behavior
-    /// goes through here.
-    pub fn ops(&self) -> &'static dyn DTypeOps {
-        match self {
-            DType::Float32 => &Float32Ops,
-            DType::Float64 => &Float64Ops,
-            DType::Int32 => &Int32Ops,
-            DType::Int64 => &Int64Ops,
-            DType::Bool => &BoolOps,
-        }
+    /// Create from any DTypeOps implementation.
+    pub fn new<T: DTypeOps>(ops: T) -> Self {
+        DType(Arc::new(ops))
     }
 
-    /// Size in bytes of one element.
+    /// Get the underlying ops trait object.
     #[inline]
-    pub fn itemsize(&self) -> usize {
-        self.ops().itemsize()
+    pub fn ops(&self) -> &dyn DTypeOps {
+        &*self.0
     }
 
-    /// NumPy type string for __array_interface__.
+    /// Get the kind for pattern matching.
     #[inline]
-    pub fn typestr(&self) -> &'static str {
-        self.ops().typestr()
+    pub fn kind(&self) -> DTypeKind {
+        self.0.kind()
     }
 
-    /// Type character for buffer protocol format.
+    // === Convenience constructors ===
+
+    pub fn float32() -> Self { DType(Arc::new(Float32Ops)) }
+    pub fn float64() -> Self { DType(Arc::new(Float64Ops)) }
+    pub fn int32() -> Self { DType(Arc::new(Int32Ops)) }
+    pub fn int64() -> Self { DType(Arc::new(Int64Ops)) }
+    pub fn bool() -> Self { DType(Arc::new(BoolOps)) }
+
+    // === Delegated methods ===
+
     #[inline]
-    pub fn format_char(&self) -> &'static str {
-        self.ops().format_char()
-    }
+    pub fn itemsize(&self) -> usize { self.0.itemsize() }
+
+    #[inline]
+    pub fn typestr(&self) -> &'static str { self.0.typestr() }
+
+    #[inline]
+    pub fn format_char(&self) -> &'static str { self.0.format_char() }
 
     /// Parse dtype from string (numpy-style).
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "float32" | "f4" | "<f4" => Some(DType::Float32),
-            "float64" | "f8" | "<f8" | "float" => Some(DType::Float64),
-            "int32" | "i4" | "<i4" => Some(DType::Int32),
-            "int64" | "i8" | "<i8" | "int" => Some(DType::Int64),
-            "bool" | "?" | "|b1" => Some(DType::Bool),
+            "float32" | "f4" | "<f4" => Some(Self::float32()),
+            "float64" | "f8" | "<f8" | "float" => Some(Self::float64()),
+            "int32" | "i4" | "<i4" => Some(Self::int32()),
+            "int64" | "i8" | "<i8" | "int" => Some(Self::int64()),
+            "bool" | "?" | "|b1" => Some(Self::bool()),
             _ => None,
         }
     }
 }
 
+impl PartialEq for DType {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.kind() == other.0.kind()
+    }
+}
+
+impl Eq for DType {}
+
+impl Hash for DType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.kind().hash(state);
+    }
+}
+
+impl std::fmt::Debug for DType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DType({})", self.0.name())
+    }
+}
+
 /// Promote two dtypes to their common type.
-/// Uses priority-based promotion: higher priority wins.
-pub fn promote_dtype(a: DType, b: DType) -> DType {
+pub fn promote_dtype(a: &DType, b: &DType) -> DType {
     if a.ops().promotion_priority() >= b.ops().promotion_priority() {
-        a
+        a.clone()
     } else {
-        b
+        b.clone()
     }
 }

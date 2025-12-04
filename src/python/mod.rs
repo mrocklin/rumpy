@@ -148,6 +148,7 @@ fn from_array_interface(
 
     // Calculate size and copy data
     let size: usize = shape.iter().product();
+    let itemsize = dtype.itemsize();
     let mut arr = RumpyArray::zeros(shape.clone(), dtype);
 
     if size == 0 {
@@ -157,9 +158,10 @@ fn from_array_interface(
     // Copy data respecting strides
     let src_ptr = data_ptr as *const u8;
     let src_strides = strides.unwrap_or_else(|| {
-        crate::array::compute_c_strides(&shape, dtype.itemsize())
+        crate::array::compute_c_strides(&shape, itemsize)
     });
 
+    let dtype = arr.dtype();
     // Use get_element pattern - iterate and copy
     let buffer = arr.buffer_mut();
     let result_buffer = std::sync::Arc::get_mut(buffer).expect("buffer must be unique");
@@ -175,8 +177,8 @@ fn from_array_interface(
             .sum();
 
         // Read from source, write to destination
-        let val = unsafe { read_element(src_ptr, src_offset, dtype) };
-        unsafe { write_element(dst_ptr, i, val, dtype); }
+        let val = unsafe { read_element(src_ptr, src_offset, &dtype) };
+        unsafe { write_element(dst_ptr, i, val, &dtype); }
 
         increment_indices(&mut indices, &shape);
     }
@@ -236,11 +238,11 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
     let size: usize = typestr[2..].parse().unwrap_or(8);
 
     match (kind, size) {
-        ('f', 8) => Ok(DType::Float64),
-        ('f', 4) => Ok(DType::Float32),
-        ('i', 8) => Ok(DType::Int64),
-        ('i', 4) => Ok(DType::Int32),
-        ('b', 1) | ('u', 1) => Ok(DType::Bool),
+        ('f', 8) => Ok(DType::float64()),
+        ('f', 4) => Ok(DType::float32()),
+        ('i', 8) => Ok(DType::int64()),
+        ('i', 4) => Ok(DType::int32()),
+        ('b', 1) | ('u', 1) => Ok(DType::bool()),
         _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Unsupported dtype: {}",
             typestr

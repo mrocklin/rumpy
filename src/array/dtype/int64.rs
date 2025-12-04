@@ -1,11 +1,12 @@
 //! Int64 dtype implementation.
 
-use super::DTypeOps;
+use super::{DTypeKind, DTypeOps};
 
 /// Int64 dtype operations.
 pub(super) struct Int64Ops;
 
 impl DTypeOps for Int64Ops {
+    fn kind(&self) -> DTypeKind { DTypeKind::Int64 }
     fn itemsize(&self) -> usize { 8 }
     fn typestr(&self) -> &'static str { "<i8" }
     fn format_char(&self) -> &'static str { "q" }

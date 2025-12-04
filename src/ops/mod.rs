@@ -34,7 +34,7 @@ where
     let mut indices = vec![0usize; arr.ndim()];
     for i in 0..size {
         let val = f(arr.get_element(&indices));
-        unsafe { write_element(result_ptr, i, val, arr.dtype()); }
+        unsafe { write_element(result_ptr, i, val, &arr.dtype()); }
         increment_indices(&mut indices, arr.shape());
     }
     result
@@ -49,13 +49,14 @@ where
     let a = a.broadcast_to(&out_shape)?;
     let b = b.broadcast_to(&out_shape)?;
 
-    let result_dtype = promote_dtype(a.dtype(), b.dtype());
+    let result_dtype = promote_dtype(&a.dtype(), &b.dtype());
     let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype);
     let size = result.size();
     if size == 0 {
         return Some(result);
     }
 
+    let dtype = result.dtype();
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
@@ -63,7 +64,7 @@ where
     let mut indices = vec![0usize; out_shape.len()];
     for i in 0..size {
         let val = f(a.get_element(&indices), b.get_element(&indices));
-        unsafe { write_element(result_ptr, i, val, result_dtype); }
+        unsafe { write_element(result_ptr, i, val, &dtype); }
         increment_indices(&mut indices, &out_shape);
     }
     Some(result)
@@ -111,7 +112,7 @@ where
         let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
         let result_ptr = result_buffer.as_mut_ptr();
         for i in 0..out_size {
-            unsafe { write_element(result_ptr, i, init, arr.dtype()); }
+            unsafe { write_element(result_ptr, i, init, &arr.dtype()); }
         }
         return result;
     }
@@ -137,7 +138,7 @@ where
             acc = f(acc, arr.get_element(&in_indices));
         }
 
-        unsafe { write_element(result_ptr, i, acc, arr.dtype()); }
+        unsafe { write_element(result_ptr, i, acc, &arr.dtype()); }
         increment_indices(&mut out_indices, &out_shape);
     }
 

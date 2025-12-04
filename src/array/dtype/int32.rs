@@ -1,11 +1,12 @@
 //! Int32 dtype implementation.
 
-use super::DTypeOps;
+use super::{DTypeKind, DTypeOps};
 
 /// Int32 dtype operations.
 pub(super) struct Int32Ops;
 
 impl DTypeOps for Int32Ops {
+    fn kind(&self) -> DTypeKind { DTypeKind::Int32 }
     fn itemsize(&self) -> usize { 4 }
     fn typestr(&self) -> &'static str { "<i4" }
     fn format_char(&self) -> &'static str { "i" }
