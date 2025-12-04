@@ -6,7 +6,7 @@
 
 ## Status
 
-**Complete**: 320 tests passing. Gufunc infrastructure with matmul, inner, outer, solve.
+**Complete**: 338 tests passing. Gufunc infrastructure with matmul, dot, inner, outer, solve, trace, det, norm.
 
 ### Recent Work
 
@@ -19,9 +19,13 @@
   - 2D matrices, 1D vectors, batched (3D+)
   - Full numpy broadcast semantics
   - Uses faer for optimized matrix multiplication
+- [x] **dot**: `rp.dot(a, b)` - numpy-compatible dot product
 - [x] **inner**: `rp.inner(a, b)` - inner product with gufunc broadcasting
 - [x] **outer**: `rp.outer(a, b)` - outer product (flattens inputs)
 - [x] **solve**: `rp.solve(A, b)` - solve linear system Ax=b via LU decomposition
+- [x] **trace**: `rp.trace(A)` - sum of diagonal elements
+- [x] **det**: `rp.det(A)` - determinant via LU decomposition
+- [x] **norm**: `rp.norm(A)` - Frobenius norm (default)
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)
@@ -41,12 +45,12 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: More Linalg
+## Next: Decompositions
 
 See `designs/linalg.md` for faer integration patterns.
 
-- `dot()` - has complex dimension-dependent semantics
-- `linalg.*` - determinant, trace, solve, etc. (faer supports these)
+- Decompositions: `qr`, `svd`, `eig` (faer supports these)
+- Also added `__float__`/`__int__` for 0D arrays
 
 ## Known Limitations (Future Work)
 
