@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 9 complete
+**Last updated**: Phase 10 complete
 
 ## What's Done
 
@@ -10,6 +10,7 @@
 - [x] Core types: DType, ArrayFlags, ArrayBuffer, RumpyArray
 - [x] Basic constructors: zeros(), ones(), arange()
 - [x] More constructors: linspace(), eye(), full()
+- [x] asarray() with __array_interface__ and list support
 - [x] Python bindings with __array_interface__
 - [x] Test infrastructure with assert_eq helper
 - [x] Views: view_with(), slicing, reshape, transpose
@@ -21,7 +22,7 @@
 - [x] Ufunc machinery: map_unary, map_binary, reduce_all, reduce_axis
 - [x] Reductions: sum, prod, min, max, mean (with optional axis)
 - [x] Math ufuncs: sqrt, exp, log, sin, cos, tan
-- [x] All 153 tests passing
+- [x] 171 tests passing
 
 ## Key Files
 
@@ -44,17 +45,17 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: Array creation from data
+## Next Phase: BLAS integration
 
 Priority order:
-1. from_list / asarray (create from Python list)
-2. copy() method
+1. matmul / @ operator
+2. dot product
 
 ## Future Phases
 
-- Phase 11: BLAS integration (matmul, dot)
 - Phase 12: Comparison ops (>, <, ==, etc.)
 - Phase 13: More ufuncs (log2, log10, arcsin, arccos, etc.)
+- Phase 14: copy() method, astype()
 
 ## Testing Pattern
 

@@ -43,6 +43,57 @@ impl RumpyArray {
         }
     }
 
+    /// Create array from Vec of f64 values (1D).
+    pub fn from_vec(data: Vec<f64>, dtype: DType) -> Self {
+        let n = data.len();
+        let mut arr = Self::zeros(vec![n], dtype);
+        if n == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        unsafe {
+            match dtype {
+                DType::Float64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, n);
+                    slice.copy_from_slice(&data);
+                }
+                DType::Float32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, n);
+                    for (i, &v) in data.iter().enumerate() {
+                        slice[i] = v as f32;
+                    }
+                }
+                DType::Int64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, n);
+                    for (i, &v) in data.iter().enumerate() {
+                        slice[i] = v as i64;
+                    }
+                }
+                DType::Int32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, n);
+                    for (i, &v) in data.iter().enumerate() {
+                        slice[i] = v as i32;
+                    }
+                }
+                DType::Bool => {
+                    for (i, &v) in data.iter().enumerate() {
+                        *ptr.add(i) = (v != 0.0) as u8;
+                    }
+                }
+            }
+        }
+        arr
+    }
+
+    /// Create array from Vec with given shape.
+    pub fn from_vec_with_shape(data: Vec<f64>, shape: Vec<usize>, dtype: DType) -> Self {
+        let arr = Self::from_vec(data, dtype);
+        arr.reshape(shape).unwrap_or(arr)
+    }
+
     /// Create a new array filled with ones.
     pub fn ones(shape: Vec<usize>, dtype: DType) -> Self {
         let mut arr = Self::zeros(shape, dtype);
@@ -516,6 +567,42 @@ fn is_f_contiguous(shape: &[usize], strides: &[isize], itemsize: usize) -> bool 
         expected *= shape[i] as isize;
     }
     true
+}
+
+/// Increment indices in row-major (C) order.
+pub(crate) fn increment_indices(indices: &mut [usize], shape: &[usize]) {
+    for i in (0..indices.len()).rev() {
+        indices[i] += 1;
+        if indices[i] < shape[i] {
+            return;
+        }
+        indices[i] = 0;
+    }
+}
+
+/// Write a value to buffer at linear index.
+#[inline]
+pub(crate) unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: DType) {
+    match dtype {
+        DType::Float64 => *(ptr as *mut f64).add(idx) = val,
+        DType::Float32 => *(ptr as *mut f32).add(idx) = val as f32,
+        DType::Int64 => *(ptr as *mut i64).add(idx) = val as i64,
+        DType::Int32 => *(ptr as *mut i32).add(idx) = val as i32,
+        DType::Bool => *ptr.add(idx) = (val != 0.0) as u8,
+    }
+}
+
+/// Read element from buffer at byte offset.
+#[inline]
+pub(crate) unsafe fn read_element(ptr: *const u8, offset: isize, dtype: DType) -> f64 {
+    let p = ptr.offset(offset);
+    match dtype {
+        DType::Float64 => *(p as *const f64),
+        DType::Float32 => *(p as *const f32) as f64,
+        DType::Int64 => *(p as *const i64) as f64,
+        DType::Int32 => *(p as *const i32) as f64,
+        DType::Bool => *p as f64,
+    }
 }
 
 /// Compute broadcast shape from two input shapes.

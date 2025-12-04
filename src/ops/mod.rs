@@ -1,6 +1,6 @@
 //! Element-wise operations (ufunc-style).
 
-use crate::array::{broadcast_shapes, DType, RumpyArray};
+use crate::array::{broadcast_shapes, increment_indices, write_element, DType, RumpyArray};
 use std::sync::Arc;
 
 /// Binary operation types.
@@ -142,29 +142,6 @@ where
     }
 
     result
-}
-
-/// Write a value to result buffer at linear index.
-#[inline]
-unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: DType) {
-    match dtype {
-        DType::Float64 => *(ptr as *mut f64).add(idx) = val,
-        DType::Float32 => *(ptr as *mut f32).add(idx) = val as f32,
-        DType::Int64 => *(ptr as *mut i64).add(idx) = val as i64,
-        DType::Int32 => *(ptr as *mut i32).add(idx) = val as i32,
-        DType::Bool => *ptr.add(idx) = (val != 0.0) as u8,
-    }
-}
-
-/// Increment indices in row-major (C) order.
-fn increment_indices(indices: &mut [usize], shape: &[usize]) {
-    for i in (0..indices.len()).rev() {
-        indices[i] += 1;
-        if indices[i] < shape[i] {
-            return;
-        }
-        indices[i] = 0;
-    }
 }
 
 /// Type promotion for binary ops.
