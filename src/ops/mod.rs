@@ -12,13 +12,6 @@ pub enum BinaryOp {
     Div,
 }
 
-/// Unary operation types.
-#[derive(Clone, Copy)]
-pub enum UnaryOp {
-    Neg,
-    Abs,
-}
-
 // ============================================================================
 // Core ufunc machinery
 // ============================================================================
@@ -222,13 +215,14 @@ impl RumpyArray {
         }
     }
 
-    /// Unary operation.
-    pub fn unary_op(&self, op: UnaryOp) -> RumpyArray {
-        let f: fn(f64) -> f64 = match op {
-            UnaryOp::Neg => |a| -a,
-            UnaryOp::Abs => |a| a.abs(),
-        };
-        map_unary(self, f)
+    /// Negate each element.
+    pub fn neg(&self) -> RumpyArray {
+        map_unary(self, |x| -x)
+    }
+
+    /// Absolute value of each element.
+    pub fn abs(&self) -> RumpyArray {
+        map_unary(self, |x| x.abs())
     }
 
     /// Sum all elements.
@@ -284,5 +278,37 @@ impl RumpyArray {
         let sum = self.sum_axis(axis);
         let count = self.shape()[axis] as f64;
         map_unary(&sum, |x| x / count)
+    }
+
+    // Math ufuncs
+
+    /// Square root of each element.
+    pub fn sqrt(&self) -> RumpyArray {
+        map_unary(self, |x| x.sqrt())
+    }
+
+    /// Exponential (e^x) of each element.
+    pub fn exp(&self) -> RumpyArray {
+        map_unary(self, |x| x.exp())
+    }
+
+    /// Natural logarithm of each element.
+    pub fn log(&self) -> RumpyArray {
+        map_unary(self, |x| x.ln())
+    }
+
+    /// Sine of each element (radians).
+    pub fn sin(&self) -> RumpyArray {
+        map_unary(self, |x| x.sin())
+    }
+
+    /// Cosine of each element (radians).
+    pub fn cos(&self) -> RumpyArray {
+        map_unary(self, |x| x.cos())
+    }
+
+    /// Tangent of each element (radians).
+    pub fn tan(&self) -> RumpyArray {
+        map_unary(self, |x| x.tan())
     }
 }

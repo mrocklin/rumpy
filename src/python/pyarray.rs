@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PySlice, PyTuple};
 
 use crate::array::{DType, RumpyArray};
-use crate::ops::{BinaryOp, UnaryOp};
+use crate::ops::BinaryOp;
 
 /// Result type for reductions that can return scalar or array.
 pub enum ReductionResult {
@@ -236,11 +236,11 @@ impl PyRumpyArray {
     // Unary operations
 
     fn __neg__(&self) -> Self {
-        Self::new(self.inner.unary_op(UnaryOp::Neg))
+        Self::new(self.inner.neg())
     }
 
     fn __abs__(&self) -> Self {
-        Self::new(self.inner.unary_op(UnaryOp::Abs))
+        Self::new(self.inner.abs())
     }
 
     // Reductions
@@ -299,6 +299,7 @@ impl PyRumpyArray {
             }
         }
     }
+
 }
 
 /// Parse dtype string to DType enum.

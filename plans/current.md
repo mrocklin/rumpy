@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 8 complete
+**Last updated**: Phase 9 complete
 
 ## What's Done
 
@@ -20,7 +20,8 @@
 - [x] Broadcasting: broadcast_shapes(), broadcast_to()
 - [x] Ufunc machinery: map_unary, map_binary, reduce_all, reduce_axis
 - [x] Reductions: sum, prod, min, max, mean (with optional axis)
-- [x] All 138 tests passing
+- [x] Math ufuncs: sqrt, exp, log, sin, cos, tan
+- [x] All 153 tests passing
 
 ## Key Files
 
@@ -43,17 +44,17 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: More ufuncs
+## Next Phase: Array creation from data
 
 Priority order:
-1. sqrt, exp, log
-2. sin, cos, tan
-3. from_list / asarray
+1. from_list / asarray (create from Python list)
+2. copy() method
 
 ## Future Phases
 
-- Phase 10: BLAS integration (matmul, dot)
-- Phase 11: Comparison ops (>, <, ==, etc.)
+- Phase 11: BLAS integration (matmul, dot)
+- Phase 12: Comparison ops (>, <, ==, etc.)
+- Phase 13: More ufuncs (log2, log10, arcsin, arccos, etc.)
 
 ## Testing Pattern
 

@@ -68,14 +68,54 @@ pub fn full(shape: Vec<usize>, fill_value: f64, dtype: Option<&str>) -> PyResult
     Ok(PyRumpyArray::new(RumpyArray::full(shape, fill_value, dtype)))
 }
 
+// Math ufuncs (module-level functions like np.sqrt, np.exp, etc.)
+
+#[pyfunction]
+pub fn sqrt(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.sqrt())
+}
+
+#[pyfunction]
+pub fn exp(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.exp())
+}
+
+#[pyfunction]
+pub fn log(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.log())
+}
+
+#[pyfunction]
+pub fn sin(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.sin())
+}
+
+#[pyfunction]
+pub fn cos(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.cos())
+}
+
+#[pyfunction]
+pub fn tan(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.tan())
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
+    // Constructors
     m.add_function(wrap_pyfunction!(zeros, m)?)?;
     m.add_function(wrap_pyfunction!(ones, m)?)?;
     m.add_function(wrap_pyfunction!(arange, m)?)?;
     m.add_function(wrap_pyfunction!(linspace, m)?)?;
     m.add_function(wrap_pyfunction!(eye, m)?)?;
     m.add_function(wrap_pyfunction!(full, m)?)?;
+    // Math ufuncs
+    m.add_function(wrap_pyfunction!(sqrt, m)?)?;
+    m.add_function(wrap_pyfunction!(exp, m)?)?;
+    m.add_function(wrap_pyfunction!(log, m)?)?;
+    m.add_function(wrap_pyfunction!(sin, m)?)?;
+    m.add_function(wrap_pyfunction!(cos, m)?)?;
+    m.add_function(wrap_pyfunction!(tan, m)?)?;
     Ok(())
 }
