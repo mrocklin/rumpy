@@ -4,6 +4,37 @@ use pyo3::types::{PyDict, PySlice, PyTuple};
 use crate::array::{DType, RumpyArray};
 use crate::ops::{BinaryOp, UnaryOp};
 
+/// Result type for reductions that can return scalar or array.
+pub enum ReductionResult {
+    Scalar(f64),
+    Array(PyRumpyArray),
+}
+
+impl<'py> IntoPyObject<'py> for ReductionResult {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self {
+            ReductionResult::Scalar(v) => Ok(v.into_pyobject(py)?.into_any()),
+            ReductionResult::Array(arr) => Ok(arr.into_pyobject(py)?.into_any()),
+        }
+    }
+}
+
+/// Check axis is valid for array.
+fn check_axis(axis: usize, ndim: usize) -> PyResult<()> {
+    if axis >= ndim {
+        Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "axis {} is out of bounds for array of dimension {}",
+            axis, ndim
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 /// Python-visible ndarray class.
 #[pyclass(name = "ndarray", module = "rumpy")]
 pub struct PyRumpyArray {
@@ -214,24 +245,59 @@ impl PyRumpyArray {
 
     // Reductions
 
-    fn sum(&self) -> f64 {
-        self.inner.sum()
+    #[pyo3(signature = (axis=None))]
+    fn sum(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.sum())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.sum_axis(ax))))
+            }
+        }
     }
 
-    fn prod(&self) -> f64 {
-        self.inner.prod()
+    #[pyo3(signature = (axis=None))]
+    fn prod(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.prod())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.prod_axis(ax))))
+            }
+        }
     }
 
-    fn max(&self) -> f64 {
-        self.inner.max()
+    #[pyo3(signature = (axis=None))]
+    fn max(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.max())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.max_axis(ax))))
+            }
+        }
     }
 
-    fn min(&self) -> f64 {
-        self.inner.min()
+    #[pyo3(signature = (axis=None))]
+    fn min(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.min())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.min_axis(ax))))
+            }
+        }
     }
 
-    fn mean(&self) -> f64 {
-        self.inner.mean()
+    #[pyo3(signature = (axis=None))]
+    fn mean(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.mean())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.mean_axis(ax))))
+            }
+        }
     }
 }
 

@@ -95,6 +95,62 @@ where
     acc
 }
 
+/// Reduce array along a specific axis using a binary function.
+fn reduce_axis<F>(arr: &RumpyArray, axis: usize, init: f64, f: F) -> RumpyArray
+where
+    F: Fn(f64, f64) -> f64,
+{
+    // Output shape: remove the reduction axis
+    let mut out_shape: Vec<usize> = arr.shape().to_vec();
+    let axis_len = out_shape.remove(axis);
+
+    // Handle edge cases
+    if out_shape.is_empty() {
+        out_shape = vec![1]; // Scalar result wrapped in 1D array
+    }
+
+    let mut result = RumpyArray::zeros(out_shape.clone(), arr.dtype());
+    let out_size = result.size();
+
+    if out_size == 0 || axis_len == 0 {
+        // Fill with init for empty reduction
+        let buffer = result.buffer_mut();
+        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+        for i in 0..out_size {
+            unsafe { write_element(result_ptr, i, init, arr.dtype()); }
+        }
+        return result;
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    // Iterate over output positions
+    let mut out_indices = vec![0usize; out_shape.len()];
+    for i in 0..out_size {
+        // Build input indices by inserting axis position
+        let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+        in_indices.push(0); // placeholder for axis
+        if axis < arr.ndim() - 1 {
+            in_indices.extend_from_slice(&out_indices[axis..]);
+        }
+
+        // Reduce along axis
+        let mut acc = init;
+        for j in 0..axis_len {
+            in_indices[axis] = j;
+            acc = f(acc, arr.get_element(&in_indices));
+        }
+
+        unsafe { write_element(result_ptr, i, acc, arr.dtype()); }
+        increment_indices(&mut out_indices, &out_shape);
+    }
+
+    result
+}
+
 /// Write a value to result buffer at linear index.
 #[inline]
 unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: DType) {
@@ -180,9 +236,19 @@ impl RumpyArray {
         reduce_all(self, 0.0, |a, b| a + b)
     }
 
+    /// Sum along axis.
+    pub fn sum_axis(&self, axis: usize) -> RumpyArray {
+        reduce_axis(self, axis, 0.0, |a, b| a + b)
+    }
+
     /// Product of all elements.
     pub fn prod(&self) -> f64 {
         reduce_all(self, 1.0, |a, b| a * b)
+    }
+
+    /// Product along axis.
+    pub fn prod_axis(&self, axis: usize) -> RumpyArray {
+        reduce_axis(self, axis, 1.0, |a, b| a * b)
     }
 
     /// Maximum element.
@@ -190,9 +256,19 @@ impl RumpyArray {
         reduce_all(self, f64::NEG_INFINITY, |a, b| a.max(b))
     }
 
+    /// Maximum along axis.
+    pub fn max_axis(&self, axis: usize) -> RumpyArray {
+        reduce_axis(self, axis, f64::NEG_INFINITY, |a, b| a.max(b))
+    }
+
     /// Minimum element.
     pub fn min(&self) -> f64 {
         reduce_all(self, f64::INFINITY, |a, b| a.min(b))
+    }
+
+    /// Minimum along axis.
+    pub fn min_axis(&self, axis: usize) -> RumpyArray {
+        reduce_axis(self, axis, f64::INFINITY, |a, b| a.min(b))
     }
 
     /// Mean of all elements.
@@ -201,5 +277,12 @@ impl RumpyArray {
             return f64::NAN;
         }
         self.sum() / self.size() as f64
+    }
+
+    /// Mean along axis.
+    pub fn mean_axis(&self, axis: usize) -> RumpyArray {
+        let sum = self.sum_axis(axis);
+        let count = self.shape()[axis] as f64;
+        map_unary(&sum, |x| x / count)
     }
 }

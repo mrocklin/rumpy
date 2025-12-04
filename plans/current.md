@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 6 complete
+**Last updated**: Phase 7 complete
 
 ## What's Done
 
@@ -17,9 +17,9 @@
 - [x] Scalar ops: arr + 5, 5 + arr, etc.
 - [x] Unary ops: neg, abs
 - [x] Broadcasting: broadcast_shapes(), broadcast_to()
-- [x] Ufunc machinery: map_unary, map_binary, reduce_all
-- [x] Reductions: sum, prod, min, max, mean
-- [x] All 105 tests passing
+- [x] Ufunc machinery: map_unary, map_binary, reduce_all, reduce_axis
+- [x] Reductions: sum, prod, min, max, mean (with optional axis)
+- [x] All 119 tests passing
 
 ## Key Files
 
@@ -42,16 +42,17 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: Axis reductions
+## Next Phase: More constructors
 
 Priority order:
-1. sum(axis=n) - reduce along specific axis
-2. mean(axis=n), max(axis=n), min(axis=n)
+1. linspace(start, stop, num)
+2. eye(n), full(shape, value)
+3. from_list / asarray
 
 ## Future Phases
 
-- Phase 8: BLAS integration (matmul, dot)
-- Phase 9: More constructors (linspace, eye, full)
+- Phase 9: BLAS integration (matmul, dot)
+- Phase 10: More ufuncs (sqrt, exp, log, sin, cos)
 
 ## Testing Pattern
 
