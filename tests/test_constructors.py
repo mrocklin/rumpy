@@ -79,36 +79,36 @@ class TestFull:
     """Test full constructor."""
 
     def test_full_1d(self):
-        r = rp.full([5], 3.14)
+        r = rp.full(5, 3.14)
         n = np.full(5, 3.14)
         assert_eq(r, n)
 
     def test_full_2d(self):
-        r = rp.full([3, 4], 2.5)
+        r = rp.full((3, 4), 2.5)
         n = np.full((3, 4), 2.5)
         assert_eq(r, n)
 
     def test_full_3d(self):
-        r = rp.full([2, 3, 4], -1.0)
+        r = rp.full((2, 3, 4), -1.0)
         n = np.full((2, 3, 4), -1.0)
         assert_eq(r, n)
 
     def test_full_zero(self):
-        r = rp.full([5], 0.0)
+        r = rp.full(5, 0.0)
         n = np.full(5, 0.0)
         assert_eq(r, n)
 
     def test_full_negative(self):
-        r = rp.full([3, 3], -42.0)
+        r = rp.full((3, 3), -42.0)
         n = np.full((3, 3), -42.0)
         assert_eq(r, n)
 
     def test_full_empty(self):
-        r = rp.full([0], 5.0)
+        r = rp.full(0, 5.0)
         n = np.full(0, 5.0)
         assert_eq(r, n)
 
     def test_full_int_dtype(self):
-        r = rp.full([3, 3], 7.0, dtype="int64")
+        r = rp.full((3, 3), 7.0, dtype="int64")
         n = np.full((3, 3), 7, dtype=np.int64)
         assert_eq(r, n)

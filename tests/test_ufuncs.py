@@ -10,12 +10,12 @@ class TestSqrt:
     """Test sqrt ufunc."""
 
     def test_sqrt_1d(self):
-        r = rp.sqrt(rp.arange(0, 10))
+        r = rp.sqrt(rp.arange(0, 10, dtype="float64"))
         n = np.sqrt(np.arange(10, dtype=np.float64))
         assert_eq(r, n)
 
     def test_sqrt_2d(self):
-        r = rp.sqrt(rp.arange(1, 13).reshape([3, 4]))
+        r = rp.sqrt(rp.arange(1, 13, dtype="float64").reshape(3, 4))
         n = np.sqrt(np.arange(1, 13, dtype=np.float64).reshape(3, 4))
         assert_eq(r, n)
 
@@ -24,17 +24,17 @@ class TestExp:
     """Test exp ufunc."""
 
     def test_exp_1d(self):
-        r = rp.exp(rp.arange(0, 5))
+        r = rp.exp(rp.arange(0, 5, dtype="float64"))
         n = np.exp(np.arange(5, dtype=np.float64))
         assert_eq(r, n)
 
     def test_exp_negative(self):
-        r = rp.exp(rp.arange(-3, 3))
+        r = rp.exp(rp.arange(-3, 3, dtype="float64"))
         n = np.exp(np.arange(-3, 3, dtype=np.float64))
         assert_eq(r, n)
 
     def test_exp_2d(self):
-        r = rp.exp(rp.arange(6).reshape([2, 3]))
+        r = rp.exp(rp.arange(6, dtype="float64").reshape(2, 3))
         n = np.exp(np.arange(6, dtype=np.float64).reshape(2, 3))
         assert_eq(r, n)
 
@@ -43,17 +43,17 @@ class TestLog:
     """Test log (natural logarithm) ufunc."""
 
     def test_log_1d(self):
-        r = rp.log(rp.arange(1, 10))
+        r = rp.log(rp.arange(1, 10, dtype="float64"))
         n = np.log(np.arange(1, 10, dtype=np.float64))
         assert_eq(r, n)
 
     def test_log_2d(self):
-        r = rp.log(rp.arange(1, 7).reshape([2, 3]))
+        r = rp.log(rp.arange(1, 7, dtype="float64").reshape(2, 3))
         n = np.log(np.arange(1, 7, dtype=np.float64).reshape(2, 3))
         assert_eq(r, n)
 
     def test_log_exp_inverse(self):
-        x = rp.arange(1, 5)
+        x = rp.arange(1, 5, dtype="float64")
         assert_eq(rp.exp(rp.log(x)), np.arange(1, 5, dtype=np.float64))
 
 
@@ -66,7 +66,7 @@ class TestSin:
         assert_eq(r, n)
 
     def test_sin_2d(self):
-        r = rp.sin(rp.linspace(0, 3.14, 6).reshape([2, 3]))
+        r = rp.sin(rp.linspace(0, 3.14, 6).reshape(2, 3))
         n = np.sin(np.linspace(0, 3.14, 6).reshape(2, 3))
         assert_eq(r, n)
 
@@ -80,7 +80,7 @@ class TestCos:
         assert_eq(r, n)
 
     def test_cos_2d(self):
-        r = rp.cos(rp.linspace(0, 3.14, 6).reshape([2, 3]))
+        r = rp.cos(rp.linspace(0, 3.14, 6).reshape(2, 3))
         n = np.cos(np.linspace(0, 3.14, 6).reshape(2, 3))
         assert_eq(r, n)
 
@@ -95,7 +95,7 @@ class TestTan:
         assert_eq(r, n)
 
     def test_tan_2d(self):
-        r = rp.tan(rp.linspace(0, 1, 6).reshape([2, 3]))
+        r = rp.tan(rp.linspace(0, 1, 6).reshape(2, 3))
         n = np.tan(np.linspace(0, 1, 6).reshape(2, 3))
         assert_eq(r, n)
 
@@ -108,5 +108,5 @@ class TestSinCosPythagorean:
         s = rp.sin(x)
         c = rp.cos(x)
         result = s * s + c * c
-        expected = rp.ones([100])
+        expected = rp.ones(100)
         assert_eq(result, np.asarray(expected))

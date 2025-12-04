@@ -16,21 +16,21 @@ class TestVar:
         assert abs(r - n) < 1e-10
 
     def test_var_2d(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12).reshape(3, 4)
         r = arr.var()
         n = np.arange(12).reshape(3, 4).var()
         assert abs(r - n) < 1e-10
 
     def test_var_axis0(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12, dtype="float64").reshape(3, 4)
         r = arr.var(axis=0)
-        n = np.arange(12).reshape(3, 4).var(axis=0)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4).var(axis=0)
         assert_eq(r, n)
 
     def test_var_axis1(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12, dtype="float64").reshape(3, 4)
         r = arr.var(axis=1)
-        n = np.arange(12).reshape(3, 4).var(axis=1)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4).var(axis=1)
         assert_eq(r, n)
 
 
@@ -38,21 +38,21 @@ class TestStd:
     """Test standard deviation."""
 
     def test_std_1d(self):
-        arr = rumpy.arange(10)
+        arr = rumpy.arange(10, dtype="float64")
         r = arr.std()
-        n = np.arange(10).std()
+        n = np.arange(10, dtype=np.float64).std()
         assert abs(r - n) < 1e-10
 
     def test_std_2d(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12, dtype="float64").reshape(3, 4)
         r = arr.std()
-        n = np.arange(12).reshape(3, 4).std()
+        n = np.arange(12, dtype=np.float64).reshape(3, 4).std()
         assert abs(r - n) < 1e-10
 
     def test_std_axis0(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12, dtype="float64").reshape(3, 4)
         r = arr.std(axis=0)
-        n = np.arange(12).reshape(3, 4).std(axis=0)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4).std(axis=0)
         assert_eq(r, n)
 
 
@@ -66,7 +66,7 @@ class TestArgmax:
         assert r == n
 
     def test_argmax_2d(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12).reshape(3, 4)
         r = arr.argmax()
         n = np.arange(12).reshape(3, 4).argmax()
         assert r == n
@@ -82,7 +82,7 @@ class TestArgmin:
         assert r == n
 
     def test_argmin_2d(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12).reshape(3, 4)
         r = arr.argmin()
         n = np.arange(12).reshape(3, 4).argmin()
         assert r == n

@@ -15,7 +15,7 @@ class TestCopy:
         assert_eq(c, np.arange(10))
 
     def test_copy_2d(self):
-        arr = rumpy.arange(12).reshape([3, 4])
+        arr = rumpy.arange(12).reshape(3, 4)
         c = arr.copy()
         assert_eq(c, np.arange(12).reshape(3, 4))
 
@@ -45,19 +45,19 @@ class TestSqueeze:
     """Test squeeze() function and method."""
 
     def test_squeeze_basic(self):
-        arr = rumpy.arange(5).reshape([1, 5, 1])
+        arr = rumpy.arange(5).reshape(1, 5, 1)
         r = arr.squeeze()
         n = np.arange(5).reshape(1, 5, 1).squeeze()
         assert_eq(r, n)
 
     def test_squeeze_module(self):
-        arr = rumpy.arange(5).reshape([1, 5])
+        arr = rumpy.arange(5).reshape(1, 5)
         r = rumpy.squeeze(arr)
         n = np.squeeze(np.arange(5).reshape(1, 5))
         assert_eq(r, n)
 
     def test_squeeze_noop(self):
-        arr = rumpy.arange(6).reshape([2, 3])
+        arr = rumpy.arange(6).reshape(2, 3)
         r = arr.squeeze()
         n = np.arange(6).reshape(2, 3).squeeze()
         assert_eq(r, n)
@@ -96,15 +96,15 @@ class TestConcatenate:
         assert_eq(r, n)
 
     def test_concatenate_2d_axis0(self):
-        a = rumpy.arange(6).reshape([2, 3])
-        b = rumpy.arange(6, 12).reshape([2, 3])
+        a = rumpy.arange(6).reshape(2, 3)
+        b = rumpy.arange(6, 12).reshape(2, 3)
         r = rumpy.concatenate([a, b], axis=0)
         n = np.concatenate([np.arange(6).reshape(2, 3), np.arange(6, 12).reshape(2, 3)], axis=0)
         assert_eq(r, n)
 
     def test_concatenate_2d_axis1(self):
-        a = rumpy.arange(6).reshape([2, 3])
-        b = rumpy.arange(6, 10).reshape([2, 2])
+        a = rumpy.arange(6).reshape(2, 3)
+        b = rumpy.arange(6, 10).reshape(2, 2)
         r = rumpy.concatenate([a, b], axis=1)
         n = np.concatenate([np.arange(6).reshape(2, 3), np.arange(6, 10).reshape(2, 2)], axis=1)
         assert_eq(r, n)
@@ -139,8 +139,8 @@ class TestVstack:
         assert_eq(r, n)
 
     def test_vstack_2d(self):
-        a = rumpy.arange(6).reshape([2, 3])
-        b = rumpy.arange(6).reshape([2, 3])
+        a = rumpy.arange(6).reshape(2, 3)
+        b = rumpy.arange(6).reshape(2, 3)
         r = rumpy.vstack([a, b])
         n = np.vstack([np.arange(6).reshape(2, 3), np.arange(6).reshape(2, 3)])
         assert_eq(r, n)
@@ -157,8 +157,8 @@ class TestHstack:
         assert_eq(r, n)
 
     def test_hstack_2d(self):
-        a = rumpy.arange(6).reshape([2, 3])
-        b = rumpy.arange(6).reshape([2, 3])
+        a = rumpy.arange(6).reshape(2, 3)
+        b = rumpy.arange(6).reshape(2, 3)
         r = rumpy.hstack([a, b])
         n = np.hstack([np.arange(6).reshape(2, 3), np.arange(6).reshape(2, 3)])
         assert_eq(r, n)
@@ -176,7 +176,7 @@ class TestSplit:
             assert_eq(r, n)
 
     def test_split_2d_axis0(self):
-        arr = rumpy.arange(12).reshape([4, 3])
+        arr = rumpy.arange(12).reshape(4, 3)
         parts = rumpy.split(arr, 2, axis=0)
         n_parts = np.split(np.arange(12).reshape(4, 3), 2, axis=0)
         assert len(parts) == 2

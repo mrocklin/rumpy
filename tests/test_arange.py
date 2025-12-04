@@ -12,27 +12,27 @@ class TestArange:
 
     def test_simple(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r, n)
 
     def test_start_stop(self):
         r = rp.arange(2, 10)
-        n = np.arange(2, 10, dtype=np.float64)
+        n = np.arange(2, 10)
         assert_eq(r, n)
 
     def test_start_stop_step(self):
         r = rp.arange(0, 10, 2)
-        n = np.arange(0, 10, 2, dtype=np.float64)
+        n = np.arange(0, 10, 2)
         assert_eq(r, n)
 
     def test_float_step(self):
-        r = rp.arange(0, 1, 0.1)
-        n = np.arange(0, 1, 0.1, dtype=np.float64)
+        r = rp.arange(0, 1, 0.1, dtype="float64")
+        n = np.arange(0, 1, 0.1)
         assert_eq(r, n)
 
     def test_negative_step(self):
         r = rp.arange(10, 0, -1)
-        n = np.arange(10, 0, -1, dtype=np.float64)
+        n = np.arange(10, 0, -1)
         assert_eq(r, n)
 
     def test_dtype_int64(self):
@@ -51,29 +51,29 @@ class TestIntegerIndexing:
 
     def test_1d_single_index(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         # Integer index returns array with shape [1]
         assert_eq(r[5], n[5:6])
 
     def test_1d_negative_index(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r[-1], n[-1:])
 
     def test_2d_full_index(self):
-        r = rp.arange(12).reshape([3, 4])
-        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12).reshape(3, 4)
         # Full integer index returns scalar
         assert r[1, 2] == n[1, 2]
 
     def test_2d_negative_indices(self):
-        r = rp.arange(12).reshape([3, 4])
-        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12).reshape(3, 4)
         assert r[-1, -1] == n[-1, -1]
 
     def test_2d_mixed_int_slice(self):
-        r = rp.arange(12).reshape([3, 4])
-        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12).reshape(3, 4)
         # Mixed: integer reduces dim, slice keeps it
         r_row = r[1, :]
         n_row = n[1:2, :]
@@ -85,15 +85,15 @@ class TestSlicingWithArange:
 
     def test_slice_values(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r[2:7], n[2:7])
 
     def test_slice_step(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r[::2], n[::2])
 
     def test_slice_reverse(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r[::-1], n[::-1])

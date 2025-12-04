@@ -1,32 +1,39 @@
 <!-- AI: Read this before starting work -->
 
-# Current: Phase C - Reductions + Sorting (Complete)
+# Current: API Compatibility Cleanup (Complete)
 
 **Roadmap**: See `plans/roadmap.md` for overall plan.
 
 ## Status
 
-**Complete**: 16 new tests, 283 total passing.
+**Complete**: 283 tests passing. API now matches NumPy patterns.
 
-- [x] `std()`, `var()` - with axis support
-- [x] `argmax()`, `argmin()` - flattened index
-- [x] `sort()`, `argsort()` - flattened sorting
-- [x] `unique()` - deduplicated values
+### API Changes Made
 
-## Implementation
+- [x] `shape` property returns tuple (was list)
+- [x] `strides` property returns tuple (was list)
+- [x] `zeros()`, `ones()`, `full()` accept int/tuple/list for shape
+- [x] `reshape()` accepts varargs: `arr.reshape(3, 4)` or `arr.reshape((3, 4))`
+- [x] `arange()` defaults to int64 (matches NumPy)
+- [x] All tests updated to use NumPy-style calls
 
-**Rust** (`src/ops/mod.rs`):
-- `var()`, `var_axis()`, `std()`, `std_axis()` - statistical reductions
-- `argmax()`, `argmin()` - index of extrema
-- `sort()`, `argsort()`, `unique()` - sorting operations
+### Before/After
 
-**Python**:
-- Methods on ndarray: `var()`, `std()`, `argmax()`, `argmin()`
-- Module functions: `sort()`, `argsort()`, `unique()`
+```python
+# Before                          # After (now works!)
+rp.zeros([10])                    rp.zeros(10)
+rp.zeros([3, 4])                  rp.zeros((3, 4))
+arr.reshape([3, 4])               arr.reshape(3, 4)
+arr.shape == [3, 4]               arr.shape == (3, 4)
+```
 
 ## Next: Phase D
 
 Linear algebra: `matmul()`, `@` operator, `dot()`, `linalg.*`
+
+## Known Limitations (Future Work)
+
+- dtype accepts strings only (`"float64"`), not `np.float64`
 
 ## Build & Test
 

@@ -1,8 +1,39 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PySlice, PyTuple};
+use pyo3::types::{PyDict, PyList, PySlice, PyTuple};
 
 use crate::array::{DType, RumpyArray};
 use crate::ops::{BinaryOp, ComparisonOp};
+
+/// Parse shape from int, tuple, or list.
+pub fn parse_shape(obj: &Bound<'_, PyAny>) -> PyResult<Vec<usize>> {
+    if let Ok(n) = obj.extract::<usize>() {
+        return Ok(vec![n]);
+    }
+    if let Ok(tuple) = obj.downcast::<PyTuple>() {
+        return tuple.iter().map(|x| x.extract::<usize>()).collect();
+    }
+    if let Ok(list) = obj.downcast::<PyList>() {
+        return list.iter().map(|x| x.extract::<usize>()).collect();
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "shape must be an int, tuple, or list",
+    ))
+}
+
+/// Parse reshape arguments: handles reshape(3, 4), reshape((3, 4)), reshape([3, 4]).
+fn parse_reshape_args(args: &Bound<'_, PyTuple>) -> PyResult<Vec<usize>> {
+    if args.len() == 0 {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "reshape requires at least one argument",
+        ));
+    }
+    // Single argument: delegate to parse_shape
+    if args.len() == 1 {
+        return parse_shape(&args.get_item(0)?);
+    }
+    // Multiple arguments: treat as shape dimensions
+    args.iter().map(|x| x.extract::<usize>()).collect()
+}
 
 /// Result type for reductions that can return scalar or array.
 pub enum ReductionResult {
@@ -51,14 +82,14 @@ impl PyRumpyArray {
 impl PyRumpyArray {
     /// Array shape as tuple.
     #[getter]
-    fn shape(&self) -> Vec<usize> {
-        self.inner.shape().to_vec()
+    fn shape<'py>(&self, py: Python<'py>) -> Bound<'py, PyTuple> {
+        PyTuple::new(py, self.inner.shape()).unwrap()
     }
 
     /// Array strides in bytes.
     #[getter]
-    fn strides(&self) -> Vec<isize> {
-        self.inner.strides().to_vec()
+    fn strides<'py>(&self, py: Python<'py>) -> Bound<'py, PyTuple> {
+        PyTuple::new(py, self.inner.strides()).unwrap()
     }
 
     /// Number of dimensions.
@@ -202,7 +233,10 @@ impl PyRumpyArray {
     }
 
     /// Reshape array. Returns a view if possible.
-    fn reshape(&self, shape: Vec<usize>) -> PyResult<Self> {
+    /// Accepts reshape(3, 4) or reshape((3, 4)) or reshape([3, 4]).
+    #[pyo3(signature = (*args))]
+    fn reshape(&self, args: &Bound<'_, PyTuple>) -> PyResult<Self> {
+        let shape = parse_reshape_args(args)?;
         self.inner.reshape(shape).map(Self::new).ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err(
                 "cannot reshape array (size mismatch or non-contiguous)",

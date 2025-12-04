@@ -13,41 +13,41 @@ class TestBinaryOpsArray:
     def test_add(self):
         r1 = rp.arange(10)
         r2 = rp.arange(10, 20)
-        n1 = np.arange(10, dtype=np.float64)
-        n2 = np.arange(10, 20, dtype=np.float64)
+        n1 = np.arange(10)
+        n2 = np.arange(10, 20)
         assert_eq(r1 + r2, n1 + n2)
 
     def test_sub(self):
         r1 = rp.arange(10)
         r2 = rp.arange(10, 20)
-        n1 = np.arange(10, dtype=np.float64)
-        n2 = np.arange(10, 20, dtype=np.float64)
+        n1 = np.arange(10)
+        n2 = np.arange(10, 20)
         assert_eq(r1 - r2, n1 - n2)
 
     def test_mul(self):
         r1 = rp.arange(10)
         r2 = rp.arange(10, 20)
-        n1 = np.arange(10, dtype=np.float64)
-        n2 = np.arange(10, 20, dtype=np.float64)
+        n1 = np.arange(10)
+        n2 = np.arange(10, 20)
         assert_eq(r1 * r2, n1 * n2)
 
     def test_div(self):
-        r1 = rp.arange(1, 11)
-        r2 = rp.arange(1, 11)
+        r1 = rp.arange(1, 11, dtype="float64")
+        r2 = rp.arange(1, 11, dtype="float64")
         n1 = np.arange(1, 11, dtype=np.float64)
         n2 = np.arange(1, 11, dtype=np.float64)
         assert_eq(r1 / r2, n1 / n2)
 
     def test_2d_add(self):
-        r1 = rp.arange(12).reshape([3, 4])
-        r2 = rp.arange(12, 24).reshape([3, 4])
-        n1 = np.arange(12, dtype=np.float64).reshape(3, 4)
-        n2 = np.arange(12, 24, dtype=np.float64).reshape(3, 4)
+        r1 = rp.arange(12).reshape(3, 4)
+        r2 = rp.arange(12, 24).reshape(3, 4)
+        n1 = np.arange(12).reshape(3, 4)
+        n2 = np.arange(12, 24).reshape(3, 4)
         assert_eq(r1 + r2, n1 + n2)
 
     def test_ops_on_view(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r[2:8] + r[2:8], n[2:8] + n[2:8])
 
     def test_shape_mismatch_raises(self):
@@ -62,41 +62,41 @@ class TestBinaryOpsScalar:
 
     def test_add_scalar(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r + 5, n + 5)
 
     def test_radd_scalar(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(5 + r, 5 + n)
 
     def test_sub_scalar(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r - 3, n - 3)
 
     def test_rsub_scalar(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(10 - r, 10 - n)
 
     def test_mul_scalar(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(r * 2, n * 2)
 
     def test_rmul_scalar(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(2 * r, 2 * n)
 
     def test_div_scalar(self):
-        r = rp.arange(1, 11)
+        r = rp.arange(1, 11, dtype="float64")
         n = np.arange(1, 11, dtype=np.float64)
         assert_eq(r / 2, n / 2)
 
     def test_rdiv_scalar(self):
-        r = rp.arange(1, 11)
+        r = rp.arange(1, 11, dtype="float64")
         n = np.arange(1, 11, dtype=np.float64)
         assert_eq(10 / r, 10 / n)
 
@@ -106,22 +106,22 @@ class TestUnaryOps:
 
     def test_neg(self):
         r = rp.arange(10)
-        n = np.arange(10, dtype=np.float64)
+        n = np.arange(10)
         assert_eq(-r, -n)
 
     def test_neg_2d(self):
-        r = rp.arange(12).reshape([3, 4])
-        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12).reshape(3, 4)
         assert_eq(-r, -n)
 
     def test_abs(self):
         r = rp.arange(-5, 5)
-        n = np.arange(-5, 5, dtype=np.float64)
+        n = np.arange(-5, 5)
         assert_eq(abs(r), abs(n))
 
     def test_abs_view(self):
         r = rp.arange(-10, 10)
-        n = np.arange(-10, 10, dtype=np.float64)
+        n = np.arange(-10, 10)
         assert_eq(abs(r[5:15]), abs(n[5:15]))
 
 

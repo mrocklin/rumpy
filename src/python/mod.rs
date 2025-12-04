@@ -3,14 +3,15 @@ pub mod pyarray;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-pub use pyarray::{parse_dtype, PyRumpyArray};
+pub use pyarray::{parse_dtype, parse_shape, PyRumpyArray};
 
 use crate::array::{increment_indices, read_element, write_element, DType, RumpyArray};
 
 /// Create an array filled with zeros.
 #[pyfunction]
 #[pyo3(signature = (shape, dtype=None))]
-pub fn zeros(shape: Vec<usize>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn zeros(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = parse_shape(shape)?;
     let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
     Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
 }
@@ -18,7 +19,8 @@ pub fn zeros(shape: Vec<usize>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
 /// Create an array filled with ones.
 #[pyfunction]
 #[pyo3(signature = (shape, dtype=None))]
-pub fn ones(shape: Vec<usize>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn ones(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = parse_shape(shape)?;
     let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
     Ok(PyRumpyArray::new(RumpyArray::ones(shape, dtype)))
 }
@@ -36,7 +38,7 @@ pub fn arange(
         Some(stop) => (start_or_stop, stop, step.unwrap_or(1.0)),
         None => (0.0, start_or_stop, step.unwrap_or(1.0)),
     };
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = parse_dtype(dtype.unwrap_or("int64"))?;
     Ok(PyRumpyArray::new(RumpyArray::arange(start, stop, step, dtype)))
 }
 
@@ -64,7 +66,8 @@ pub fn eye(n: usize, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
 /// Create array filled with given value.
 #[pyfunction]
 #[pyo3(signature = (shape, fill_value, dtype=None))]
-pub fn full(shape: Vec<usize>, fill_value: f64, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn full(shape: &Bound<'_, PyAny>, fill_value: f64, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = parse_shape(shape)?;
     let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
     Ok(PyRumpyArray::new(RumpyArray::full(shape, fill_value, dtype)))
 }

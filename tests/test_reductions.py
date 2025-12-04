@@ -20,7 +20,7 @@ class TestSum:
         assert r.sum() == pytest.approx(n.sum())
 
     def test_sum_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert r.sum() == pytest.approx(n.sum())
 
@@ -43,7 +43,7 @@ class TestProd:
         assert r.prod() == pytest.approx(n.prod())
 
     def test_prod_2d(self):
-        r = rp.arange(1, 7).reshape([2, 3])
+        r = rp.arange(1, 7).reshape(2, 3)
         n = np.arange(1, 7, dtype=np.float64).reshape(2, 3)
         assert r.prod() == pytest.approx(n.prod())
 
@@ -62,12 +62,12 @@ class TestMinMax:
         assert r.min() == n.min()
 
     def test_max_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert r.max() == n.max()
 
     def test_min_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert r.min() == n.min()
 
@@ -86,7 +86,7 @@ class TestMean:
         assert r.mean() == pytest.approx(n.mean())
 
     def test_mean_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert r.mean() == pytest.approx(n.mean())
 
@@ -108,32 +108,32 @@ class TestSumAxis:
     """Test sum along axis."""
 
     def test_sum_axis0_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.sum(axis=0), n.sum(axis=0))
 
     def test_sum_axis1_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.sum(axis=1), n.sum(axis=1))
 
     def test_sum_axis0_3d(self):
-        r = rp.arange(24).reshape([2, 3, 4])
+        r = rp.arange(24).reshape(2, 3, 4)
         n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
         assert_eq(r.sum(axis=0), n.sum(axis=0))
 
     def test_sum_axis1_3d(self):
-        r = rp.arange(24).reshape([2, 3, 4])
+        r = rp.arange(24).reshape(2, 3, 4)
         n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
         assert_eq(r.sum(axis=1), n.sum(axis=1))
 
     def test_sum_axis2_3d(self):
-        r = rp.arange(24).reshape([2, 3, 4])
+        r = rp.arange(24).reshape(2, 3, 4)
         n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
         assert_eq(r.sum(axis=2), n.sum(axis=2))
 
     def test_sum_axis_invalid(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         with pytest.raises(ValueError):
             r.sum(axis=2)
 
@@ -142,12 +142,12 @@ class TestMeanAxis:
     """Test mean along axis."""
 
     def test_mean_axis0_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.mean(axis=0), n.mean(axis=0))
 
     def test_mean_axis1_2d(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12, dtype="float64").reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.mean(axis=1), n.mean(axis=1))
 
@@ -156,22 +156,22 @@ class TestMaxMinAxis:
     """Test max/min along axis."""
 
     def test_max_axis0(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.max(axis=0), n.max(axis=0))
 
     def test_max_axis1(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.max(axis=1), n.max(axis=1))
 
     def test_min_axis0(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.min(axis=0), n.min(axis=0))
 
     def test_min_axis1(self):
-        r = rp.arange(12).reshape([3, 4])
+        r = rp.arange(12).reshape(3, 4)
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         assert_eq(r.min(axis=1), n.min(axis=1))
 
@@ -180,11 +180,11 @@ class TestProdAxis:
     """Test prod along axis."""
 
     def test_prod_axis0(self):
-        r = rp.arange(1, 7).reshape([2, 3])
+        r = rp.arange(1, 7).reshape(2, 3)
         n = np.arange(1, 7, dtype=np.float64).reshape(2, 3)
         assert_eq(r.prod(axis=0), n.prod(axis=0))
 
     def test_prod_axis1(self):
-        r = rp.arange(1, 7).reshape([2, 3])
+        r = rp.arange(1, 7).reshape(2, 3)
         n = np.arange(1, 7, dtype=np.float64).reshape(2, 3)
         assert_eq(r.prod(axis=1), n.prod(axis=1))
