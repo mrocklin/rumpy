@@ -1,16 +1,15 @@
 //! Matrix multiplication gufunc.
 //!
 //! Implements batched matrix multiplication with signature "(m,n),(n,p)->(m,p)".
+//! Uses faer for optimized matrix multiplication.
 
 use crate::array::RumpyArray;
 use crate::ops::gufunc::{gufunc_call, GufuncKernel, GufuncSignature};
+use faer::mat;
 
-/// Matrix multiplication kernel.
+/// Matrix multiplication kernel using faer.
 ///
 /// Signature: (m,n),(n,p)->(m,p)
-///
-/// This is a simple triple-loop implementation. For production use,
-/// this could be replaced with a BLAS-backed implementation.
 pub struct MatmulKernel {
     sig: GufuncSignature,
 }
@@ -37,27 +36,42 @@ impl GufuncKernel for MatmulKernel {
         let n = a.shape()[1];
         let p = b.shape()[1];
 
-        // Get output data pointer and strides for writing
-        let c_ptr = c.data_ptr() as *mut u8;
-        let c_stride_0 = c.strides()[0];
-        let c_stride_1 = c.strides()[1];
+        // Convert byte strides to element strides
+        let elem_size = std::mem::size_of::<f64>() as isize;
+        let a_row_stride = a.strides()[0] / elem_size;
+        let a_col_stride = a.strides()[1] / elem_size;
+        let b_row_stride = b.strides()[0] / elem_size;
+        let b_col_stride = b.strides()[1] / elem_size;
+        let c_row_stride = c.strides()[0] / elem_size;
+        let c_col_stride = c.strides()[1] / elem_size;
 
-        // Simple triple-loop matmul: C[i,j] = sum_k A[i,k] * B[k,j]
-        for i in 0..m {
-            for j in 0..p {
-                let mut sum = 0.0;
-                for k in 0..n {
-                    sum += a.get_element(&[i, k]) * b.get_element(&[k, j]);
-                }
+        unsafe {
+            // Create faer views directly from our memory
+            let fa = mat::from_raw_parts::<f64, usize, usize>(
+                a.data_ptr() as *const f64,
+                m, n,
+                a_row_stride, a_col_stride,
+            );
+            let fb = mat::from_raw_parts::<f64, usize, usize>(
+                b.data_ptr() as *const f64,
+                n, p,
+                b_row_stride, b_col_stride,
+            );
+            let mut fc = mat::from_raw_parts_mut::<f64, usize, usize>(
+                c.data_ptr() as *mut f64,
+                m, p,
+                c_row_stride, c_col_stride,
+            );
 
-                // Write to output using strides
-                let byte_offset = (i as isize) * c_stride_0 + (j as isize) * c_stride_1;
-                unsafe {
-                    let dst = c_ptr.offset(byte_offset);
-                    // Assume float64 for now - write directly
-                    *(dst as *mut f64) = sum;
-                }
-            }
+            // Multiply using faer: C = A * B
+            faer::linalg::matmul::matmul(
+                fc.as_mut(),
+                fa.as_ref(),
+                fb.as_ref(),
+                None,  // No existing C to add
+                1.0,   // alpha = 1
+                faer::Parallelism::None,
+            );
         }
     }
 }

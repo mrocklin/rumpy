@@ -18,6 +18,7 @@
 - [x] **matmul**: `rp.matmul(a, b)` and `@` operator
   - 2D matrices, 1D vectors, batched (3D+)
   - Full numpy broadcast semantics
+  - Uses faer for optimized matrix multiplication
 - [x] **inner**: `rp.inner(a, b)` - inner product with gufunc broadcasting
 - [x] **outer**: `rp.outer(a, b)` - outer product (flattens inputs)
 - [x] `__repr__` and `__str__` match NumPy format exactly
@@ -39,11 +40,12 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: BLAS Integration & More Linalg
+## Next: More Linalg
 
-- BLAS integration for matmul performance (via `GufuncKernel` trait)
+See `designs/linalg.md` for faer integration patterns.
+
 - `dot()` - has complex dimension-dependent semantics
-- `linalg.*` - determinant, trace, solve, etc.
+- `linalg.*` - determinant, trace, solve, etc. (faer supports these)
 
 ## Known Limitations (Future Work)
 
