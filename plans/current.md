@@ -1,37 +1,42 @@
 <!-- AI: Read this before starting work -->
 
-# Phase 12: Comparison & Boolean Indexing
+# Current: Fancy Indexing
 
-**Goal**: Enable `arr[arr > 5]` patterns and `where()` conditional selection.
+**Roadmap**: See `plans/roadmap.md` for overall plan.
+
+## Goal
+
+Enable `arr[[0, 2, 4]]` - indexing with integer arrays.
 
 ## Status
 
-- [x] **12a**: Comparison ops (`>`, `<`, `==`, `!=`, `>=`, `<=`)
-- [x] **12b**: Boolean indexing (`arr[mask]`)
-- [x] **12c**: `where(cond, x, y)`
+- [ ] Integer array indexing (1D index into 1D array)
+- [ ] Multi-dimensional fancy indexing
+- [ ] Combined fancy + slice indexing
 
-**Completed**: 26 new tests, 230 total tests passing.
-
-## 12a: Comparison Operations
-
-**Rust** (`src/ops/mod.rs`):
-- `compare_arrays(a, b, op) -> RumpyArray` returning bool dtype
-- Use existing `map_binary` pattern with broadcasting
-
-**Python** (`src/python/pyarray.rs`):
-- `__gt__`, `__lt__`, `__eq__`, `__ne__`, `__ge__`, `__le__`
-- Support array vs array and array vs scalar
-
-## 12b: Boolean Indexing
+## Implementation
 
 **Rust** (`src/array/mod.rs`):
-- `select_by_mask(&self, mask: &RumpyArray) -> RumpyArray`
+- `select_by_indices(&self, indices: &RumpyArray) -> RumpyArray`
+- Indices array contains integer positions to select
+- Returns new array with selected elements
 
-**Python**: Extend `__getitem__` to accept bool array
+**Python** (`src/python/pyarray.rs`):
+- Extend `__getitem__` to detect integer array argument
+- Call `select_by_indices`
 
-## 12c: where()
+## NumPy Behavior
 
-`where(condition, x, y)` - broadcast all three, return x where true, y where false.
+```python
+arr = np.arange(10)
+arr[[0, 2, 4]]        # [0, 2, 4] - select specific indices
+arr[[0, 0, 1, 1]]     # [0, 0, 1, 1] - duplicates allowed
+
+# 2D
+arr = np.arange(12).reshape(3, 4)
+arr[[0, 2], [1, 3]]   # [1, 11] - paired indexing
+arr[[0, 2]]           # rows 0 and 2
+```
 
 ## Build & Test
 
