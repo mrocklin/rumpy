@@ -1,4 +1,5 @@
 pub mod array;
+pub mod ops;
 pub mod python;
 
 use pyo3::prelude::*;

@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 3 complete
+**Last updated**: Phase 4 complete
 
 ## What's Done
 
@@ -13,13 +13,17 @@
 - [x] Test infrastructure with assert_eq helper
 - [x] Views: view_with(), slicing, reshape, transpose
 - [x] Integer indexing: arr[i], arr[i, j] returns scalar
-- [x] All 55 tests passing
+- [x] Binary ops: add, sub, mul, div (same shape)
+- [x] Scalar ops: arr + 5, 5 + arr, etc.
+- [x] Unary ops: neg, abs
+- [x] All 76 tests passing
 
 ## Key Files
 
 - `src/array/mod.rs` - RumpyArray struct, constructors, views, arange
 - `src/array/dtype.rs` - DType enum
-- `src/python/pyarray.rs` - Python class with __getitem__, reshape, T
+- `src/ops/mod.rs` - Binary and unary operations
+- `src/python/pyarray.rs` - Python class with __getitem__, __add__, etc.
 - `src/python/mod.rs` - Module-level functions (zeros, ones, arange)
 - `tests/helpers.py` - assert_eq for comparing against numpy
 
@@ -35,16 +39,15 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: Binary Operations
+## Next Phase: Broadcasting
 
 Priority order:
-1. Element-wise add, sub, mul, div (same shape)
-2. Scalar operations (arr + 5)
-3. Unary ops (neg, abs)
+1. broadcast_shapes() - compute output shape
+2. broadcast_to() - expand array with zero strides
+3. Update binary ops to broadcast before applying
 
 ## Future Phases
 
-- Phase 5: Broadcasting
 - Phase 6: Ufuncs framework
 - Phase 7: Reductions (sum, mean, max)
 - Phase 8: BLAS integration

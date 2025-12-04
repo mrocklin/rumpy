@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PySlice, PyTuple};
 
 use crate::array::{DType, RumpyArray};
+use crate::ops::{BinaryOp, UnaryOp};
 
 /// Python-visible ndarray class.
 #[pyclass(name = "ndarray", module = "rumpy")]
@@ -166,6 +167,50 @@ impl PyRumpyArray {
     fn T(&self) -> Self {
         self.transpose()
     }
+
+    // Binary operations (array op array)
+
+    fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Add)
+    }
+
+    fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Add)
+    }
+
+    fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Sub)
+    }
+
+    fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbinary_op_dispatch(&self.inner, other, BinaryOp::Sub)
+    }
+
+    fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Mul)
+    }
+
+    fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Mul)
+    }
+
+    fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Div)
+    }
+
+    fn __rtruediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbinary_op_dispatch(&self.inner, other, BinaryOp::Div)
+    }
+
+    // Unary operations
+
+    fn __neg__(&self) -> Self {
+        Self::new(self.inner.unary_op(UnaryOp::Neg))
+    }
+
+    fn __abs__(&self) -> Self {
+        Self::new(self.inner.unary_op(UnaryOp::Abs))
+    }
 }
 
 /// Parse dtype string to DType enum.
@@ -190,5 +235,42 @@ fn normalize_index(idx: isize, len: usize) -> usize {
         (len as isize + idx) as usize
     } else {
         idx as usize
+    }
+}
+
+/// Dispatch binary operation: array op (array or scalar).
+fn binary_op_dispatch(
+    arr: &RumpyArray,
+    other: &Bound<'_, PyAny>,
+    op: BinaryOp,
+) -> PyResult<PyRumpyArray> {
+    // Try array first
+    if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.binary_op(&other_arr.inner, op)
+            .map(PyRumpyArray::new)
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            })
+    } else if let Ok(scalar) = other.extract::<f64>() {
+        Ok(PyRumpyArray::new(arr.scalar_op(scalar, op)))
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray or number",
+        ))
+    }
+}
+
+/// Dispatch reverse binary operation: scalar op array.
+fn rbinary_op_dispatch(
+    arr: &RumpyArray,
+    other: &Bound<'_, PyAny>,
+    op: BinaryOp,
+) -> PyResult<PyRumpyArray> {
+    if let Ok(scalar) = other.extract::<f64>() {
+        Ok(PyRumpyArray::new(arr.rscalar_op(scalar, op)))
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be a number",
+        ))
     }
 }

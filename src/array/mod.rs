@@ -127,6 +127,11 @@ impl RumpyArray {
         unsafe { self.buffer.as_ptr().add(self.offset) }
     }
 
+    /// Get mutable reference to buffer (for internal use).
+    pub(crate) fn buffer_mut(&mut self) -> &mut Arc<ArrayBuffer> {
+        &mut self.buffer
+    }
+
     /// Check if array is C-contiguous.
     pub fn is_c_contiguous(&self) -> bool {
         self.flags.contains(ArrayFlags::C_CONTIGUOUS)
