@@ -500,6 +500,39 @@ impl RumpyArray {
         Some(self.view_with(0, new_shape, new_strides))
     }
 
+    /// Extract core sub-array at loop_indices for gufunc operations.
+    ///
+    /// Given an array with shape [L0, L1, ..., C0, C1, ...] where
+    /// L* are loop dims and C* are core dims, extract the core
+    /// sub-array at position loop_indices in the loop dimensions.
+    ///
+    /// Handles broadcasting: if a loop dimension has size 1, index 0 is used.
+    pub fn gufunc_subarray(&self, loop_indices: &[usize], loop_ndim: usize) -> Self {
+        let my_loop_ndim = loop_ndim.min(self.ndim());
+
+        // Compute byte offset for this position in loop dims
+        let mut offset_delta: isize = 0;
+        for (i, &idx) in loop_indices.iter().enumerate() {
+            if i < my_loop_ndim {
+                // Handle broadcasting: if loop dim is 1, use index 0
+                let dim_size = self.shape[i];
+                let actual_idx = if dim_size == 1 { 0 } else { idx };
+                offset_delta += (actual_idx as isize) * self.strides[i];
+            }
+        }
+
+        // Core shape and strides are the trailing dimensions
+        let core_shape = self.shape[my_loop_ndim..].to_vec();
+        let core_strides = self.strides[my_loop_ndim..].to_vec();
+
+        // Handle case where we're extracting a scalar (empty core dims)
+        if core_shape.is_empty() {
+            return self.view_with(offset_delta.max(0) as usize, vec![1], vec![self.itemsize() as isize]);
+        }
+
+        self.view_with(offset_delta.max(0) as usize, core_shape, core_strides)
+    }
+
     /// Convert array to a new dtype.
     pub fn astype(&self, new_dtype: DType) -> Self {
         let mut result = Self::zeros(self.shape().to_vec(), new_dtype);

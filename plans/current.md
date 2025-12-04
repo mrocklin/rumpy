@@ -6,10 +6,18 @@
 
 ## Status
 
-**Complete**: 296 tests passing. API now matches NumPy patterns.
+**Complete**: 307 tests passing. Gufunc infrastructure and matmul implemented.
 
 ### Recent Work
 
+- [x] **Gufunc infrastructure** (`src/ops/gufunc/`) - see `designs/gufuncs.md`
+  - Signature parsing: `"(m,n),(n,p)->(m,p)"`
+  - Dimension resolution with broadcasting
+  - `GufuncKernel` trait for BLAS-ready extensibility
+  - `gufunc_call()` loop over broadcast dimensions
+- [x] **matmul**: `rp.matmul(a, b)` and `@` operator
+  - 2D matrices, 1D vectors, batched (3D+)
+  - Full numpy broadcast semantics
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)
@@ -29,9 +37,12 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: Phase D
+## Next: More Gufuncs & Linear Algebra
 
-Linear algebra: `matmul()`, `@` operator, `dot()`, `linalg.*`
+Additional gufuncs using the infrastructure:
+- `dot()` - inner product with different semantics than matmul
+- `inner()` / `outer()` - inner and outer products
+- `linalg.*` - determinant, trace, etc.
 
 ## Known Limitations (Future Work)
 

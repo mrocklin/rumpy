@@ -438,6 +438,16 @@ pub fn unique(arr: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(arr.inner.unique())
 }
 
+/// Matrix multiplication.
+#[pyfunction]
+pub fn matmul(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::matmul::matmul(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("matmul: incompatible shapes")
+        })
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -511,5 +521,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sort, m)?)?;
     m.add_function(wrap_pyfunction!(argsort, m)?)?;
     m.add_function(wrap_pyfunction!(unique, m)?)?;
+    // Linear algebra
+    m.add_function(wrap_pyfunction!(matmul, m)?)?;
     Ok(())
 }

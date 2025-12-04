@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PySlice, PyTuple};
 
 use crate::array::{DType, RumpyArray};
+use crate::ops::matmul::matmul;
 use crate::ops::{BinaryOp, ComparisonOp};
 
 /// Parse shape from int, tuple, or list.
@@ -304,6 +305,34 @@ impl PyRumpyArray {
 
     fn __rtruediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         rbinary_op_dispatch(&self.inner, other, BinaryOp::Div)
+    }
+
+    fn __matmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+            matmul(&self.inner, &other_arr.inner)
+                .map(Self::new)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err("matmul: incompatible shapes")
+                })
+        } else {
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "matmul operand must be ndarray",
+            ))
+        }
+    }
+
+    fn __rmatmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+            matmul(&other_arr.inner, &self.inner)
+                .map(Self::new)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err("matmul: incompatible shapes")
+                })
+        } else {
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "matmul operand must be ndarray",
+            ))
+        }
     }
 
     // Unary operations
