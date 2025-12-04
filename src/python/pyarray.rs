@@ -211,6 +211,28 @@ impl PyRumpyArray {
     fn __abs__(&self) -> Self {
         Self::new(self.inner.unary_op(UnaryOp::Abs))
     }
+
+    // Reductions
+
+    fn sum(&self) -> f64 {
+        self.inner.sum()
+    }
+
+    fn prod(&self) -> f64 {
+        self.inner.prod()
+    }
+
+    fn max(&self) -> f64 {
+        self.inner.max()
+    }
+
+    fn min(&self) -> f64 {
+        self.inner.min()
+    }
+
+    fn mean(&self) -> f64 {
+        self.inner.mean()
+    }
 }
 
 /// Parse dtype string to DType enum.

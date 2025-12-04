@@ -250,6 +250,10 @@ impl RumpyArray {
         let n = ((stop - start) / step).ceil().max(0.0) as usize;
         let mut arr = Self::zeros(vec![n], dtype);
 
+        if n == 0 {
+            return arr;
+        }
+
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
 
