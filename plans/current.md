@@ -1,32 +1,32 @@
 <!-- AI: Read this before starting work -->
 
-# Current: Phase B - Array Manipulation (Complete)
+# Current: Phase C - Reductions + Sorting (Complete)
 
 **Roadmap**: See `plans/roadmap.md` for overall plan.
 
 ## Status
 
-**Complete**: 24 new tests, 267 total passing.
+**Complete**: 16 new tests, 283 total passing.
 
-- [x] `copy()` - explicit copy
-- [x] `astype()` - dtype conversion
-- [x] `concatenate()`, `stack()`, `vstack()`, `hstack()`
-- [x] `split()`, `array_split()`
-- [x] `squeeze()`, `expand_dims()`
+- [x] `std()`, `var()` - with axis support
+- [x] `argmax()`, `argmin()` - flattened index
+- [x] `sort()`, `argsort()` - flattened sorting
+- [x] `unique()` - deduplicated values
 
 ## Implementation
 
-**Rust** (`src/array/mod.rs`):
-- `copy()`, `squeeze()`, `expand_dims()`, `astype()` methods on RumpyArray
-- `concatenate()`, `stack()`, `split()`, `array_split()` functions
+**Rust** (`src/ops/mod.rs`):
+- `var()`, `var_axis()`, `std()`, `std_axis()` - statistical reductions
+- `argmax()`, `argmin()` - index of extrema
+- `sort()`, `argsort()`, `unique()` - sorting operations
 
-**Python** (`src/python/`):
-- Methods on ndarray class: `copy()`, `squeeze()`, `astype()`
-- Module functions: `expand_dims()`, `squeeze()`, `concatenate()`, `stack()`, `vstack()`, `hstack()`, `split()`, `array_split()`
+**Python**:
+- Methods on ndarray: `var()`, `std()`, `argmax()`, `argmin()`
+- Module functions: `sort()`, `argsort()`, `unique()`
 
-## Next: Phase C
+## Next: Phase D
 
-Reductions + sorting: `std()`, `var()`, `argmax()`, `argmin()`, `sort()`, `argsort()`, `unique()`
+Linear algebra: `matmul()`, `@` operator, `dot()`, `linalg.*`
 
 ## Build & Test
 

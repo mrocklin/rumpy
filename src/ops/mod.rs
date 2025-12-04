@@ -308,6 +308,155 @@ impl RumpyArray {
         map_unary(&sum, |x| x / count)
     }
 
+    /// Variance of all elements.
+    pub fn var(&self) -> f64 {
+        let size = self.size();
+        if size == 0 {
+            return f64::NAN;
+        }
+        let mean = self.mean();
+        let mut sum_sq = 0.0;
+        let mut indices = vec![0usize; self.ndim()];
+        for _ in 0..size {
+            let diff = self.get_element(&indices) - mean;
+            sum_sq += diff * diff;
+            increment_indices(&mut indices, self.shape());
+        }
+        sum_sq / size as f64
+    }
+
+    /// Variance along axis.
+    pub fn var_axis(&self, axis: usize) -> RumpyArray {
+        let mean = self.mean_axis(axis);
+        // Expand mean to add back the reduced axis for broadcasting
+        let mean_expanded = mean.expand_dims(axis).expect("expand_dims succeeds");
+        let mean_broadcast = mean_expanded.broadcast_to(self.shape()).expect("broadcast succeeds");
+
+        // Sum of squared differences
+        let mut out_shape: Vec<usize> = self.shape().to_vec();
+        let axis_len = out_shape.remove(axis);
+        if out_shape.is_empty() {
+            out_shape = vec![1];
+        }
+
+        let mut result = RumpyArray::zeros(out_shape.clone(), self.dtype());
+        let out_size = result.size();
+        if out_size == 0 || axis_len == 0 {
+            return result;
+        }
+
+        let buffer = result.buffer_mut();
+        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+
+        let mut out_indices = vec![0usize; out_shape.len()];
+        for i in 0..out_size {
+            let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+            in_indices.push(0);
+            if axis < self.ndim() - 1 {
+                in_indices.extend_from_slice(&out_indices[axis..]);
+            }
+
+            let mut sum_sq = 0.0;
+            for j in 0..axis_len {
+                in_indices[axis] = j;
+                let diff = self.get_element(&in_indices) - mean_broadcast.get_element(&in_indices);
+                sum_sq += diff * diff;
+            }
+
+            unsafe { write_element(result_ptr, i, sum_sq / axis_len as f64, &self.dtype()); }
+            increment_indices(&mut out_indices, &out_shape);
+        }
+
+        result
+    }
+
+    /// Standard deviation of all elements.
+    pub fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+
+    /// Standard deviation along axis.
+    pub fn std_axis(&self, axis: usize) -> RumpyArray {
+        map_unary(&self.var_axis(axis), |x| x.sqrt())
+    }
+
+    /// Index of maximum element (flattened).
+    pub fn argmax(&self) -> usize {
+        let size = self.size();
+        if size == 0 {
+            return 0;
+        }
+        let mut max_val = f64::NEG_INFINITY;
+        let mut max_idx = 0;
+        let mut indices = vec![0usize; self.ndim()];
+        for i in 0..size {
+            let val = self.get_element(&indices);
+            if val > max_val {
+                max_val = val;
+                max_idx = i;
+            }
+            increment_indices(&mut indices, self.shape());
+        }
+        max_idx
+    }
+
+    /// Index of minimum element (flattened).
+    pub fn argmin(&self) -> usize {
+        let size = self.size();
+        if size == 0 {
+            return 0;
+        }
+        let mut min_val = f64::INFINITY;
+        let mut min_idx = 0;
+        let mut indices = vec![0usize; self.ndim()];
+        for i in 0..size {
+            let val = self.get_element(&indices);
+            if val < min_val {
+                min_val = val;
+                min_idx = i;
+            }
+            increment_indices(&mut indices, self.shape());
+        }
+        min_idx
+    }
+
+    /// Collect all elements into a Vec (flattened, row-major order).
+    fn to_vec(&self) -> Vec<f64> {
+        let size = self.size();
+        let mut values = Vec::with_capacity(size);
+        let mut indices = vec![0usize; self.ndim()];
+        for _ in 0..size {
+            values.push(self.get_element(&indices));
+            increment_indices(&mut indices, self.shape());
+        }
+        values
+    }
+
+    /// Sort array (flattened, returns new 1D array).
+    pub fn sort(&self) -> RumpyArray {
+        let mut values = self.to_vec();
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        RumpyArray::from_vec(values, self.dtype())
+    }
+
+    /// Return indices that would sort the array (flattened).
+    pub fn argsort(&self) -> RumpyArray {
+        let values = self.to_vec();
+        let mut indexed: Vec<(usize, f64)> = values.into_iter().enumerate().map(|(i, v)| (i, v)).collect();
+        indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let result: Vec<f64> = indexed.into_iter().map(|(i, _)| i as f64).collect();
+        RumpyArray::from_vec(result, DType::int64())
+    }
+
+    /// Return unique sorted values.
+    pub fn unique(&self) -> RumpyArray {
+        let mut values = self.to_vec();
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        values.dedup_by(|a, b| (*a - *b).abs() < f64::EPSILON);
+        RumpyArray::from_vec(values, self.dtype())
+    }
+
     // Math ufuncs
 
     /// Square root of each element.

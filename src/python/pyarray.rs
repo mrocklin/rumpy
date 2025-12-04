@@ -365,6 +365,36 @@ impl PyRumpyArray {
         }
     }
 
+    #[pyo3(signature = (axis=None))]
+    fn var(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.var())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.var_axis(ax))))
+            }
+        }
+    }
+
+    #[pyo3(signature = (axis=None))]
+    fn std(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.std())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.std_axis(ax))))
+            }
+        }
+    }
+
+    fn argmax(&self) -> usize {
+        self.inner.argmax()
+    }
+
+    fn argmin(&self) -> usize {
+        self.inner.argmin()
+    }
+
 }
 
 /// Parse dtype string to DType enum.

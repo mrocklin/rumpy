@@ -417,6 +417,24 @@ pub fn squeeze(arr: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(arr.inner.squeeze())
 }
 
+/// Sort array (flattened).
+#[pyfunction]
+pub fn sort(arr: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(arr.inner.sort())
+}
+
+/// Return indices that would sort the array (flattened).
+#[pyfunction]
+pub fn argsort(arr: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(arr.inner.argsort())
+}
+
+/// Return unique sorted values.
+#[pyfunction]
+pub fn unique(arr: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(arr.inner.unique())
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -486,5 +504,9 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Splitting
     m.add_function(wrap_pyfunction!(split, m)?)?;
     m.add_function(wrap_pyfunction!(array_split, m)?)?;
+    // Sorting
+    m.add_function(wrap_pyfunction!(sort, m)?)?;
+    m.add_function(wrap_pyfunction!(argsort, m)?)?;
+    m.add_function(wrap_pyfunction!(unique, m)?)?;
     Ok(())
 }

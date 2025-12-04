@@ -31,12 +31,12 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 - [x] `split()`, `array_split()`
 - [x] `squeeze()`, `expand_dims()`
 
-## Phase C: More Reductions + Sorting
+## Phase C: More Reductions + Sorting ✓
 
-- [ ] `std()`, `var()` - statistical essentials
-- [ ] `argmax()`, `argmin()` - index of extrema
-- [ ] `sort()`, `argsort()` - sorting
-- [ ] `unique()` - deduplicated values
+- [x] `std()`, `var()` - statistical essentials
+- [x] `argmax()`, `argmin()` - index of extrema
+- [x] `sort()`, `argsort()` - sorting
+- [x] `unique()` - deduplicated values
 
 ## Phase D: Linear Algebra
 
