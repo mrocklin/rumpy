@@ -23,12 +23,6 @@ impl MatmulKernel {
     }
 }
 
-impl Default for MatmulKernel {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl GufuncKernel for MatmulKernel {
     fn signature(&self) -> &GufuncSignature {
         &self.sig
@@ -37,7 +31,7 @@ impl GufuncKernel for MatmulKernel {
     fn call(&self, inputs: &[RumpyArray], outputs: &mut [RumpyArray]) {
         let a = &inputs[0];
         let b = &inputs[1];
-        let c = &mut outputs[0];
+        let c = &outputs[0];
 
         let m = a.shape()[0];
         let n = a.shape()[1];

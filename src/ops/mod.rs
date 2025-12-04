@@ -1,7 +1,9 @@
 //! Element-wise operations (ufunc-style).
 
 pub mod gufunc;
+pub mod inner;
 pub mod matmul;
+pub mod outer;
 
 use crate::array::{broadcast_shapes, increment_indices, promote_dtype, write_element, DType, RumpyArray};
 use std::sync::Arc;

@@ -448,6 +448,26 @@ pub fn matmul(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         })
 }
 
+/// Inner product of two arrays.
+#[pyfunction]
+pub fn inner(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::inner::inner(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("inner: incompatible shapes")
+        })
+}
+
+/// Outer product of two arrays.
+#[pyfunction]
+pub fn outer(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::outer::outer(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("outer: incompatible shapes")
+        })
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -523,5 +543,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(unique, m)?)?;
     // Linear algebra
     m.add_function(wrap_pyfunction!(matmul, m)?)?;
+    m.add_function(wrap_pyfunction!(inner, m)?)?;
+    m.add_function(wrap_pyfunction!(outer, m)?)?;
     Ok(())
 }

@@ -6,7 +6,7 @@
 
 ## Status
 
-**Complete**: 307 tests passing. Gufunc infrastructure and matmul implemented.
+**Complete**: 315 tests passing. Gufunc infrastructure with matmul, inner, outer.
 
 ### Recent Work
 
@@ -18,6 +18,8 @@
 - [x] **matmul**: `rp.matmul(a, b)` and `@` operator
   - 2D matrices, 1D vectors, batched (3D+)
   - Full numpy broadcast semantics
+- [x] **inner**: `rp.inner(a, b)` - inner product with gufunc broadcasting
+- [x] **outer**: `rp.outer(a, b)` - outer product (flattens inputs)
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)
@@ -37,12 +39,11 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: More Gufuncs & Linear Algebra
+## Next: BLAS Integration & More Linalg
 
-Additional gufuncs using the infrastructure:
-- `dot()` - inner product with different semantics than matmul
-- `inner()` / `outer()` - inner and outer products
-- `linalg.*` - determinant, trace, etc.
+- BLAS integration for matmul performance (via `GufuncKernel` trait)
+- `dot()` - has complex dimension-dependent semantics
+- `linalg.*` - determinant, trace, solve, etc.
 
 ## Known Limitations (Future Work)
 
