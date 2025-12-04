@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 4 complete
+**Last updated**: Phase 5 complete
 
 ## What's Done
 
@@ -13,10 +13,11 @@
 - [x] Test infrastructure with assert_eq helper
 - [x] Views: view_with(), slicing, reshape, transpose
 - [x] Integer indexing: arr[i], arr[i, j] returns scalar
-- [x] Binary ops: add, sub, mul, div (same shape)
+- [x] Binary ops: add, sub, mul, div with broadcasting
 - [x] Scalar ops: arr + 5, 5 + arr, etc.
 - [x] Unary ops: neg, abs
-- [x] All 76 tests passing
+- [x] Broadcasting: broadcast_shapes(), broadcast_to()
+- [x] All 90 tests passing
 
 ## Key Files
 
@@ -39,17 +40,16 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: Broadcasting
+## Next Phase: Reductions
 
 Priority order:
-1. broadcast_shapes() - compute output shape
-2. broadcast_to() - expand array with zero strides
-3. Update binary ops to broadcast before applying
+1. sum() - sum all elements or along axis
+2. mean() - average
+3. max(), min()
 
 ## Future Phases
 
-- Phase 6: Ufuncs framework
-- Phase 7: Reductions (sum, mean, max)
+- Phase 7: Ufuncs framework (generalize ops)
 - Phase 8: BLAS integration
 
 ## Testing Pattern

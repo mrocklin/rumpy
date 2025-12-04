@@ -216,6 +216,35 @@ impl RumpyArray {
         self.view_with(0, new_shape, new_strides)
     }
 
+    /// Broadcast array to a new shape. Returns a view with zero strides for broadcast dims.
+    /// Returns None if shape is incompatible.
+    pub fn broadcast_to(&self, new_shape: &[usize]) -> Option<Self> {
+        if new_shape.len() < self.ndim() {
+            return None;
+        }
+
+        let mut new_strides = vec![0isize; new_shape.len()];
+        let offset = new_shape.len() - self.ndim();
+
+        // Check compatibility and compute strides
+        for i in 0..self.ndim() {
+            let old_dim = self.shape[i];
+            let new_dim = new_shape[offset + i];
+
+            if old_dim == new_dim {
+                new_strides[offset + i] = self.strides[i];
+            } else if old_dim == 1 {
+                new_strides[offset + i] = 0; // Broadcast: zero stride
+            } else {
+                return None; // Incompatible
+            }
+        }
+
+        // Leading dimensions (prepended 1s) already have zero stride from vec! initialization
+
+        Some(self.view_with(0, new_shape.to_vec(), new_strides))
+    }
+
     /// Create array with evenly spaced values [start, start+step, start+2*step, ...).
     pub fn arange(start: f64, stop: f64, step: f64, dtype: DType) -> Self {
         let n = ((stop - start) / step).ceil().max(0.0) as usize;
@@ -345,4 +374,28 @@ fn is_f_contiguous(shape: &[usize], strides: &[isize], itemsize: usize) -> bool 
         expected *= shape[i] as isize;
     }
     true
+}
+
+/// Compute broadcast shape from two input shapes.
+/// Returns None if shapes are incompatible.
+pub fn broadcast_shapes(a: &[usize], b: &[usize]) -> Option<Vec<usize>> {
+    let max_ndim = a.len().max(b.len());
+    let mut result = vec![0usize; max_ndim];
+
+    // Align from the right
+    for i in 0..max_ndim {
+        let a_dim = if i < a.len() { a[a.len() - 1 - i] } else { 1 };
+        let b_dim = if i < b.len() { b[b.len() - 1 - i] } else { 1 };
+
+        if a_dim == b_dim {
+            result[max_ndim - 1 - i] = a_dim;
+        } else if a_dim == 1 {
+            result[max_ndim - 1 - i] = b_dim;
+        } else if b_dim == 1 {
+            result[max_ndim - 1 - i] = a_dim;
+        } else {
+            return None; // Incompatible
+        }
+    }
+    Some(result)
 }

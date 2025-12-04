@@ -1,6 +1,6 @@
 //! Element-wise operations on arrays.
 
-use crate::array::{DType, RumpyArray};
+use crate::array::{broadcast_shapes, DType, RumpyArray};
 use std::sync::Arc;
 
 /// Binary operation types.
@@ -20,16 +20,19 @@ pub enum UnaryOp {
 }
 
 impl RumpyArray {
-    /// Element-wise binary operation (same shape required).
+    /// Element-wise binary operation with broadcasting.
     pub fn binary_op(&self, other: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
-        if self.shape() != other.shape() {
-            return None;
-        }
+        // Compute broadcast shape
+        let out_shape = broadcast_shapes(self.shape(), other.shape())?;
+
+        // Broadcast inputs to output shape
+        let a = self.broadcast_to(&out_shape)?;
+        let b = other.broadcast_to(&out_shape)?;
 
         let result_dtype = promote_dtype(self.dtype(), other.dtype());
-        let mut result = RumpyArray::zeros(self.shape().to_vec(), result_dtype);
+        let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype);
 
-        let size = self.size();
+        let size = result.size();
         if size == 0 {
             return Some(result);
         }
@@ -40,11 +43,11 @@ impl RumpyArray {
         let result_ptr = result_buffer.as_mut_ptr();
 
         // Iterate over all elements
-        let mut indices = vec![0usize; self.ndim()];
+        let mut indices = vec![0usize; out_shape.len()];
         for i in 0..size {
-            let a = self.get_element(&indices);
-            let b = other.get_element(&indices);
-            let val = apply_binary_op(a, b, op);
+            let av = a.get_element(&indices);
+            let bv = b.get_element(&indices);
+            let val = apply_binary_op(av, bv, op);
 
             // Write to result (contiguous, so linear index works)
             unsafe {
@@ -68,7 +71,7 @@ impl RumpyArray {
             }
 
             // Increment indices (row-major order)
-            increment_indices(&mut indices, self.shape());
+            increment_indices(&mut indices, &out_shape);
         }
 
         Some(result)
