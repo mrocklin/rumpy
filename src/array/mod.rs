@@ -294,6 +294,144 @@ impl RumpyArray {
         arr
     }
 
+    /// Create array with evenly spaced values over interval [start, stop].
+    pub fn linspace(start: f64, stop: f64, num: usize, dtype: DType) -> Self {
+        let mut arr = Self::zeros(vec![num], dtype);
+
+        if num == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        // step = (stop - start) / (num - 1) for num > 1, else 0
+        let step = if num > 1 { (stop - start) / (num - 1) as f64 } else { 0.0 };
+
+        unsafe {
+            match dtype {
+                DType::Float64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, num);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = start + (i as f64) * step;
+                    }
+                }
+                DType::Float32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, num);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = (start + (i as f64) * step) as f32;
+                    }
+                }
+                DType::Int64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, num);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = (start + (i as f64) * step) as i64;
+                    }
+                }
+                DType::Int32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, num);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = (start + (i as f64) * step) as i32;
+                    }
+                }
+                DType::Bool => {
+                    let slice = std::slice::from_raw_parts_mut(ptr, num);
+                    for (i, v) in slice.iter_mut().enumerate() {
+                        *v = ((start + (i as f64) * step) != 0.0) as u8;
+                    }
+                }
+            }
+        }
+        arr
+    }
+
+    /// Create an identity matrix of size n x n.
+    pub fn eye(n: usize, dtype: DType) -> Self {
+        let mut arr = Self::zeros(vec![n, n], dtype);
+
+        if n == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        unsafe {
+            match dtype {
+                DType::Float64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, n * n);
+                    for i in 0..n {
+                        slice[i * n + i] = 1.0;
+                    }
+                }
+                DType::Float32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, n * n);
+                    for i in 0..n {
+                        slice[i * n + i] = 1.0;
+                    }
+                }
+                DType::Int64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, n * n);
+                    for i in 0..n {
+                        slice[i * n + i] = 1;
+                    }
+                }
+                DType::Int32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, n * n);
+                    for i in 0..n {
+                        slice[i * n + i] = 1;
+                    }
+                }
+                DType::Bool => {
+                    let slice = std::slice::from_raw_parts_mut(ptr, n * n);
+                    for i in 0..n {
+                        slice[i * n + i] = 1;
+                    }
+                }
+            }
+        }
+        arr
+    }
+
+    /// Create array filled with given value.
+    pub fn full(shape: Vec<usize>, value: f64, dtype: DType) -> Self {
+        let mut arr = Self::zeros(shape, dtype);
+        let size = arr.size();
+
+        if size == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        unsafe {
+            match dtype {
+                DType::Float64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, size);
+                    slice.fill(value);
+                }
+                DType::Float32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, size);
+                    slice.fill(value as f32);
+                }
+                DType::Int64 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, size);
+                    slice.fill(value as i64);
+                }
+                DType::Int32 => {
+                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, size);
+                    slice.fill(value as i32);
+                }
+                DType::Bool => {
+                    let slice = std::slice::from_raw_parts_mut(ptr, size);
+                    slice.fill((value != 0.0) as u8);
+                }
+            }
+        }
+        arr
+    }
+
     /// Get single element by indices. Returns as f64 for simplicity.
     pub fn get_element(&self, indices: &[usize]) -> f64 {
         assert_eq!(indices.len(), self.ndim(), "wrong number of indices");

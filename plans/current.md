@@ -2,13 +2,14 @@
 
 # Current Development Status
 
-**Last updated**: Phase 7 complete
+**Last updated**: Phase 8 complete
 
 ## What's Done
 
 - [x] Project scaffolding (Cargo.toml, pyproject.toml, maturin)
 - [x] Core types: DType, ArrayFlags, ArrayBuffer, RumpyArray
 - [x] Basic constructors: zeros(), ones(), arange()
+- [x] More constructors: linspace(), eye(), full()
 - [x] Python bindings with __array_interface__
 - [x] Test infrastructure with assert_eq helper
 - [x] Views: view_with(), slicing, reshape, transpose
@@ -19,7 +20,7 @@
 - [x] Broadcasting: broadcast_shapes(), broadcast_to()
 - [x] Ufunc machinery: map_unary, map_binary, reduce_all, reduce_axis
 - [x] Reductions: sum, prod, min, max, mean (with optional axis)
-- [x] All 119 tests passing
+- [x] All 138 tests passing
 
 ## Key Files
 
@@ -42,17 +43,17 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 pytest tests/ -v
 ```
 
-## Next Phase: More constructors
+## Next Phase: More ufuncs
 
 Priority order:
-1. linspace(start, stop, num)
-2. eye(n), full(shape, value)
+1. sqrt, exp, log
+2. sin, cos, tan
 3. from_list / asarray
 
 ## Future Phases
 
-- Phase 9: BLAS integration (matmul, dot)
-- Phase 10: More ufuncs (sqrt, exp, log, sin, cos)
+- Phase 10: BLAS integration (matmul, dot)
+- Phase 11: Comparison ops (>, <, ==, etc.)
 
 ## Testing Pattern
 
