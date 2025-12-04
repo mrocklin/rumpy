@@ -398,6 +398,68 @@ impl RumpyArray {
 
         Some(result)
     }
+
+    /// Select elements/rows by integer indices. Returns a new array.
+    /// For 1D array: selects elements at given indices.
+    /// For ND array: selects along axis 0 (rows for 2D).
+    pub fn select_by_indices(&self, indices: &RumpyArray) -> Option<Self> {
+        let num_indices = indices.size();
+
+        // Output shape: replace first dimension with number of indices
+        let mut out_shape = self.shape().to_vec();
+        if out_shape.is_empty() {
+            return None; // Can't index a scalar
+        }
+        out_shape[0] = num_indices;
+
+        let mut result = Self::zeros(out_shape, self.dtype());
+        if num_indices == 0 {
+            return Some(result);
+        }
+
+        let axis_len = self.shape()[0];
+        let slice_size: usize = self.shape()[1..].iter().product::<usize>().max(1);
+
+        let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+        let result_ptr = buffer.as_mut_ptr();
+        let ops = result.dtype.ops();
+
+        let mut idx_indices = vec![0usize; indices.ndim()];
+        for i in 0..num_indices {
+            let idx_val = indices.get_element(&idx_indices) as isize;
+            let idx = if idx_val < 0 {
+                (axis_len as isize + idx_val) as usize
+            } else {
+                idx_val as usize
+            };
+
+            if idx >= axis_len {
+                return None; // Index out of bounds
+            }
+
+            // Copy the slice at this index
+            let mut src_indices = vec![0usize; self.ndim()];
+            src_indices[0] = idx;
+
+            for j in 0..slice_size {
+                let val = self.get_element(&src_indices);
+                unsafe { ops.write_element(result_ptr, i * slice_size + j, val); }
+
+                // Increment indices for dimensions 1..
+                for d in (1..self.ndim()).rev() {
+                    src_indices[d] += 1;
+                    if src_indices[d] < self.shape()[d] {
+                        break;
+                    }
+                    src_indices[d] = 0;
+                }
+            }
+
+            increment_indices(&mut idx_indices, indices.shape());
+        }
+
+        Some(result)
+    }
 }
 
 /// Compute C-order (row-major) strides for given shape and itemsize.

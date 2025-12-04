@@ -10,9 +10,11 @@ Enable `arr[[0, 2, 4]]` - indexing with integer arrays.
 
 ## Status
 
-- [ ] Integer array indexing (1D index into 1D array)
-- [ ] Multi-dimensional fancy indexing
-- [ ] Combined fancy + slice indexing
+- [x] Integer array indexing (1D index into 1D array)
+- [x] Multi-dimensional fancy indexing (row selection for 2D+)
+- [ ] Combined fancy + slice indexing (future work)
+
+**Completed**: 13 new tests, 243 total passing.
 
 ## Implementation
 

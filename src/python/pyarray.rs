@@ -117,14 +117,24 @@ impl PyRumpyArray {
 
     /// Indexing and slicing.
     fn __getitem__<'py>(&self, py: Python<'py>, key: &Bound<'py, PyAny>) -> PyResult<PyObject> {
-        // Handle boolean array indexing
-        if let Ok(mask_arr) = key.extract::<PyRef<'_, PyRumpyArray>>() {
-            if mask_arr.inner.dtype().kind() == crate::array::dtype::DTypeKind::Bool {
-                return self.inner.select_by_mask(&mask_arr.inner)
+        // Handle array indexing (boolean or integer)
+        if let Ok(idx_arr) = key.extract::<PyRef<'_, PyRumpyArray>>() {
+            if idx_arr.inner.dtype().kind() == crate::array::dtype::DTypeKind::Bool {
+                // Boolean indexing
+                return self.inner.select_by_mask(&idx_arr.inner)
                     .map(|arr| Self::new(arr).into_pyobject(py).unwrap().into_any().unbind())
                     .ok_or_else(|| {
                         pyo3::exceptions::PyIndexError::new_err(
                             "boolean index shape must match array shape"
+                        )
+                    });
+            } else {
+                // Fancy indexing (integer array)
+                return self.inner.select_by_indices(&idx_arr.inner)
+                    .map(|arr| Self::new(arr).into_pyobject(py).unwrap().into_any().unbind())
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyIndexError::new_err(
+                            "index out of bounds"
                         )
                     });
             }

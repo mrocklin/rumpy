@@ -17,11 +17,11 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 - Boolean indexing (arr[mask])
 - where(cond, x, y)
 
-## Phase A: Complete Indexing (in progress)
+## Phase A: Complete Indexing ✓
 
 - [x] Comparison ops
 - [x] Boolean indexing
-- [ ] **Fancy indexing** - `arr[[0, 2, 4]]`, `arr[idx_array]`
+- [x] Fancy indexing - `arr[[0, 2, 4]]`, `arr[idx_array]`
 
 ## Phase B: Array Manipulation
 
