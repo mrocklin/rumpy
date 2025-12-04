@@ -6,7 +6,7 @@
 
 ## Status
 
-**Complete**: 315 tests passing. Gufunc infrastructure with matmul, inner, outer.
+**Complete**: 320 tests passing. Gufunc infrastructure with matmul, inner, outer, solve.
 
 ### Recent Work
 
@@ -21,6 +21,7 @@
   - Uses faer for optimized matrix multiplication
 - [x] **inner**: `rp.inner(a, b)` - inner product with gufunc broadcasting
 - [x] **outer**: `rp.outer(a, b)` - outer product (flattens inputs)
+- [x] **solve**: `rp.solve(A, b)` - solve linear system Ax=b via LU decomposition
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)

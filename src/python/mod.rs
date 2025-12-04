@@ -468,6 +468,16 @@ pub fn outer(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         })
 }
 
+/// Solve linear system Ax = b.
+#[pyfunction]
+pub fn solve(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::solve::solve(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("solve: invalid dimensions or singular matrix")
+        })
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -545,5 +555,6 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(matmul, m)?)?;
     m.add_function(wrap_pyfunction!(inner, m)?)?;
     m.add_function(wrap_pyfunction!(outer, m)?)?;
+    m.add_function(wrap_pyfunction!(solve, m)?)?;
     Ok(())
 }
