@@ -139,11 +139,11 @@ impl PyRumpyArray {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "rumpy.ndarray(shape={:?}, dtype='{}')",
-            self.inner.shape(),
-            self.inner.dtype().typestr()
-        )
+        self.inner.format_repr()
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.format_str()
     }
 
     /// Indexing and slicing.

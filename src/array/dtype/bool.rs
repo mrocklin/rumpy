@@ -20,4 +20,8 @@ impl DTypeOps for BoolOps {
     unsafe fn write_element(&self, ptr: *mut u8, idx: usize, val: f64) {
         *ptr.add(idx) = (val != 0.0) as u8;
     }
+
+    fn format_element(&self, val: f64) -> String {
+        if val != 0.0 { "True".to_string() } else { "False".to_string() }
+    }
 }

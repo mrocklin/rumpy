@@ -80,6 +80,26 @@ pub trait DTypeOps: Send + Sync + 'static {
 
     /// Priority for type promotion. Higher priority wins.
     fn promotion_priority(&self) -> u8;
+
+    /// Format element value as string for repr/str.
+    fn format_element(&self, val: f64) -> String {
+        // Default: format based on whether it's an integer or float type
+        if self.is_integer() {
+            format!("{}", val as i64)
+        } else {
+            // NumPy style: "0." not "0.0"
+            let s = format!("{:.8}", val);
+            let s = s.trim_end_matches('0');
+            // Keep trailing dot but no trailing zero
+            s.to_string()
+        }
+    }
+
+    /// Whether this is an integer type.
+    fn is_integer(&self) -> bool {
+        matches!(self.kind(), DTypeKind::Int32 | DTypeKind::Int64 |
+                 DTypeKind::Uint8 | DTypeKind::Uint32 | DTypeKind::Uint64)
+    }
 }
 
 /// Data type descriptor wrapping trait object.
