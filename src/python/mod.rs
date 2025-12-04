@@ -299,6 +299,124 @@ pub fn tan(x: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.tan())
 }
 
+/// Concatenate arrays along an axis.
+#[pyfunction]
+#[pyo3(signature = (arrays, axis=0))]
+pub fn concatenate(arrays: Vec<PyRef<'_, PyRumpyArray>>, axis: usize) -> PyResult<PyRumpyArray> {
+    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| a.inner.clone()).collect();
+    crate::array::concatenate(&inner_arrays, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "arrays must have same shape except in concatenation axis"
+            )
+        })
+}
+
+/// Stack arrays along a new axis.
+#[pyfunction]
+#[pyo3(signature = (arrays, axis=0))]
+pub fn stack(arrays: Vec<PyRef<'_, PyRumpyArray>>, axis: usize) -> PyResult<PyRumpyArray> {
+    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| a.inner.clone()).collect();
+    crate::array::stack(&inner_arrays, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("arrays must have same shape for stack")
+        })
+}
+
+/// Stack arrays vertically (row-wise).
+#[pyfunction]
+pub fn vstack(arrays: Vec<PyRef<'_, PyRumpyArray>>) -> PyResult<PyRumpyArray> {
+    if arrays.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err("need at least one array"));
+    }
+
+    // For 1D arrays, reshape to (1, N) first
+    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| {
+        if a.inner.ndim() == 1 {
+            a.inner.reshape(vec![1, a.inner.size()]).unwrap_or_else(|| a.inner.clone())
+        } else {
+            a.inner.clone()
+        }
+    }).collect();
+
+    crate::array::concatenate(&inner_arrays, 0)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("arrays must have same shape for vstack")
+        })
+}
+
+/// Stack arrays horizontally (column-wise).
+#[pyfunction]
+pub fn hstack(arrays: Vec<PyRef<'_, PyRumpyArray>>) -> PyResult<PyRumpyArray> {
+    if arrays.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err("need at least one array"));
+    }
+
+    let first = &arrays[0].inner;
+    let axis = if first.ndim() == 1 { 0 } else { 1 };
+
+    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| a.inner.clone()).collect();
+    crate::array::concatenate(&inner_arrays, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("arrays must have same shape for hstack")
+        })
+}
+
+/// Split array into equal parts.
+#[pyfunction]
+#[pyo3(signature = (arr, num_sections, axis=0))]
+pub fn split(arr: &PyRumpyArray, num_sections: usize, axis: usize) -> PyResult<Vec<PyRumpyArray>> {
+    crate::array::split(&arr.inner, num_sections, axis)
+        .map(|sections| sections.into_iter().map(PyRumpyArray::new).collect())
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "array split does not result in an equal division"
+            )
+        })
+}
+
+/// Split array into sections, allowing unequal sizes.
+#[pyfunction]
+#[pyo3(signature = (arr, num_sections, axis=0))]
+pub fn array_split(arr: &PyRumpyArray, num_sections: usize, axis: usize) -> PyResult<Vec<PyRumpyArray>> {
+    crate::array::array_split(&arr.inner, num_sections, axis)
+        .map(|sections| sections.into_iter().map(PyRumpyArray::new).collect())
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("invalid split parameters")
+        })
+}
+
+/// Expand array dimensions at specified axis.
+#[pyfunction]
+pub fn expand_dims(arr: &PyRumpyArray, axis: isize) -> PyResult<PyRumpyArray> {
+    // Handle negative axis
+    let ndim = arr.inner.ndim();
+    let axis = if axis < 0 {
+        (ndim as isize + axis + 1) as usize
+    } else {
+        axis as usize
+    };
+
+    arr.inner.expand_dims(axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "axis {} is out of bounds for array of dimension {}",
+                axis, ndim
+            ))
+        })
+}
+
+/// Remove single-dimensional entries from array shape.
+#[pyfunction]
+pub fn squeeze(arr: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(arr.inner.squeeze())
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -357,5 +475,16 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tan, m)?)?;
     // Conditional
     m.add_function(wrap_pyfunction!(where_fn, m)?)?;
+    // Shape manipulation
+    m.add_function(wrap_pyfunction!(expand_dims, m)?)?;
+    m.add_function(wrap_pyfunction!(squeeze, m)?)?;
+    // Concatenation
+    m.add_function(wrap_pyfunction!(concatenate, m)?)?;
+    m.add_function(wrap_pyfunction!(stack, m)?)?;
+    m.add_function(wrap_pyfunction!(vstack, m)?)?;
+    m.add_function(wrap_pyfunction!(hstack, m)?)?;
+    // Splitting
+    m.add_function(wrap_pyfunction!(split, m)?)?;
+    m.add_function(wrap_pyfunction!(array_split, m)?)?;
     Ok(())
 }

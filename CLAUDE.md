@@ -24,7 +24,7 @@ pytest tests/ -v
 
 ```python
 def test_feature():
-    r = rumpy.some_op(...)
+    r = rp.some_op(...)
     n = np.some_op(...)
     assert_eq(r, n)
 ```

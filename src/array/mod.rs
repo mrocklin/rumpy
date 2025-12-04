@@ -460,6 +460,66 @@ impl RumpyArray {
 
         Some(result)
     }
+
+    /// Create a contiguous copy of the array.
+    pub fn copy(&self) -> Self {
+        self.astype(self.dtype())
+    }
+
+    /// Remove single-dimensional entries from the shape.
+    /// Returns a view.
+    pub fn squeeze(&self) -> Self {
+        let new_shape: Vec<usize> = self.shape().iter().copied().filter(|&d| d != 1).collect();
+        let new_strides: Vec<isize> = self.shape().iter().zip(self.strides())
+            .filter(|(&d, _)| d != 1)
+            .map(|(_, &s)| s)
+            .collect();
+
+        // Handle scalar case (all dims were 1)
+        if new_shape.is_empty() && self.size() == 1 {
+            return self.view_with(0, vec![1], vec![self.itemsize() as isize]);
+        }
+
+        self.view_with(0, new_shape, new_strides)
+    }
+
+    /// Insert a new axis at the given position.
+    /// Returns a view.
+    pub fn expand_dims(&self, axis: usize) -> Option<Self> {
+        if axis > self.ndim() {
+            return None;
+        }
+
+        let mut new_shape = self.shape().to_vec();
+        let mut new_strides = self.strides().to_vec();
+
+        new_shape.insert(axis, 1);
+        // Stride for size-1 dimension doesn't matter, but we use itemsize for consistency
+        new_strides.insert(axis, self.itemsize() as isize);
+
+        Some(self.view_with(0, new_shape, new_strides))
+    }
+
+    /// Convert array to a new dtype.
+    pub fn astype(&self, new_dtype: DType) -> Self {
+        let mut result = Self::zeros(self.shape().to_vec(), new_dtype);
+        let size = self.size();
+        if size == 0 {
+            return result;
+        }
+
+        let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+        let result_ptr = buffer.as_mut_ptr();
+        let ops = result.dtype.ops();
+
+        let mut indices = vec![0usize; self.ndim()];
+        for i in 0..size {
+            let val = self.get_element(&indices);
+            unsafe { ops.write_element(result_ptr, i, val); }
+            increment_indices(&mut indices, self.shape());
+        }
+        result
+    }
 }
 
 /// Compute C-order (row-major) strides for given shape and itemsize.
@@ -547,6 +607,161 @@ pub(crate) unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: &D
 #[inline]
 pub(crate) unsafe fn read_element(ptr: *const u8, offset: isize, dtype: &DType) -> f64 {
     dtype.ops().read_element(ptr, offset)
+}
+
+/// Concatenate arrays along an axis.
+/// All arrays must have same shape except in the concatenation axis.
+pub fn concatenate(arrays: &[RumpyArray], axis: usize) -> Option<RumpyArray> {
+    if arrays.is_empty() {
+        return None;
+    }
+
+    let first = &arrays[0];
+    let ndim = first.ndim();
+
+    if axis >= ndim {
+        return None;
+    }
+
+    // Check all arrays have same shape except for concat axis
+    for arr in arrays.iter().skip(1) {
+        if arr.ndim() != ndim {
+            return None;
+        }
+        for (i, (&a, &b)) in first.shape().iter().zip(arr.shape().iter()).enumerate() {
+            if i != axis && a != b {
+                return None;
+            }
+        }
+    }
+
+    // Compute output shape
+    let mut out_shape = first.shape().to_vec();
+    out_shape[axis] = arrays.iter().map(|a| a.shape()[axis]).sum();
+
+    // Use dtype of first array (TODO: dtype promotion)
+    let dtype = first.dtype();
+    let mut result = RumpyArray::zeros(out_shape, dtype);
+
+    if result.size() == 0 {
+        return Some(result);
+    }
+
+    let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+    let ops = result.dtype.ops();
+
+    // Copy data from each array
+    let mut axis_offset = 0usize;
+    for arr in arrays {
+        let size = arr.size();
+        let mut src_indices = vec![0usize; ndim];
+        for _ in 0..size {
+            // Compute destination indices
+            let mut dst_indices = src_indices.clone();
+            dst_indices[axis] += axis_offset;
+
+            // Compute linear index in result
+            let mut dst_idx = 0;
+            let mut stride = 1;
+            for i in (0..ndim).rev() {
+                dst_idx += dst_indices[i] * stride;
+                stride *= result.shape()[i];
+            }
+
+            let val = arr.get_element(&src_indices);
+            unsafe { ops.write_element(result_ptr, dst_idx, val); }
+
+            increment_indices(&mut src_indices, arr.shape());
+        }
+        axis_offset += arr.shape()[axis];
+    }
+
+    Some(result)
+}
+
+/// Stack arrays along a new axis.
+/// All arrays must have the same shape.
+pub fn stack(arrays: &[RumpyArray], axis: usize) -> Option<RumpyArray> {
+    if arrays.is_empty() {
+        return None;
+    }
+
+    let first = &arrays[0];
+
+    // axis can be at most ndim (to add at end)
+    if axis > first.ndim() {
+        return None;
+    }
+
+    // Check all arrays have same shape
+    for arr in arrays.iter().skip(1) {
+        if arr.shape() != first.shape() {
+            return None;
+        }
+    }
+
+    // Expand dims on each array, then concatenate
+    let expanded: Vec<RumpyArray> = arrays
+        .iter()
+        .filter_map(|a| a.expand_dims(axis))
+        .collect();
+
+    if expanded.len() != arrays.len() {
+        return None;
+    }
+
+    concatenate(&expanded, axis)
+}
+
+/// Split array into equal parts along axis.
+/// Returns None if array cannot be split evenly.
+pub fn split(arr: &RumpyArray, num_sections: usize, axis: usize) -> Option<Vec<RumpyArray>> {
+    if num_sections == 0 || axis >= arr.ndim() {
+        return None;
+    }
+
+    let axis_len = arr.shape()[axis];
+    if axis_len % num_sections != 0 {
+        return None; // Must divide evenly
+    }
+
+    let section_size = axis_len / num_sections;
+    Some(split_into_sizes(arr, &vec![section_size; num_sections], axis))
+}
+
+/// Split array into sections, allowing unequal sizes.
+/// For `n % num_sections` leftover elements, first sections get one extra.
+pub fn array_split(arr: &RumpyArray, num_sections: usize, axis: usize) -> Option<Vec<RumpyArray>> {
+    if num_sections == 0 || axis >= arr.ndim() {
+        return None;
+    }
+
+    let axis_len = arr.shape()[axis];
+    let base_size = axis_len / num_sections;
+    let remainder = axis_len % num_sections;
+
+    // First `remainder` sections get base_size + 1, rest get base_size
+    let sizes: Vec<usize> = (0..num_sections)
+        .map(|i| if i < remainder { base_size + 1 } else { base_size })
+        .collect();
+
+    Some(split_into_sizes(arr, &sizes, axis))
+}
+
+/// Helper to split array into sections with given sizes along axis.
+fn split_into_sizes(arr: &RumpyArray, sizes: &[usize], axis: usize) -> Vec<RumpyArray> {
+    let mut result = Vec::with_capacity(sizes.len());
+    let mut start = 0isize;
+
+    for &size in sizes {
+        let section = arr.slice_axis(axis, start, start + size as isize, 1);
+        // Make contiguous copy
+        result.push(section.copy());
+        start += size as isize;
+    }
+
+    result
 }
 
 /// Compute broadcast shape from two input shapes.

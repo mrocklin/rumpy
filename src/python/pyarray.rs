@@ -222,6 +222,22 @@ impl PyRumpyArray {
         self.transpose()
     }
 
+    /// Create a contiguous copy of the array.
+    fn copy(&self) -> Self {
+        Self::new(self.inner.copy())
+    }
+
+    /// Remove single-dimensional entries from the shape.
+    fn squeeze(&self) -> Self {
+        Self::new(self.inner.squeeze())
+    }
+
+    /// Convert array to new dtype.
+    fn astype(&self, dtype: &str) -> PyResult<Self> {
+        let dt = parse_dtype(dtype)?;
+        Ok(Self::new(self.inner.astype(dt)))
+    }
+
     // Binary operations (array op array)
 
     fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {

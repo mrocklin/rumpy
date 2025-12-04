@@ -1,44 +1,32 @@
 <!-- AI: Read this before starting work -->
 
-# Current: Fancy Indexing
+# Current: Phase B - Array Manipulation (Complete)
 
 **Roadmap**: See `plans/roadmap.md` for overall plan.
 
-## Goal
-
-Enable `arr[[0, 2, 4]]` - indexing with integer arrays.
-
 ## Status
 
-- [x] Integer array indexing (1D index into 1D array)
-- [x] Multi-dimensional fancy indexing (row selection for 2D+)
-- [ ] Combined fancy + slice indexing (future work)
+**Complete**: 24 new tests, 267 total passing.
 
-**Completed**: 13 new tests, 243 total passing.
+- [x] `copy()` - explicit copy
+- [x] `astype()` - dtype conversion
+- [x] `concatenate()`, `stack()`, `vstack()`, `hstack()`
+- [x] `split()`, `array_split()`
+- [x] `squeeze()`, `expand_dims()`
 
 ## Implementation
 
 **Rust** (`src/array/mod.rs`):
-- `select_by_indices(&self, indices: &RumpyArray) -> RumpyArray`
-- Indices array contains integer positions to select
-- Returns new array with selected elements
+- `copy()`, `squeeze()`, `expand_dims()`, `astype()` methods on RumpyArray
+- `concatenate()`, `stack()`, `split()`, `array_split()` functions
 
-**Python** (`src/python/pyarray.rs`):
-- Extend `__getitem__` to detect integer array argument
-- Call `select_by_indices`
+**Python** (`src/python/`):
+- Methods on ndarray class: `copy()`, `squeeze()`, `astype()`
+- Module functions: `expand_dims()`, `squeeze()`, `concatenate()`, `stack()`, `vstack()`, `hstack()`, `split()`, `array_split()`
 
-## NumPy Behavior
+## Next: Phase C
 
-```python
-arr = np.arange(10)
-arr[[0, 2, 4]]        # [0, 2, 4] - select specific indices
-arr[[0, 0, 1, 1]]     # [0, 0, 1, 1] - duplicates allowed
-
-# 2D
-arr = np.arange(12).reshape(3, 4)
-arr[[0, 2], [1, 3]]   # [1, 11] - paired indexing
-arr[[0, 2]]           # rows 0 and 2
-```
+Reductions + sorting: `std()`, `var()`, `argmax()`, `argmin()`, `sort()`, `argsort()`, `unique()`
 
 ## Build & Test
 

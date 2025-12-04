@@ -23,13 +23,13 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 - [x] Boolean indexing
 - [x] Fancy indexing - `arr[[0, 2, 4]]`, `arr[idx_array]`
 
-## Phase B: Array Manipulation
+## Phase B: Array Manipulation ✓
 
-- [ ] `copy()` - explicit copy
-- [ ] `astype()` - dtype conversion
-- [ ] `concatenate()`, `stack()`, `vstack()`, `hstack()`
-- [ ] `split()`, `array_split()`
-- [ ] `squeeze()`, `expand_dims()`
+- [x] `copy()` - explicit copy
+- [x] `astype()` - dtype conversion
+- [x] `concatenate()`, `stack()`, `vstack()`, `hstack()`
+- [x] `split()`, `array_split()`
+- [x] `squeeze()`, `expand_dims()`
 
 ## Phase C: More Reductions + Sorting
 
