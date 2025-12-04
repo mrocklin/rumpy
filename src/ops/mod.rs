@@ -1,6 +1,6 @@
 //! Element-wise operations (ufunc-style).
 
-use crate::array::{broadcast_shapes, increment_indices, write_element, DType, RumpyArray};
+use crate::array::{broadcast_shapes, increment_indices, promote_dtype, write_element, RumpyArray};
 use std::sync::Arc;
 
 /// Binary operation types.
@@ -144,17 +144,7 @@ where
     result
 }
 
-/// Type promotion for binary ops.
-pub fn promote_dtype(a: DType, b: DType) -> DType {
-    use DType::*;
-    match (a, b) {
-        (Float64, _) | (_, Float64) => Float64,
-        (Float32, _) | (_, Float32) => Float32,
-        (Int64, _) | (_, Int64) => Int64,
-        (Int32, _) | (_, Int32) => Int32,
-        (Bool, Bool) => Bool,
-    }
-}
+// Type promotion uses crate::array::promote_dtype
 
 // ============================================================================
 // Public API using ufunc machinery

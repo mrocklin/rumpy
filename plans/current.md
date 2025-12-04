@@ -2,7 +2,7 @@
 
 # Current Development Status
 
-**Last updated**: Phase 10 complete
+**Last updated**: Phase 11 complete (extensible dtype system)
 
 ## What's Done
 
@@ -22,12 +22,14 @@
 - [x] Ufunc machinery: map_unary, map_binary, reduce_all, reduce_axis
 - [x] Reductions: sum, prod, min, max, mean (with optional axis)
 - [x] Math ufuncs: sqrt, exp, log, sin, cos, tan
+- [x] **Extensible dtype system**: DTypeOps trait, one file per dtype
 - [x] 171 tests passing
 
 ## Key Files
 
 - `src/array/mod.rs` - RumpyArray struct, constructors, views, arange
-- `src/array/dtype.rs` - DType enum
+- `src/array/dtype/mod.rs` - DTypeOps trait, DType enum, promote_dtype()
+- `src/array/dtype/{float64,float32,int64,int32,bool}.rs` - dtype impls
 - `src/ops/mod.rs` - Binary and unary operations
 - `src/python/pyarray.rs` - Python class with __getitem__, __add__, etc.
 - `src/python/mod.rs` - Module-level functions (zeros, ones, arange)
@@ -69,4 +71,5 @@ def test_feature():
 
 ## Design Docs
 
-See `designs/array-memory.md` for memory model principles.
+- `designs/array-memory.md` - Memory model principles
+- `designs/dtype-system.md` - Extensible dtype architecture

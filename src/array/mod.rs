@@ -5,7 +5,7 @@ pub mod flags;
 use std::sync::Arc;
 
 pub use buffer::ArrayBuffer;
-pub use dtype::DType;
+pub use dtype::{promote_dtype, DType, DTypeOps};
 pub use flags::ArrayFlags;
 
 /// Core N-dimensional array type.
@@ -53,37 +53,10 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
+        let ops = dtype.ops();
 
-        unsafe {
-            match dtype {
-                DType::Float64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, n);
-                    slice.copy_from_slice(&data);
-                }
-                DType::Float32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, n);
-                    for (i, &v) in data.iter().enumerate() {
-                        slice[i] = v as f32;
-                    }
-                }
-                DType::Int64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, n);
-                    for (i, &v) in data.iter().enumerate() {
-                        slice[i] = v as i64;
-                    }
-                }
-                DType::Int32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, n);
-                    for (i, &v) in data.iter().enumerate() {
-                        slice[i] = v as i32;
-                    }
-                }
-                DType::Bool => {
-                    for (i, &v) in data.iter().enumerate() {
-                        *ptr.add(i) = (v != 0.0) as u8;
-                    }
-                }
-            }
+        for (i, &v) in data.iter().enumerate() {
+            unsafe { ops.write_element(ptr, i, v); }
         }
         arr
     }
@@ -106,30 +79,11 @@ impl RumpyArray {
         let buffer = Arc::get_mut(&mut self.buffer).expect("buffer must be unique for fill");
         let ptr = buffer.as_mut_ptr();
         let size: usize = self.shape.iter().product();
+        let ops = self.dtype.ops();
+        let one = ops.one_value();
 
-        unsafe {
-            match self.dtype {
-                DType::Float32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, size);
-                    slice.fill(1.0);
-                }
-                DType::Float64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, size);
-                    slice.fill(1.0);
-                }
-                DType::Int32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, size);
-                    slice.fill(1);
-                }
-                DType::Int64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, size);
-                    slice.fill(1);
-                }
-                DType::Bool => {
-                    let slice = std::slice::from_raw_parts_mut(ptr, size);
-                    slice.fill(1); // true = 1
-                }
-            }
+        for i in 0..size {
+            unsafe { ops.write_element(ptr, i, one); }
         }
     }
 
@@ -307,40 +261,11 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
+        let ops = dtype.ops();
 
-        unsafe {
-            match dtype {
-                DType::Float64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, n);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = start + (i as f64) * step;
-                    }
-                }
-                DType::Float32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, n);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = (start + (i as f64) * step) as f32;
-                    }
-                }
-                DType::Int64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, n);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = (start + (i as f64) * step) as i64;
-                    }
-                }
-                DType::Int32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, n);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = (start + (i as f64) * step) as i32;
-                    }
-                }
-                DType::Bool => {
-                    let slice = std::slice::from_raw_parts_mut(ptr, n);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = ((start + (i as f64) * step) != 0.0) as u8;
-                    }
-                }
-            }
+        for i in 0..n {
+            let val = start + (i as f64) * step;
+            unsafe { ops.write_element(ptr, i, val); }
         }
         arr
     }
@@ -355,43 +280,14 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
+        let ops = dtype.ops();
 
         // step = (stop - start) / (num - 1) for num > 1, else 0
         let step = if num > 1 { (stop - start) / (num - 1) as f64 } else { 0.0 };
 
-        unsafe {
-            match dtype {
-                DType::Float64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, num);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = start + (i as f64) * step;
-                    }
-                }
-                DType::Float32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, num);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = (start + (i as f64) * step) as f32;
-                    }
-                }
-                DType::Int64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, num);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = (start + (i as f64) * step) as i64;
-                    }
-                }
-                DType::Int32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, num);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = (start + (i as f64) * step) as i32;
-                    }
-                }
-                DType::Bool => {
-                    let slice = std::slice::from_raw_parts_mut(ptr, num);
-                    for (i, v) in slice.iter_mut().enumerate() {
-                        *v = ((start + (i as f64) * step) != 0.0) as u8;
-                    }
-                }
-            }
+        for i in 0..num {
+            let val = start + (i as f64) * step;
+            unsafe { ops.write_element(ptr, i, val); }
         }
         arr
     }
@@ -406,40 +302,12 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
+        let ops = dtype.ops();
+        let one = ops.one_value();
 
-        unsafe {
-            match dtype {
-                DType::Float64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, n * n);
-                    for i in 0..n {
-                        slice[i * n + i] = 1.0;
-                    }
-                }
-                DType::Float32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, n * n);
-                    for i in 0..n {
-                        slice[i * n + i] = 1.0;
-                    }
-                }
-                DType::Int64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, n * n);
-                    for i in 0..n {
-                        slice[i * n + i] = 1;
-                    }
-                }
-                DType::Int32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, n * n);
-                    for i in 0..n {
-                        slice[i * n + i] = 1;
-                    }
-                }
-                DType::Bool => {
-                    let slice = std::slice::from_raw_parts_mut(ptr, n * n);
-                    for i in 0..n {
-                        slice[i * n + i] = 1;
-                    }
-                }
-            }
+        for i in 0..n {
+            let idx = i * n + i;
+            unsafe { ops.write_element(ptr, idx, one); }
         }
         arr
     }
@@ -455,30 +323,10 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
+        let ops = dtype.ops();
 
-        unsafe {
-            match dtype {
-                DType::Float64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f64, size);
-                    slice.fill(value);
-                }
-                DType::Float32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut f32, size);
-                    slice.fill(value as f32);
-                }
-                DType::Int64 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i64, size);
-                    slice.fill(value as i64);
-                }
-                DType::Int32 => {
-                    let slice = std::slice::from_raw_parts_mut(ptr as *mut i32, size);
-                    slice.fill(value as i32);
-                }
-                DType::Bool => {
-                    let slice = std::slice::from_raw_parts_mut(ptr, size);
-                    slice.fill((value != 0.0) as u8);
-                }
-            }
+        for i in 0..size {
+            unsafe { ops.write_element(ptr, i, value); }
         }
         arr
     }
@@ -486,22 +334,14 @@ impl RumpyArray {
     /// Get single element by indices. Returns as f64 for simplicity.
     pub fn get_element(&self, indices: &[usize]) -> f64 {
         assert_eq!(indices.len(), self.ndim(), "wrong number of indices");
-        let mut byte_offset = self.offset;
+        let mut byte_offset = self.offset as isize;
         for (i, &idx) in indices.iter().enumerate() {
             assert!(idx < self.shape[i], "index out of bounds");
-            byte_offset = (byte_offset as isize + (idx as isize) * self.strides[i]) as usize;
+            byte_offset += (idx as isize) * self.strides[i];
         }
 
         let ptr = self.buffer.as_ptr();
-        unsafe {
-            match self.dtype {
-                DType::Float64 => *ptr.add(byte_offset).cast::<f64>(),
-                DType::Float32 => *ptr.add(byte_offset).cast::<f32>() as f64,
-                DType::Int64 => *ptr.add(byte_offset).cast::<i64>() as f64,
-                DType::Int32 => *ptr.add(byte_offset).cast::<i32>() as f64,
-                DType::Bool => *ptr.add(byte_offset) as f64,
-            }
-        }
+        unsafe { self.dtype.ops().read_element(ptr, byte_offset) }
     }
 }
 
@@ -583,26 +423,13 @@ pub(crate) fn increment_indices(indices: &mut [usize], shape: &[usize]) {
 /// Write a value to buffer at linear index.
 #[inline]
 pub(crate) unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: DType) {
-    match dtype {
-        DType::Float64 => *(ptr as *mut f64).add(idx) = val,
-        DType::Float32 => *(ptr as *mut f32).add(idx) = val as f32,
-        DType::Int64 => *(ptr as *mut i64).add(idx) = val as i64,
-        DType::Int32 => *(ptr as *mut i32).add(idx) = val as i32,
-        DType::Bool => *ptr.add(idx) = (val != 0.0) as u8,
-    }
+    dtype.ops().write_element(ptr, idx, val);
 }
 
 /// Read element from buffer at byte offset.
 #[inline]
 pub(crate) unsafe fn read_element(ptr: *const u8, offset: isize, dtype: DType) -> f64 {
-    let p = ptr.offset(offset);
-    match dtype {
-        DType::Float64 => *(p as *const f64),
-        DType::Float32 => *(p as *const f32) as f64,
-        DType::Int64 => *(p as *const i64) as f64,
-        DType::Int32 => *(p as *const i32) as f64,
-        DType::Bool => *p as f64,
-    }
+    dtype.ops().read_element(ptr, offset)
 }
 
 /// Compute broadcast shape from two input shapes.
