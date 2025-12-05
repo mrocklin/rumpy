@@ -73,17 +73,32 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
     let src_ptr = arr.data_ptr();
-
-    let mut indices = vec![0usize; arr.ndim()];
+    let itemsize = dtype.itemsize() as isize;
 
     // Try registry first
     {
         let reg = registry().read().unwrap();
         if let Some((loop_fn, _)) = reg.lookup_unary(op, kind.clone()) {
-            for i in 0..size {
-                let src_offset = arr.byte_offset_for(&indices);
-                unsafe { loop_fn(src_ptr, src_offset, result_ptr, i); }
-                increment_indices(&mut indices, arr.shape());
+            if arr.is_c_contiguous() {
+                // Fast path: call loop once for entire array
+                let strides = (itemsize, itemsize);
+                unsafe { loop_fn(src_ptr, result_ptr, size, strides); }
+            } else {
+                // Strided path: iterate with stride info
+                let mut indices = vec![0usize; arr.ndim()];
+                for i in 0..size {
+                    let src_offset = arr.byte_offset_for(&indices);
+                    // Call loop for single element
+                    unsafe {
+                        loop_fn(
+                            src_ptr.offset(src_offset),
+                            result_ptr.offset(i as isize * itemsize),
+                            1,
+                            (itemsize, itemsize),  // doesn't matter for n=1
+                        );
+                    }
+                    increment_indices(&mut indices, arr.shape());
+                }
             }
             return Ok(result);
         }
@@ -91,6 +106,7 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
 
     // Fallback: trait-based dispatch
     let ops = dtype.ops();
+    let mut indices = vec![0usize; arr.ndim()];
     for i in 0..size {
         let src_offset = arr.byte_offset_for(&indices);
         unsafe { ops.unary_op(op, src_ptr, src_offset, result_ptr, i); }
@@ -140,16 +156,38 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
 
     let mut indices = vec![0usize; out_shape.len()];
 
+    let itemsize = result_dtype_ref.itemsize() as isize;
+
     // Try registry first for same-type operations
     if a_kind == b_kind {
         let reg = registry().read().unwrap();
         if let Some((loop_fn, _)) = reg.lookup_binary(op, a_kind.clone(), b_kind) {
-            // Use registered loop
-            for i in 0..size {
-                let a_offset = a_bc.byte_offset_for(&indices);
-                let b_offset = b_bc.byte_offset_for(&indices);
-                unsafe { loop_fn(a_ptr, a_offset, b_ptr, b_offset, result_ptr, i); }
-                increment_indices(&mut indices, &out_shape);
+            // Check if we can use the fast contiguous path
+            // (both inputs and output are C-contiguous with same shape)
+            let a_contig = a_bc.is_c_contiguous() && a.shape() == out_shape.as_slice();
+            let b_contig = b_bc.is_c_contiguous() && b.shape() == out_shape.as_slice();
+
+            if a_contig && b_contig {
+                // Fast path: call loop once for entire array
+                let strides = (itemsize, itemsize, itemsize);
+                unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, strides); }
+            } else {
+                // Strided path: iterate with stride info
+                for i in 0..size {
+                    let a_offset = a_bc.byte_offset_for(&indices);
+                    let b_offset = b_bc.byte_offset_for(&indices);
+                    // Call loop for single element
+                    unsafe {
+                        loop_fn(
+                            a_ptr.offset(a_offset),
+                            b_ptr.offset(b_offset),
+                            result_ptr.offset(i as isize * itemsize),
+                            1,
+                            (itemsize, itemsize, itemsize),  // doesn't matter for n=1
+                        );
+                    }
+                    increment_indices(&mut indices, &out_shape);
+                }
             }
             return Ok(result);
         }
