@@ -266,6 +266,145 @@ fn init_default_loops() -> UFuncRegistry {
     register_i32_binary!(BinaryOp::Mul, *);
     register_i32_binary!(BinaryOp::Div, /);
 
+    // Register uint64 binary loops
+    macro_rules! register_u64_binary {
+        ($op:expr, $rust_op:tt) => {
+            reg.register_binary(
+                $op,
+                TypeSignature::binary(DTypeKind::Uint64, DTypeKind::Uint64, DTypeKind::Uint64),
+                |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+                    let a = *(a_ptr.offset(a_off) as *const u64);
+                    let b = *(b_ptr.offset(b_off) as *const u64);
+                    let out = out_ptr as *mut u64;
+                    *out.add(out_idx) = a $rust_op b;
+                },
+            );
+        };
+    }
+
+    register_u64_binary!(BinaryOp::Add, +);
+    register_u64_binary!(BinaryOp::Sub, -);
+    register_u64_binary!(BinaryOp::Mul, *);
+    register_u64_binary!(BinaryOp::Div, /);
+
+    // Register uint32 binary loops
+    macro_rules! register_u32_binary {
+        ($op:expr, $rust_op:tt) => {
+            reg.register_binary(
+                $op,
+                TypeSignature::binary(DTypeKind::Uint32, DTypeKind::Uint32, DTypeKind::Uint32),
+                |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+                    let a = *(a_ptr.offset(a_off) as *const u32);
+                    let b = *(b_ptr.offset(b_off) as *const u32);
+                    let out = out_ptr as *mut u32;
+                    *out.add(out_idx) = a $rust_op b;
+                },
+            );
+        };
+    }
+
+    register_u32_binary!(BinaryOp::Add, +);
+    register_u32_binary!(BinaryOp::Sub, -);
+    register_u32_binary!(BinaryOp::Mul, *);
+    register_u32_binary!(BinaryOp::Div, /);
+
+    // Register uint8 binary loops
+    macro_rules! register_u8_binary {
+        ($op:expr, $rust_op:tt) => {
+            reg.register_binary(
+                $op,
+                TypeSignature::binary(DTypeKind::Uint8, DTypeKind::Uint8, DTypeKind::Uint8),
+                |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+                    let a = *(a_ptr.offset(a_off) as *const u8);
+                    let b = *(b_ptr.offset(b_off) as *const u8);
+                    let out = out_ptr as *mut u8;
+                    *out.add(out_idx) = a $rust_op b;
+                },
+            );
+        };
+    }
+
+    register_u8_binary!(BinaryOp::Add, +);
+    register_u8_binary!(BinaryOp::Sub, -);
+    register_u8_binary!(BinaryOp::Mul, *);
+    register_u8_binary!(BinaryOp::Div, /);
+
+    // Register bool binary loops (using logical ops for add/mul)
+    reg.register_binary(
+        BinaryOp::Add,
+        TypeSignature::binary(DTypeKind::Bool, DTypeKind::Bool, DTypeKind::Bool),
+        |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+            let a = *(a_ptr.offset(a_off) as *const u8) != 0;
+            let b = *(b_ptr.offset(b_off) as *const u8) != 0;
+            *(out_ptr as *mut u8).add(out_idx) = (a || b) as u8;
+        },
+    );
+    reg.register_binary(
+        BinaryOp::Mul,
+        TypeSignature::binary(DTypeKind::Bool, DTypeKind::Bool, DTypeKind::Bool),
+        |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+            let a = *(a_ptr.offset(a_off) as *const u8) != 0;
+            let b = *(b_ptr.offset(b_off) as *const u8) != 0;
+            *(out_ptr as *mut u8).add(out_idx) = (a && b) as u8;
+        },
+    );
+
+    // Register complex128 binary loops
+    reg.register_binary(
+        BinaryOp::Add,
+        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
+        |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+            let a = a_ptr.offset(a_off) as *const f64;
+            let b = b_ptr.offset(b_off) as *const f64;
+            let out = (out_ptr as *mut f64).add(out_idx * 2);
+            *out = *a + *b;
+            *out.add(1) = *a.add(1) + *b.add(1);
+        },
+    );
+    reg.register_binary(
+        BinaryOp::Sub,
+        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
+        |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+            let a = a_ptr.offset(a_off) as *const f64;
+            let b = b_ptr.offset(b_off) as *const f64;
+            let out = (out_ptr as *mut f64).add(out_idx * 2);
+            *out = *a - *b;
+            *out.add(1) = *a.add(1) - *b.add(1);
+        },
+    );
+    reg.register_binary(
+        BinaryOp::Mul,
+        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
+        |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+            let a = a_ptr.offset(a_off) as *const f64;
+            let b = b_ptr.offset(b_off) as *const f64;
+            let ar = *a; let ai = *a.add(1);
+            let br = *b; let bi = *b.add(1);
+            let out = (out_ptr as *mut f64).add(out_idx * 2);
+            *out = ar * br - ai * bi;
+            *out.add(1) = ar * bi + ai * br;
+        },
+    );
+    reg.register_binary(
+        BinaryOp::Div,
+        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
+        |a_ptr, a_off, b_ptr, b_off, out_ptr, out_idx| unsafe {
+            let a = a_ptr.offset(a_off) as *const f64;
+            let b = b_ptr.offset(b_off) as *const f64;
+            let ar = *a; let ai = *a.add(1);
+            let br = *b; let bi = *b.add(1);
+            let denom = br * br + bi * bi;
+            let out = (out_ptr as *mut f64).add(out_idx * 2);
+            if denom != 0.0 {
+                *out = (ar * br + ai * bi) / denom;
+                *out.add(1) = (ai * br - ar * bi) / denom;
+            } else {
+                *out = f64::NAN;
+                *out.add(1) = f64::NAN;
+            }
+        },
+    );
+
     // ========================================================================
     // Unary loops
     // ========================================================================
@@ -395,6 +534,48 @@ fn init_default_loops() -> UFuncRegistry {
         |src_ptr, src_off, out_ptr, out_idx| unsafe {
             let v = *(src_ptr.offset(src_off) as *const i32);
             *(out_ptr as *mut i32).add(out_idx) = v.abs();
+        },
+    );
+
+    // uint64 unary loops (Abs only - no Neg for unsigned)
+    reg.register_unary(
+        UnaryOp::Abs,
+        TypeSignature::unary(DTypeKind::Uint64, DTypeKind::Uint64),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const u64);
+            *(out_ptr as *mut u64).add(out_idx) = v;
+        },
+    );
+
+    // uint32 unary loops
+    reg.register_unary(
+        UnaryOp::Abs,
+        TypeSignature::unary(DTypeKind::Uint32, DTypeKind::Uint32),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const u32);
+            *(out_ptr as *mut u32).add(out_idx) = v;
+        },
+    );
+
+    // uint8 unary loops
+    reg.register_unary(
+        UnaryOp::Abs,
+        TypeSignature::unary(DTypeKind::Uint8, DTypeKind::Uint8),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const u8);
+            *(out_ptr as *mut u8).add(out_idx) = v;
+        },
+    );
+
+    // complex128 unary loops
+    reg.register_unary(
+        UnaryOp::Neg,
+        TypeSignature::unary(DTypeKind::Complex128, DTypeKind::Complex128),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let src = src_ptr.offset(src_off) as *const f64;
+            let out = (out_ptr as *mut f64).add(out_idx * 2);
+            *out = -(*src);
+            *out.add(1) = -(*src.add(1));
         },
     );
 
@@ -567,6 +748,188 @@ fn init_default_loops() -> UFuncRegistry {
             let acc = (acc_ptr as *mut i32).add(idx);
             let v = *(val_ptr.offset(byte_offset) as *const i32);
             if v < *acc { *acc = v; }
+        },
+    );
+
+    // uint64 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Uint64, DTypeKind::Uint64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u64).add(idx) = 0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u64);
+            *acc = acc.read().wrapping_add(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Uint64, DTypeKind::Uint64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u64).add(idx) = 1; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u64);
+            *acc = acc.read().wrapping_mul(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Uint64, DTypeKind::Uint64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u64).add(idx) = u64::MIN; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u64);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Uint64, DTypeKind::Uint64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u64).add(idx) = u64::MAX; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u64);
+            if v < *acc { *acc = v; }
+        },
+    );
+
+    // uint32 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Uint32, DTypeKind::Uint32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u32).add(idx) = 0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u32);
+            *acc = acc.read().wrapping_add(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Uint32, DTypeKind::Uint32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u32).add(idx) = 1; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u32);
+            *acc = acc.read().wrapping_mul(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Uint32, DTypeKind::Uint32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u32).add(idx) = u32::MIN; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u32);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Uint32, DTypeKind::Uint32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u32).add(idx) = u32::MAX; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u32);
+            if v < *acc { *acc = v; }
+        },
+    );
+
+    // uint8 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Uint8, DTypeKind::Uint8),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = 0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u8).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            *acc = acc.read().wrapping_add(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Uint8, DTypeKind::Uint8),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = 1; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u8).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            *acc = acc.read().wrapping_mul(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Uint8, DTypeKind::Uint8),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = u8::MIN; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u8).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Uint8, DTypeKind::Uint8),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = u8::MAX; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u8).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            if v < *acc { *acc = v; }
+        },
+    );
+
+    // bool reduce loops (Sum=any, Prod=all)
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Bool, DTypeKind::Bool),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = 0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u8).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            if v != 0 { *acc = 1; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Bool, DTypeKind::Bool),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = 1; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut u8).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            if v == 0 { *acc = 0; }
+        },
+    );
+
+    // complex128 reduce loops (Sum, Prod only - Max/Min not well-defined)
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Complex128, DTypeKind::Complex128),
+        |out_ptr, idx| unsafe {
+            let out = (out_ptr as *mut f64).add(idx * 2);
+            *out = 0.0;
+            *out.add(1) = 0.0;
+        },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f64).add(idx * 2);
+            let v = val_ptr.offset(byte_offset) as *const f64;
+            *acc += *v;
+            *acc.add(1) += *v.add(1);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Complex128, DTypeKind::Complex128),
+        |out_ptr, idx| unsafe {
+            let out = (out_ptr as *mut f64).add(idx * 2);
+            *out = 1.0;
+            *out.add(1) = 0.0;
+        },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f64).add(idx * 2);
+            let v = val_ptr.offset(byte_offset) as *const f64;
+            let ar = *acc; let ai = *acc.add(1);
+            let vr = *v; let vi = *v.add(1);
+            *acc = ar * vr - ai * vi;
+            *acc.add(1) = ar * vi + ai * vr;
         },
     );
 

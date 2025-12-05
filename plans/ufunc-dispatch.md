@@ -123,13 +123,24 @@ Tasks:
 - [x] Register reduction loops for f64, f32, i64, i32 (Sum, Prod, Max, Min)
 - [x] All 352 tests pass
 
+## More Dtype Loops
+
+Registered loops for all remaining dtypes:
+- [x] uint8, uint32, uint64 binary ops (Add, Sub, Mul, Div)
+- [x] bool binary ops (Add=or, Mul=and)
+- [x] complex128 binary ops (Add, Sub, Mul, Div)
+- [x] uint unary ops (Abs only - no Neg for unsigned)
+- [x] complex128 unary ops (Neg)
+- [x] uint reduce ops (Sum, Prod, Max, Min)
+- [x] bool reduce ops (Sum=any, Prod=all)
+- [x] complex128 reduce ops (Sum, Prod - no Max/Min)
+
 ## What's Next
 
 Potential next steps (in rough priority order):
-1. **More dtype loops** - Register loops for uint types, bool, complex128
-2. **Datetime validation** - Error on invalid ops like datetime+datetime (1 xfail test)
-3. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
-4. **Performance** - Consider SIMD loops for hot paths
+1. **Datetime validation** - Error on invalid ops like datetime+datetime (1 xfail test)
+2. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
+3. **Performance** - Consider SIMD loops for hot paths
 
 ## Why Hybrid?
 
