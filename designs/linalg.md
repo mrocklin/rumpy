@@ -57,8 +57,12 @@ let mat_ref = unsafe {
 - `qr` - QR decomposition (thin)
 - `svd` - SVD decomposition (thin)
 - `det`, `trace`, `norm` (Frobenius)
+- `inv` - matrix inverse via LU
+- `eigh` - symmetric eigendecomposition
+- `diag` - extract/create diagonal
 
 ## Future Work
 
-- `eig`, `eigvals` - eigenvalue decomposition
+- `eig` - general eigendecomposition (needs complex dtype)
+- `lstsq`, `pinv` - least squares, pseudo-inverse
 - More norm types

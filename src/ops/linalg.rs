@@ -1,7 +1,8 @@
-//! Linear algebra operations: trace, det, norm, qr, svd.
+//! Linear algebra operations.
 
 use crate::array::{DType, RumpyArray};
-use faer::MatRef;
+use faer::prelude::SolverCore;
+use faer::{ColRef, MatRef, Side};
 
 /// Copy a faer matrix to a new RumpyArray.
 fn faer_to_rumpy(mat: MatRef<'_, f64>) -> RumpyArray {
@@ -18,6 +19,19 @@ fn faer_to_rumpy(mat: MatRef<'_, f64>) -> RumpyArray {
     arr
 }
 
+/// Copy a faer column vector to a 1D RumpyArray.
+fn faer_col_to_rumpy(col: ColRef<'_, f64>) -> RumpyArray {
+    let n = col.nrows();
+    let arr = RumpyArray::zeros(vec![n], DType::float64());
+    for i in 0..n {
+        unsafe {
+            let ptr = arr.data_ptr().add(i * 8) as *mut f64;
+            *ptr = col[i];
+        }
+    }
+    arr
+}
+
 /// Compute trace of a 2D matrix (sum of diagonal elements).
 pub fn trace(a: &RumpyArray) -> Option<f64> {
     if a.ndim() != 2 {
@@ -29,6 +43,24 @@ pub fn trace(a: &RumpyArray) -> Option<f64> {
         sum += a.get_element(&[i, i]);
     }
     Some(sum)
+}
+
+/// Compute matrix inverse.
+pub fn inv(a: &RumpyArray) -> Option<RumpyArray> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let n = a.shape()[0];
+    if a.shape()[1] != n {
+        return None; // Must be square
+    }
+    if n == 0 {
+        return Some(RumpyArray::zeros(vec![0, 0], DType::float64()));
+    }
+
+    let fa = faer::Mat::<f64>::from_fn(n, n, |i, j| a.get_element(&[i, j]));
+    let inv = fa.partial_piv_lu().inverse();
+    Some(faer_to_rumpy(inv.as_ref()))
 }
 
 /// Compute determinant of a square matrix using LU decomposition.
@@ -115,24 +147,75 @@ pub fn svd(a: &RumpyArray) -> Option<(RumpyArray, RumpyArray, RumpyArray)> {
     if a.ndim() != 2 {
         return None;
     }
-    let (m, n) = (a.shape()[0], a.shape()[1]);
-    let k = m.min(n);
-    let fa = faer::Mat::<f64>::from_fn(m, n, |i, j| a.get_element(&[i, j]));
-
+    let fa = faer::Mat::<f64>::from_fn(a.shape()[0], a.shape()[1], |i, j| a.get_element(&[i, j]));
     let decomp = fa.thin_svd();
 
     let u = faer_to_rumpy(decomp.u());
+    let s = faer_col_to_rumpy(decomp.s_diagonal());
     let vt = faer_to_rumpy(decomp.v().transpose());
 
-    // S as 1D array
-    let s = RumpyArray::zeros(vec![k], DType::float64());
-    let fs = decomp.s_diagonal();
-    for i in 0..k {
-        unsafe {
-            let ptr = s.data_ptr().add(i * 8) as *mut f64;
-            *ptr = fs[i];
-        }
+    Some((u, s, vt))
+}
+
+/// Eigendecomposition of symmetric matrix: A = V @ diag(w) @ V^T.
+///
+/// Returns (w, V) where w is 1D array of eigenvalues (ascending), V has eigenvectors as columns.
+pub fn eigh(a: &RumpyArray) -> Option<(RumpyArray, RumpyArray)> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let n = a.shape()[0];
+    if a.shape()[1] != n {
+        return None; // Must be square
+    }
+    if n == 0 {
+        return Some((
+            RumpyArray::zeros(vec![0], DType::float64()),
+            RumpyArray::zeros(vec![0, 0], DType::float64()),
+        ));
     }
 
-    Some((u, s, vt))
+    let fa = faer::Mat::<f64>::from_fn(n, n, |i, j| a.get_element(&[i, j]));
+    let decomp = fa.selfadjoint_eigendecomposition(Side::Lower);
+
+    let w = faer_col_to_rumpy(decomp.s().column_vector());
+    let v = faer_to_rumpy(decomp.u());
+
+    Some((w, v))
+}
+
+/// Extract diagonal or construct diagonal matrix.
+///
+/// - 1D input: returns 2D diagonal matrix with input on diagonal
+/// - 2D input: returns 1D array of diagonal elements
+pub fn diag(a: &RumpyArray) -> Option<RumpyArray> {
+    match a.ndim() {
+        1 => {
+            // Create diagonal matrix from 1D array
+            let n = a.shape()[0];
+            let result = RumpyArray::zeros(vec![n, n], a.dtype());
+            for i in 0..n {
+                let val = a.get_element(&[i]);
+                unsafe {
+                    let ptr = result.data_ptr().add((i * n + i) * 8) as *mut f64;
+                    *ptr = val;
+                }
+            }
+            Some(result)
+        }
+        2 => {
+            // Extract diagonal from 2D matrix
+            let n = a.shape()[0].min(a.shape()[1]);
+            let result = RumpyArray::zeros(vec![n], a.dtype());
+            for i in 0..n {
+                let val = a.get_element(&[i, i]);
+                unsafe {
+                    let ptr = result.data_ptr().add(i * 8) as *mut f64;
+                    *ptr = val;
+                }
+            }
+            Some(result)
+        }
+        _ => None,
+    }
 }

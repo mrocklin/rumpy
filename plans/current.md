@@ -6,7 +6,7 @@
 
 ## Status
 
-**Complete**: 347 tests passing. Gufunc infrastructure with matmul, dot, inner, outer, solve, trace, det, norm, qr, svd.
+**Complete**: 356 tests passing. Linalg: matmul, dot, inner, outer, solve, trace, det, norm, qr, svd, inv, eigh, diag.
 
 ### Recent Work
 
@@ -28,6 +28,9 @@
 - [x] **norm**: `rp.norm(A)` - Frobenius norm (default)
 - [x] **qr**: `rp.qr(A)` - QR decomposition returning (Q, R)
 - [x] **svd**: `rp.svd(A)` - SVD decomposition returning (U, S, Vt)
+- [x] **inv**: `rp.inv(A)` - matrix inverse
+- [x] **eigh**: `rp.eigh(A)` - symmetric eigendecomposition (w, V)
+- [x] **diag**: `rp.diag(a)` - extract or create diagonal
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)

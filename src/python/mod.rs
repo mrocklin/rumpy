@@ -526,6 +526,30 @@ pub fn svd(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray, PyRumpyArr
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("svd requires 2D array"))
 }
 
+/// Matrix inverse.
+#[pyfunction]
+pub fn inv(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::linalg::inv(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("inv requires square 2D array"))
+}
+
+/// Eigendecomposition of symmetric matrix.
+#[pyfunction]
+pub fn eigh(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
+    crate::ops::linalg::eigh(&a.inner)
+        .map(|(w, v)| (PyRumpyArray::new(w), PyRumpyArray::new(v)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("eigh requires square 2D array"))
+}
+
+/// Extract diagonal or construct diagonal matrix.
+#[pyfunction]
+pub fn diag(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::linalg::diag(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("diag requires 1D or 2D array"))
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -610,5 +634,8 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(norm, m)?)?;
     m.add_function(wrap_pyfunction!(qr, m)?)?;
     m.add_function(wrap_pyfunction!(svd, m)?)?;
+    m.add_function(wrap_pyfunction!(inv, m)?)?;
+    m.add_function(wrap_pyfunction!(eigh, m)?)?;
+    m.add_function(wrap_pyfunction!(diag, m)?)?;
     Ok(())
 }

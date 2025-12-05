@@ -198,3 +198,92 @@ class TestSVD:
         U, S, Vt = rp.svd(A)
         assert float(S[0]) >= float(S[1])
         assert float(S[1]) >= float(S[2])
+
+
+class TestInv:
+    """Tests for matrix inverse."""
+
+    def test_2x2(self):
+        """Inverse of 2x2 matrix."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        A_inv = rp.inv(A)
+
+        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
+        nA_inv = np.linalg.inv(nA)
+        assert_eq(A_inv, nA_inv)
+
+    def test_identity(self):
+        """Inverse of identity is identity."""
+        I = rp.eye(3)
+        I_inv = rp.inv(I)
+        assert_eq(I_inv, I)
+
+    def test_inverse_product(self):
+        """A @ A^-1 = I."""
+        A = rp.asarray([[4.0, 7.0], [2.0, 6.0]])
+        A_inv = rp.inv(A)
+        result = A @ A_inv
+        assert_eq(result, rp.eye(2))
+
+
+class TestEigh:
+    """Tests for symmetric eigendecomposition."""
+
+    def test_symmetric_2x2(self):
+        """Eigendecomposition of symmetric 2x2."""
+        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
+        w, V = rp.eigh(A)
+
+        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
+        nw, nV = np.linalg.eigh(nA)
+
+        # Eigenvalues should match (both ascending)
+        assert_eq(w, rp.asarray(nw))
+
+    def test_reconstruct(self):
+        """V @ diag(w) @ V^T should reconstruct A."""
+        A = rp.asarray([[3.0, 1.0], [1.0, 3.0]])
+        w, V = rp.eigh(A)
+
+        # Reconstruct: V @ diag(w) @ V.T
+        W = rp.diag(w)
+        reconstructed = V @ W @ V.T
+        assert_eq(reconstructed, A)
+
+    def test_orthogonal_eigenvectors(self):
+        """Eigenvectors should be orthonormal."""
+        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
+        w, V = rp.eigh(A)
+
+        # V^T @ V = I
+        VtV = V.T @ V
+        assert_eq(VtV, rp.eye(2))
+
+
+class TestDiag:
+    """Tests for diagonal utility."""
+
+    def test_extract_diagonal(self):
+        """Extract diagonal from 2D matrix."""
+        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+        d = rp.diag(A)
+
+        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+        nd = np.diag(nA)
+        assert_eq(d, nd)
+
+    def test_create_diagonal(self):
+        """Create diagonal matrix from 1D array."""
+        v = rp.asarray([1.0, 2.0, 3.0])
+        D = rp.diag(v)
+
+        nv = np.array([1.0, 2.0, 3.0])
+        nD = np.diag(nv)
+        assert_eq(D, nD)
+
+    def test_rectangular(self):
+        """Extract diagonal from rectangular matrix."""
+        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        d = rp.diag(A)
+        assert d.shape == (2,)
+        assert_eq(d, rp.asarray([1.0, 5.0]))
