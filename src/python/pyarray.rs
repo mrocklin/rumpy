@@ -345,6 +345,24 @@ impl PyRumpyArray {
         Self::new(self.inner.abs())
     }
 
+    fn __float__(&self) -> PyResult<f64> {
+        if self.inner.size() != 1 {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "only size-1 arrays can be converted to Python scalars",
+            ));
+        }
+        Ok(self.inner.get_element(&vec![0; self.inner.ndim()]))
+    }
+
+    fn __int__(&self) -> PyResult<i64> {
+        if self.inner.size() != 1 {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "only size-1 arrays can be converted to Python scalars",
+            ));
+        }
+        Ok(self.inner.get_element(&vec![0; self.inner.ndim()]) as i64)
+    }
+
     // Comparison operations
 
     fn __gt__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {

@@ -52,7 +52,7 @@ pub fn solve(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
     let fx = plu.solve(&fb);
 
     // Copy result to output
-    let mut result = RumpyArray::zeros(vec![n, m], a.dtype());
+    let result = RumpyArray::zeros(vec![n, m], a.dtype());
     let result_ptr = result.data_ptr() as *mut u8;
     let r_stride_0 = result.strides()[0];
     let r_stride_1 = result.strides()[1];

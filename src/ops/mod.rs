@@ -1,7 +1,9 @@
 //! Element-wise operations (ufunc-style).
 
+pub mod dot;
 pub mod gufunc;
 pub mod inner;
+pub mod linalg;
 pub mod matmul;
 pub mod outer;
 pub mod solve;

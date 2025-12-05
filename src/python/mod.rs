@@ -449,6 +449,16 @@ pub fn matmul(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         })
 }
 
+/// Dot product with numpy semantics.
+#[pyfunction]
+pub fn dot(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::dot::dot(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("dot: incompatible shapes")
+        })
+}
+
 /// Inner product of two arrays.
 #[pyfunction]
 pub fn inner(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
@@ -477,6 +487,68 @@ pub fn solve(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         .ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err("solve: invalid dimensions or singular matrix")
         })
+}
+
+/// Compute trace of a matrix (sum of diagonal elements).
+#[pyfunction]
+pub fn trace(a: &PyRumpyArray) -> PyResult<f64> {
+    crate::ops::linalg::trace(&a.inner)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("trace requires 2D array"))
+}
+
+/// Compute determinant of a square matrix.
+#[pyfunction]
+pub fn det(a: &PyRumpyArray) -> PyResult<f64> {
+    crate::ops::linalg::det(&a.inner)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("det requires square 2D array"))
+}
+
+/// Compute matrix/vector norm.
+#[pyfunction]
+#[pyo3(signature = (a, ord=None))]
+pub fn norm(a: &PyRumpyArray, ord: Option<&str>) -> PyResult<f64> {
+    crate::ops::linalg::norm(&a.inner, ord)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("unsupported norm type"))
+}
+
+/// QR decomposition: A = QR.
+#[pyfunction]
+pub fn qr(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
+    crate::ops::linalg::qr(&a.inner)
+        .map(|(q, r)| (PyRumpyArray::new(q), PyRumpyArray::new(r)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("qr requires 2D array"))
+}
+
+/// SVD decomposition: A = U @ diag(S) @ Vt.
+#[pyfunction]
+pub fn svd(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray, PyRumpyArray)> {
+    crate::ops::linalg::svd(&a.inner)
+        .map(|(u, s, vt)| (PyRumpyArray::new(u), PyRumpyArray::new(s), PyRumpyArray::new(vt)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("svd requires 2D array"))
+}
+
+/// Matrix inverse.
+#[pyfunction]
+pub fn inv(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::linalg::inv(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("inv requires square 2D array"))
+}
+
+/// Eigendecomposition of symmetric matrix.
+#[pyfunction]
+pub fn eigh(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
+    crate::ops::linalg::eigh(&a.inner)
+        .map(|(w, v)| (PyRumpyArray::new(w), PyRumpyArray::new(v)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("eigh requires square 2D array"))
+}
+
+/// Extract diagonal or construct diagonal matrix.
+#[pyfunction]
+pub fn diag(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::linalg::diag(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("diag requires 1D or 2D array"))
 }
 
 /// Conditional selection: where(condition, x, y).
@@ -556,8 +628,17 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(unique, m)?)?;
     // Linear algebra
     m.add_function(wrap_pyfunction!(matmul, m)?)?;
+    m.add_function(wrap_pyfunction!(dot, m)?)?;
     m.add_function(wrap_pyfunction!(inner, m)?)?;
     m.add_function(wrap_pyfunction!(outer, m)?)?;
     m.add_function(wrap_pyfunction!(solve, m)?)?;
+    m.add_function(wrap_pyfunction!(trace, m)?)?;
+    m.add_function(wrap_pyfunction!(det, m)?)?;
+    m.add_function(wrap_pyfunction!(norm, m)?)?;
+    m.add_function(wrap_pyfunction!(qr, m)?)?;
+    m.add_function(wrap_pyfunction!(svd, m)?)?;
+    m.add_function(wrap_pyfunction!(inv, m)?)?;
+    m.add_function(wrap_pyfunction!(eigh, m)?)?;
+    m.add_function(wrap_pyfunction!(diag, m)?)?;
     Ok(())
 }

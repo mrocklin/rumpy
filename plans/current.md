@@ -6,7 +6,7 @@
 
 ## Status
 
-**Complete**: 333 tests passing. Random module with Generator class.
+**Complete**: Random module with Generator class. Linalg: matmul, dot, inner, outer, solve, trace, det, norm, qr, svd, inv, eigh, diag.
 
 ### Recent Work
 
@@ -32,9 +32,18 @@
   - 2D matrices, 1D vectors, batched (3D+)
   - Full numpy broadcast semantics
   - Uses faer for optimized matrix multiplication
+- [x] **dot**: `rp.dot(a, b)` - numpy-compatible dot product
 - [x] **inner**: `rp.inner(a, b)` - inner product with gufunc broadcasting
 - [x] **outer**: `rp.outer(a, b)` - outer product (flattens inputs)
 - [x] **solve**: `rp.solve(A, b)` - solve linear system Ax=b via LU decomposition
+- [x] **trace**: `rp.trace(A)` - sum of diagonal elements
+- [x] **det**: `rp.det(A)` - determinant via LU decomposition
+- [x] **norm**: `rp.norm(A)` - Frobenius norm (default)
+- [x] **qr**: `rp.qr(A)` - QR decomposition returning (Q, R)
+- [x] **svd**: `rp.svd(A)` - SVD decomposition returning (U, S, Vt)
+- [x] **inv**: `rp.inv(A)` - matrix inverse
+- [x] **eigh**: `rp.eigh(A)` - symmetric eigendecomposition (w, V)
+- [x] **diag**: `rp.diag(a)` - extract or create diagonal
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)
@@ -54,18 +63,17 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: More Random & Linalg
+## Next
 
 ### Random (Phase 2)
 - `poisson(lam, size)` - Poisson distribution
 - `binomial(n, p, size)` - binomial distribution
 - `choice(a, size)` - random choice from array
 - `shuffle(x)` - in-place shuffle
-- (Optional) Ziggurat algorithm for exact numpy normal/exponential matching
 
-### Linalg - see `designs/linalg.md`
-- `dot()` - has complex dimension-dependent semantics
-- `linalg.*` - determinant, trace, etc. (faer supports these)
+### Linalg
+- `eig`, `eigvals` - eigenvalue decomposition
+- More norm types (1, 2, inf, nuclear)
 
 ## Known Limitations (Future Work)
 
