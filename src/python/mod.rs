@@ -74,6 +74,59 @@ pub fn full(shape: &Bound<'_, PyAny>, fill_value: f64, dtype: Option<&str>) -> P
     Ok(PyRumpyArray::new(RumpyArray::full(shape, fill_value, dtype)))
 }
 
+/// Create uninitialized array.
+#[pyfunction]
+#[pyo3(signature = (shape, dtype=None))]
+pub fn empty(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = parse_shape(shape)?;
+    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    // For simplicity, we just create zeros - truly uninitialized would require unsafe
+    Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
+}
+
+/// Create array of zeros with same shape and dtype as input.
+#[pyfunction]
+#[pyo3(signature = (a, dtype=None))]
+pub fn zeros_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = a.inner.shape().to_vec();
+    let dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+    Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
+}
+
+/// Create array of ones with same shape and dtype as input.
+#[pyfunction]
+#[pyo3(signature = (a, dtype=None))]
+pub fn ones_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = a.inner.shape().to_vec();
+    let dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+    Ok(PyRumpyArray::new(RumpyArray::ones(shape, dtype)))
+}
+
+/// Create uninitialized array with same shape and dtype as input.
+#[pyfunction]
+#[pyo3(signature = (a, dtype=None))]
+pub fn empty_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = a.inner.shape().to_vec();
+    let dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+    // For simplicity, we just create zeros - truly uninitialized would require unsafe
+    Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
+}
+
+/// Return a contiguous copy of the array.
+#[pyfunction]
+pub fn copy(a: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(a.inner.copy())
+}
+
 /// Convert input to an array.
 /// Supports: PyRumpyArray, objects with __array_interface__, and Python lists.
 #[pyfunction]
@@ -334,6 +387,91 @@ pub fn arccos(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
 #[pyfunction]
 pub fn arctan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
     unary_result_to_py(x.inner.arctan())
+}
+
+#[pyfunction]
+pub fn abs(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.abs())
+}
+
+/// Test if all elements evaluate to True.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn all(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(if x.inner.all() { 1.0 } else { 0.0 })),
+        Some(ax) => {
+            if ax >= x.inner.ndim() {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "axis {} is out of bounds for array of dimension {}",
+                    ax, x.inner.ndim()
+                )));
+            }
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.all_axis(ax))))
+        }
+    }
+}
+
+/// Test if any element evaluates to True.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn any(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(if x.inner.any() { 1.0 } else { 0.0 })),
+        Some(ax) => {
+            if ax >= x.inner.ndim() {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "axis {} is out of bounds for array of dimension {}",
+                    ax, x.inner.ndim()
+                )));
+            }
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.any_axis(ax))))
+        }
+    }
+}
+
+/// Clip values to a range.
+#[pyfunction]
+#[pyo3(signature = (x, a_min=None, a_max=None))]
+pub fn clip(x: &PyRumpyArray, a_min: Option<f64>, a_max: Option<f64>) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.clip(a_min, a_max))
+}
+
+/// Round to the given number of decimals.
+#[pyfunction]
+#[pyo3(signature = (x, decimals=0))]
+pub fn round(x: &PyRumpyArray, decimals: i32) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.round(decimals))
+}
+
+/// Cumulative sum along axis (or flattened if axis is None).
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn cumsum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<PyRumpyArray> {
+    if let Some(ax) = axis {
+        if ax >= x.inner.ndim() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "axis {} is out of bounds for array of dimension {}",
+                ax, x.inner.ndim()
+            )));
+        }
+    }
+    Ok(PyRumpyArray::new(x.inner.cumsum(axis)))
+}
+
+/// Cumulative product along axis (or flattened if axis is None).
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn cumprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<PyRumpyArray> {
+    if let Some(ax) = axis {
+        if ax >= x.inner.ndim() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "axis {} is out of bounds for array of dimension {}",
+                ax, x.inner.ndim()
+            )));
+        }
+    }
+    Ok(PyRumpyArray::new(x.inner.cumprod(axis)))
 }
 
 /// Concatenate arrays along an axis.
@@ -635,6 +773,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(linspace, m)?)?;
     m.add_function(wrap_pyfunction!(eye, m)?)?;
     m.add_function(wrap_pyfunction!(full, m)?)?;
+    m.add_function(wrap_pyfunction!(empty, m)?)?;
+    m.add_function(wrap_pyfunction!(zeros_like, m)?)?;
+    m.add_function(wrap_pyfunction!(ones_like, m)?)?;
+    m.add_function(wrap_pyfunction!(empty_like, m)?)?;
+    m.add_function(wrap_pyfunction!(copy, m)?)?;
     m.add_function(wrap_pyfunction!(asarray, m)?)?;
     // Math ufuncs
     m.add_function(wrap_pyfunction!(sqrt, m)?)?;
@@ -648,6 +791,13 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arcsin, m)?)?;
     m.add_function(wrap_pyfunction!(arccos, m)?)?;
     m.add_function(wrap_pyfunction!(arctan, m)?)?;
+    m.add_function(wrap_pyfunction!(abs, m)?)?;
+    m.add_function(wrap_pyfunction!(all, m)?)?;
+    m.add_function(wrap_pyfunction!(any, m)?)?;
+    m.add_function(wrap_pyfunction!(clip, m)?)?;
+    m.add_function(wrap_pyfunction!(round, m)?)?;
+    m.add_function(wrap_pyfunction!(cumsum, m)?)?;
+    m.add_function(wrap_pyfunction!(cumprod, m)?)?;
     // Conditional
     m.add_function(wrap_pyfunction!(where_fn, m)?)?;
     // Shape manipulation

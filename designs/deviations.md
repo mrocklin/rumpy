@@ -31,3 +31,17 @@ Rumpy accepts dtype as strings (`"float64"`) not NumPy dtype objects (`np.float6
 `integers()` uses Lemire's algorithm for bounded integers, which differs from numpy's algorithm. Values are uniformly distributed but not bit-identical.
 
 `normal()` and `exponential()` use Box-Muller and inverse transform respectively, rather than numpy's ziggurat algorithm. Statistically equivalent but not bit-identical.
+
+## `round` - Half-Rounding Behavior
+
+NumPy uses "round half to even" (banker's rounding) where 0.5 rounds to the nearest even number:
+```python
+np.round([1.5, 2.5, 3.5, 4.5])  # -> [2., 2., 4., 4.]
+```
+
+Rust (and rumpy) uses "round half away from zero":
+```python
+rp.round([1.5, 2.5, 3.5, 4.5])  # -> [2., 3., 4., 5.]
+```
+
+This only affects values exactly at 0.5. For most use cases the difference is negligible.

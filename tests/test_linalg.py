@@ -287,3 +287,33 @@ class TestDiag:
         d = rp.diag(A)
         assert d.shape == (2,)
         assert_eq(d, rp.asarray([1.0, 5.0]))
+
+
+class TestDotMethod:
+    """Tests for .dot() array method."""
+
+    def test_1d_dot_1d(self):
+        """Dot product of two 1D arrays."""
+        a = rp.asarray([1.0, 2.0, 3.0])
+        b = rp.asarray([4.0, 5.0, 6.0])
+        r = a.dot(b)
+        n = np.array([1.0, 2.0, 3.0]).dot(np.array([4.0, 5.0, 6.0]))
+        assert abs(float(r) - n) < 1e-10
+
+    def test_2d_dot_1d(self):
+        """Matrix-vector dot product."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        v = rp.asarray([1.0, 2.0])
+        r = A.dot(v)
+        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
+        nv = np.array([1.0, 2.0])
+        assert_eq(r, nA.dot(nv))
+
+    def test_2d_dot_2d(self):
+        """Matrix-matrix dot product."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        B = rp.asarray([[5.0, 6.0], [7.0, 8.0]])
+        r = A.dot(B)
+        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
+        nB = np.array([[5.0, 6.0], [7.0, 8.0]])
+        assert_eq(r, nA.dot(nB))

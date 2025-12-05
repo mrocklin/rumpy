@@ -67,6 +67,45 @@ fn check_axis(axis: usize, ndim: usize) -> PyResult<()> {
     }
 }
 
+/// Apply keepdims to a reduction result.
+fn apply_keepdims(arr: RumpyArray, axis: usize) -> RumpyArray {
+    // Insert a dimension of size 1 at the reduced axis position
+    arr.expand_dims(axis).unwrap_or(arr)
+}
+
+/// Helper for scalar reductions with keepdims support.
+fn scalar_reduction_with_keepdims(
+    arr: &RumpyArray,
+    value: f64,
+    keepdims: bool,
+    dtype: DType,
+) -> ReductionResult {
+    if keepdims {
+        let ones_shape = vec![1; arr.ndim()];
+        let mut result = RumpyArray::zeros(ones_shape, dtype.clone());
+        let buffer = result.buffer_mut();
+        let result_buffer = std::sync::Arc::get_mut(buffer).expect("buffer must be unique");
+        let ptr = result_buffer.as_mut_ptr();
+        unsafe { dtype.ops().write_f64(ptr, 0, value); }
+        ReductionResult::Array(PyRumpyArray::new(result))
+    } else {
+        ReductionResult::Scalar(value)
+    }
+}
+
+/// Helper for axis reductions with keepdims support.
+fn axis_reduction_with_keepdims(
+    result: RumpyArray,
+    axis: usize,
+    keepdims: bool,
+) -> ReductionResult {
+    if keepdims {
+        ReductionResult::Array(PyRumpyArray::new(apply_keepdims(result, axis)))
+    } else {
+        ReductionResult::Array(PyRumpyArray::new(result))
+    }
+}
+
 /// Python-visible ndarray class.
 #[pyclass(name = "ndarray", module = "rumpy")]
 pub struct PyRumpyArray {
@@ -415,79 +454,79 @@ impl PyRumpyArray {
 
     // Reductions
 
-    #[pyo3(signature = (axis=None))]
-    fn sum(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn sum(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.sum())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.sum(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.sum_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.sum_axis(ax), ax, keepdims))
             }
         }
     }
 
-    #[pyo3(signature = (axis=None))]
-    fn prod(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn prod(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.prod())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.prod(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.prod_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.prod_axis(ax), ax, keepdims))
             }
         }
     }
 
-    #[pyo3(signature = (axis=None))]
-    fn max(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn max(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.max())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.max(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.max_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.max_axis(ax), ax, keepdims))
             }
         }
     }
 
-    #[pyo3(signature = (axis=None))]
-    fn min(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn min(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.min())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.min(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.min_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.min_axis(ax), ax, keepdims))
             }
         }
     }
 
-    #[pyo3(signature = (axis=None))]
-    fn mean(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn mean(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.mean())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.mean(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.mean_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.mean_axis(ax), ax, keepdims))
             }
         }
     }
 
-    #[pyo3(signature = (axis=None))]
-    fn var(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn var(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.var())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.var(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.var_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.var_axis(ax), ax, keepdims))
             }
         }
     }
 
-    #[pyo3(signature = (axis=None))]
-    fn std(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn std(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
-            None => Ok(ReductionResult::Scalar(self.inner.std())),
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.std(), keepdims, self.inner.dtype())),
             Some(ax) => {
                 check_axis(ax, self.inner.ndim())?;
-                Ok(ReductionResult::Array(Self::new(self.inner.std_axis(ax))))
+                Ok(axis_reduction_with_keepdims(self.inner.std_axis(ax), ax, keepdims))
             }
         }
     }
@@ -498,6 +537,119 @@ impl PyRumpyArray {
 
     fn argmin(&self) -> usize {
         self.inner.argmin()
+    }
+
+    /// Dot product with numpy semantics.
+    fn dot(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+            crate::ops::dot::dot(&self.inner, &other_arr.inner)
+                .map(Self::new)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err("dot: incompatible shapes")
+                })
+        } else {
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "dot operand must be ndarray",
+            ))
+        }
+    }
+
+    /// Return a flattened copy of the array.
+    fn flatten(&self) -> Self {
+        let size = self.inner.size();
+        Self::new(self.inner.copy().reshape(vec![size]).unwrap())
+    }
+
+    /// Return a flattened array (view if possible, copy otherwise).
+    fn ravel(&self) -> Self {
+        let size = self.inner.size();
+        // Try to return a view, fall back to copy
+        if let Some(view) = self.inner.reshape(vec![size]) {
+            Self::new(view)
+        } else {
+            self.flatten()
+        }
+    }
+
+    /// Return the array as a (possibly nested) Python list.
+    fn tolist<'py>(&self, py: Python<'py>) -> PyResult<PyObject> {
+        self.inner.to_pylist(py)
+    }
+
+    /// Extract a scalar from a size-1 array.
+    fn item(&self) -> PyResult<f64> {
+        if self.inner.size() != 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "can only convert an array of size 1 to a Python scalar",
+            ));
+        }
+        Ok(self.inner.get_element(&vec![0; self.inner.ndim()]))
+    }
+
+    /// Test if all elements evaluate to True.
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn all(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+        let val = if self.inner.all() { 1.0 } else { 0.0 };
+        match axis {
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, val, keepdims, DType::bool())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(axis_reduction_with_keepdims(self.inner.all_axis(ax), ax, keepdims))
+            }
+        }
+    }
+
+    /// Test if any element evaluates to True.
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn any(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+        let val = if self.inner.any() { 1.0 } else { 0.0 };
+        match axis {
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, val, keepdims, DType::bool())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(axis_reduction_with_keepdims(self.inner.any_axis(ax), ax, keepdims))
+            }
+        }
+    }
+
+    /// Clip values to a range.
+    #[pyo3(signature = (a_min=None, a_max=None))]
+    fn clip(&self, a_min: Option<f64>, a_max: Option<f64>) -> Self {
+        Self::new(self.inner.clip(a_min, a_max))
+    }
+
+    /// Round to the given number of decimals.
+    #[pyo3(signature = (decimals=0))]
+    fn round(&self, decimals: i32) -> PyResult<Self> {
+        Ok(Self::new(self.inner.round(decimals)))
+    }
+
+    /// Cumulative sum along axis (or flattened if axis is None).
+    #[pyo3(signature = (axis=None))]
+    fn cumsum(&self, axis: Option<usize>) -> PyResult<Self> {
+        if let Some(ax) = axis {
+            if ax >= self.inner.ndim() {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "axis {} is out of bounds for array of dimension {}",
+                    ax, self.inner.ndim()
+                )));
+            }
+        }
+        Ok(Self::new(self.inner.cumsum(axis)))
+    }
+
+    /// Cumulative product along axis (or flattened if axis is None).
+    #[pyo3(signature = (axis=None))]
+    fn cumprod(&self, axis: Option<usize>) -> PyResult<Self> {
+        if let Some(ax) = axis {
+            if ax >= self.inner.ndim() {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "axis {} is out of bounds for array of dimension {}",
+                    ax, self.inner.ndim()
+                )));
+            }
+        }
+        Ok(Self::new(self.inner.cumprod(axis)))
     }
 
 }
