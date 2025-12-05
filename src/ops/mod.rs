@@ -161,9 +161,45 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
     Ok(result)
 }
 
+/// Check if dtype is an integer type.
+fn is_integer_kind(kind: &crate::array::dtype::DTypeKind) -> bool {
+    use crate::array::dtype::DTypeKind;
+    matches!(kind, DTypeKind::Int16 | DTypeKind::Int32 | DTypeKind::Int64 |
+             DTypeKind::Uint8 | DTypeKind::Uint16 | DTypeKind::Uint32 | DTypeKind::Uint64)
+}
+
 /// Apply a binary operation element-wise with broadcasting.
 fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyArray, BinaryOpError> {
     use crate::array::dtype::DTypeKind;
+    use crate::array::DType;
+
+    // NumPy truediv (/) always returns float for integer inputs
+    if op == BinaryOp::Div {
+        let a_int = is_integer_kind(&a.dtype().kind());
+        let b_int = is_integer_kind(&b.dtype().kind());
+        if a_int && b_int {
+            // Both integers → always float64 (NumPy behavior)
+            let a_f64 = a.astype(DType::float64());
+            let b_f64 = b.astype(DType::float64());
+            return map_binary_op(&a_f64, &b_f64, op);
+        } else if a_int || b_int {
+            // One integer, one float → convert int to float based on itemsize
+            let int_to_float = |arr: &RumpyArray| -> RumpyArray {
+                let itemsize = arr.dtype().itemsize();
+                let target = if itemsize <= 1 {
+                    DType::float16()
+                } else if itemsize <= 2 {
+                    DType::float32()
+                } else {
+                    DType::float64()
+                };
+                arr.astype(target)
+            };
+            let a_float = if a_int { int_to_float(a) } else { a.clone() };
+            let b_float = if b_int { int_to_float(b) } else { b.clone() };
+            return map_binary_op(&a_float, &b_float, op);
+        }
+    }
 
     let out_shape = broadcast_shapes(a.shape(), b.shape()).ok_or(BinaryOpError::ShapeMismatch)?;
     let a_bc = a.broadcast_to(&out_shape).ok_or(BinaryOpError::ShapeMismatch)?;

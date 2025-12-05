@@ -369,8 +369,9 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
     let is_f64 = |k: &DTypeKind| matches!(k, Float64);
     let is_float = |k: &DTypeKind| matches!(k, Float16 | Float32 | Float64);
 
-    // Helper to check if dtype is "large" int (32+ bits)
-    let is_large_int = |k: &DTypeKind| matches!(k, Int32 | Int64 | Uint32 | Uint64);
+    // Helper to check int size categories
+    let is_large_int = |k: &DTypeKind| matches!(k, Int32 | Int64 | Uint32 | Uint64);  // 4+ bytes
+    let is_medium_int = |k: &DTypeKind| matches!(k, Int16 | Uint16);  // 2 bytes
 
     // Float + int combinations
     if is_float(&ak) || is_float(&bk) {
@@ -384,6 +385,10 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
         // int32/int64/uint32/uint64 + float16 -> float64
         if is_f16(float_kind) && is_large_int(int_kind) {
             return DType::float64();
+        }
+        // int16/uint16 + float16 -> float32 (medium ints exceed float16 precision)
+        if is_f16(float_kind) && is_medium_int(int_kind) {
+            return DType::float32();
         }
 
         // Float + float: use higher precision
@@ -399,7 +404,30 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
     }
 
     // Both are integers (or bool)
-    // Use priority system for int+int
+    // NumPy promotes signed+unsigned to a type that can hold both ranges
+    let is_signed = |k: &DTypeKind| matches!(k, Int16 | Int32 | Int64);
+    let is_unsigned = |k: &DTypeKind| matches!(k, Uint8 | Uint16 | Uint32 | Uint64);
+
+    if (is_signed(&ak) && is_unsigned(&bk)) || (is_unsigned(&ak) && is_signed(&bk)) {
+        let (signed_dtype, unsigned_dtype) = if is_signed(&ak) { (a, b) } else { (b, a) };
+        let signed_size = signed_dtype.ops().itemsize();
+        let unsigned_size = unsigned_dtype.ops().itemsize();
+
+        // If signed type is larger than unsigned, it can hold unsigned range
+        if signed_size > unsigned_size {
+            return signed_dtype.clone();
+        }
+        // Same size or unsigned larger: need next larger signed type
+        let max_size = signed_size.max(unsigned_size);
+        return match max_size {
+            1 => DType::int16(),   // uint8 + int8 -> int16
+            2 => DType::int32(),   // uint16 + int16 -> int32
+            4 => DType::int64(),   // uint32 + int32 -> int64
+            _ => DType::float64(), // uint64 + int64 -> float64 (no int can hold both)
+        };
+    }
+
+    // Same sign integers: use priority system
     if a.ops().promotion_priority() >= b.ops().promotion_priority() {
         a.clone()
     } else {

@@ -141,3 +141,63 @@ class TestTranscendentalPromotion:
         assert r_result.dtype == str(n_result.dtype), f"Expected {n_result.dtype}, got {r_result.dtype}"
         # Compare values
         assert_eq(r_result, n_result)
+
+
+ALL_DTYPES = [
+    "int64", "int32", "int16",
+    "uint64", "uint32", "uint16", "uint8",
+    "float64", "float32", "float16",
+    "complex128",
+]
+
+# Exclude complex128 for operations not yet implemented
+NUMERIC_DTYPES = [d for d in ALL_DTYPES if d != "complex128"]
+
+
+class TestBinaryDtypePromotion:
+    """Test binary ops return same dtype and values as NumPy across dtype pairs."""
+
+    @pytest.mark.parametrize("dtype_a", ALL_DTYPES)
+    @pytest.mark.parametrize("dtype_b", ALL_DTYPES)
+    def test_div_dtype_and_values(self, dtype_a, dtype_b):
+        """Division should return same dtype and values as NumPy."""
+        r_a = rp.asarray([6, 12, 24], dtype=dtype_a)
+        r_b = rp.asarray([2, 3, 4], dtype=dtype_b)
+        n_a = np.array([6, 12, 24], dtype=dtype_a)
+        n_b = np.array([2, 3, 4], dtype=dtype_b)
+
+        r_result = r_a / r_b
+        n_result = n_a / n_b
+
+        assert r_result.dtype == str(n_result.dtype), f"{dtype_a}/{dtype_b}: Expected {n_result.dtype}, got {r_result.dtype}"
+        assert_eq(r_result, n_result)
+
+    @pytest.mark.parametrize("dtype_a", ALL_DTYPES)
+    @pytest.mark.parametrize("dtype_b", ALL_DTYPES)
+    def test_add_dtype_and_values(self, dtype_a, dtype_b):
+        """Addition should return same dtype and values as NumPy."""
+        r_a = rp.asarray([1, 2, 3], dtype=dtype_a)
+        r_b = rp.asarray([4, 5, 6], dtype=dtype_b)
+        n_a = np.array([1, 2, 3], dtype=dtype_a)
+        n_b = np.array([4, 5, 6], dtype=dtype_b)
+
+        r_result = r_a + r_b
+        n_result = n_a + n_b
+
+        assert r_result.dtype == str(n_result.dtype), f"{dtype_a}+{dtype_b}: Expected {n_result.dtype}, got {r_result.dtype}"
+        assert_eq(r_result, n_result)
+
+    @pytest.mark.parametrize("dtype_a", NUMERIC_DTYPES)
+    @pytest.mark.parametrize("dtype_b", NUMERIC_DTYPES)
+    def test_pow_dtype_and_values(self, dtype_a, dtype_b):
+        """Power should return same dtype and values as NumPy."""
+        r_a = rp.asarray([2, 3, 4], dtype=dtype_a)
+        r_b = rp.asarray([2, 2, 2], dtype=dtype_b)
+        n_a = np.array([2, 3, 4], dtype=dtype_a)
+        n_b = np.array([2, 2, 2], dtype=dtype_b)
+
+        r_result = r_a ** r_b
+        n_result = n_a ** n_b
+
+        assert r_result.dtype == str(n_result.dtype), f"{dtype_a}**{dtype_b}: Expected {n_result.dtype}, got {r_result.dtype}"
+        assert_eq(r_result, n_result)
