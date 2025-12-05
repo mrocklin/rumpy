@@ -73,6 +73,36 @@ class TestReshape:
         with pytest.raises(ValueError):
             r.reshape(3, 4)  # 12 != 10
 
+    def test_reshape_infer_dimension(self):
+        """Test reshape with -1 to infer dimension."""
+        r = rp.arange(12)
+        n = np.arange(12, dtype=np.float64)
+        assert_eq(r.reshape(3, -1), n.reshape(3, -1))
+        assert r.reshape(3, -1).shape == (3, 4)
+
+    def test_reshape_infer_first_dim(self):
+        r = rp.arange(12)
+        n = np.arange(12, dtype=np.float64)
+        assert_eq(r.reshape(-1, 4), n.reshape(-1, 4))
+        assert r.reshape(-1, 4).shape == (3, 4)
+
+    def test_reshape_infer_flatten(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(r.reshape(-1), n.reshape(-1))
+        assert r.reshape(-1).shape == (12,)
+
+    def test_reshape_infer_3d(self):
+        r = rp.arange(24)
+        n = np.arange(24, dtype=np.float64)
+        assert_eq(r.reshape(2, -1, 4), n.reshape(2, -1, 4))
+        assert r.reshape(2, -1, 4).shape == (2, 3, 4)
+
+    def test_reshape_multiple_infer_error(self):
+        r = rp.arange(12)
+        with pytest.raises(ValueError):
+            r.reshape(-1, -1)  # Can't have multiple -1
+
 
 class TestTranspose:
     """Test transpose operations."""

@@ -223,3 +223,27 @@ class TestCopyModule:
         arr = rp.arange(10, dtype="int32")
         r = rp.copy(arr)
         assert r.dtype == "int32"
+
+
+class TestArrayConstructor:
+    """Test rp.array() constructor."""
+
+    def test_from_list_1d(self):
+        r = rp.array([1, 2, 3, 4])
+        n = np.array([1, 2, 3, 4], dtype=np.float64)
+        assert_eq(r, n)
+
+    def test_from_list_2d(self):
+        r = rp.array([[1, 2], [3, 4]])
+        n = np.array([[1, 2], [3, 4]], dtype=np.float64)
+        assert_eq(r, n)
+
+    def test_with_dtype(self):
+        r = rp.array([1, 2, 3], dtype="int32")
+        assert r.dtype == "int32"
+        assert r.shape == (3,)
+
+    def test_from_rumpy_array(self):
+        orig = rp.arange(5)
+        r = rp.array(orig)
+        assert_eq(r, orig)

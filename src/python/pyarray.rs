@@ -22,18 +22,72 @@ pub fn parse_shape(obj: &Bound<'_, PyAny>) -> PyResult<Vec<usize>> {
 }
 
 /// Parse reshape arguments: handles reshape(3, 4), reshape((3, 4)), reshape([3, 4]).
-fn parse_reshape_args(args: &Bound<'_, PyTuple>) -> PyResult<Vec<usize>> {
+/// Allows -1 for one dimension to be inferred.
+fn parse_reshape_args_isize(args: &Bound<'_, PyTuple>) -> PyResult<Vec<isize>> {
     if args.len() == 0 {
         return Err(pyo3::exceptions::PyTypeError::new_err(
             "reshape requires at least one argument",
         ));
     }
-    // Single argument: delegate to parse_shape
+    // Single argument: could be int, tuple, or list
     if args.len() == 1 {
-        return parse_shape(&args.get_item(0)?);
+        let obj = args.get_item(0)?;
+        if let Ok(n) = obj.extract::<isize>() {
+            return Ok(vec![n]);
+        }
+        if let Ok(tuple) = obj.downcast::<PyTuple>() {
+            return tuple.iter().map(|x| x.extract::<isize>()).collect();
+        }
+        if let Ok(list) = obj.downcast::<PyList>() {
+            return list.iter().map(|x| x.extract::<isize>()).collect();
+        }
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "shape must be an int, tuple, or list",
+        ));
     }
     // Multiple arguments: treat as shape dimensions
-    args.iter().map(|x| x.extract::<usize>()).collect()
+    args.iter().map(|x| x.extract::<isize>()).collect()
+}
+
+/// Resolve -1 in shape given total size.
+fn resolve_reshape_shape(shape: Vec<isize>, size: usize) -> PyResult<Vec<usize>> {
+    let mut neg_idx: Option<usize> = None;
+    let mut known_product: usize = 1;
+
+    for (i, &dim) in shape.iter().enumerate() {
+        if dim < -1 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "negative dimensions not allowed (except -1)",
+            ));
+        } else if dim == -1 {
+            if neg_idx.is_some() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "can only specify one unknown dimension (-1)",
+                ));
+            }
+            neg_idx = Some(i);
+        } else {
+            known_product *= dim as usize;
+        }
+    }
+
+    let mut result: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
+
+    if let Some(idx) = neg_idx {
+        if known_product == 0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "cannot reshape with zero-sized known dimensions and -1",
+            ));
+        }
+        if size % known_product != 0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "cannot reshape array: size not divisible",
+            ));
+        }
+        result[idx] = size / known_product;
+    }
+
+    Ok(result)
 }
 
 /// Result type for reductions that can return scalar or array.
@@ -274,9 +328,11 @@ impl PyRumpyArray {
 
     /// Reshape array. Returns a view if possible.
     /// Accepts reshape(3, 4) or reshape((3, 4)) or reshape([3, 4]).
+    /// Use -1 for one dimension to be automatically inferred.
     #[pyo3(signature = (*args))]
     fn reshape(&self, args: &Bound<'_, PyTuple>) -> PyResult<Self> {
-        let shape = parse_reshape_args(args)?;
+        let shape_isize = parse_reshape_args_isize(args)?;
+        let shape = resolve_reshape_shape(shape_isize, self.inner.size())?;
         self.inner.reshape(shape).map(Self::new).ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err(
                 "cannot reshape array (size mismatch or non-contiguous)",

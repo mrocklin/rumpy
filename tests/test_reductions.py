@@ -445,3 +445,92 @@ class TestKeepdims:
         n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
         assert_eq(r.sum(axis=1, keepdims=True), n.sum(axis=1, keepdims=True))
         assert r.sum(axis=1, keepdims=True).shape == (2, 1, 4)
+
+
+# ============================================================================
+# Module-level reduction functions
+# ============================================================================
+
+class TestModuleLevelReductions:
+    """Test module-level reduction functions (rp.sum, rp.mean, etc.)."""
+
+    def test_sum_full(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert rp.sum(r) == pytest.approx(np.sum(n))
+
+    def test_sum_axis(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.sum(r, axis=0), np.sum(n, axis=0))
+        assert_eq(rp.sum(r, axis=1), np.sum(n, axis=1))
+
+    def test_prod_full(self):
+        r = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        assert rp.prod(r) == pytest.approx(np.prod(n))
+
+    def test_prod_axis(self):
+        r = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        assert_eq(rp.prod(r, axis=0), np.prod(n, axis=0))
+
+    def test_mean_full(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert rp.mean(r) == pytest.approx(np.mean(n))
+
+    def test_mean_axis(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.mean(r, axis=0), np.mean(n, axis=0))
+
+    def test_var_full(self):
+        r = rp.arange(12, dtype="float64").reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert rp.var(r) == pytest.approx(np.var(n))
+
+    def test_var_axis(self):
+        r = rp.arange(12, dtype="float64").reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.var(r, axis=0), np.var(n, axis=0))
+
+    def test_std_full(self):
+        r = rp.arange(12, dtype="float64").reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert rp.std(r) == pytest.approx(np.std(n))
+
+    def test_std_axis(self):
+        r = rp.arange(12, dtype="float64").reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.std(r, axis=0), np.std(n, axis=0))
+
+    def test_max_full(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert rp.max(r) == pytest.approx(np.max(n))
+
+    def test_max_axis(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.max(r, axis=0), np.max(n, axis=0))
+
+    def test_min_full(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert rp.min(r) == pytest.approx(np.min(n))
+
+    def test_min_axis(self):
+        r = rp.arange(12).reshape(3, 4)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.min(r, axis=0), np.min(n, axis=0))
+
+    def test_argmax(self):
+        r = rp.asarray([3, 1, 4, 1, 5, 9, 2, 6])
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6], dtype=np.float64)
+        assert rp.argmax(r) == np.argmax(n)
+
+    def test_argmin(self):
+        r = rp.asarray([3, 1, 4, 1, 5, 9, 2, 6])
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6], dtype=np.float64)
+        assert rp.argmin(r) == np.argmin(n)

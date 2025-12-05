@@ -132,6 +132,18 @@ pub fn copy(a: &PyRumpyArray) -> PyRumpyArray {
 #[pyfunction]
 #[pyo3(signature = (obj, dtype=None))]
 pub fn asarray(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    array_impl(py, obj, dtype)
+}
+
+/// Create an array (alias for asarray).
+#[pyfunction]
+#[pyo3(signature = (obj, dtype=None))]
+pub fn array(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    array_impl(py, obj, dtype)
+}
+
+/// Implementation for array/asarray.
+fn array_impl(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
     // Already a rumpy array?
     if let Ok(arr) = obj.extract::<PyRef<'_, PyRumpyArray>>() {
         // TODO: handle dtype conversion if requested
@@ -394,6 +406,20 @@ pub fn abs(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
     unary_result_to_py(x.inner.abs())
 }
 
+// Module-level reduction functions
+
+/// Helper for axis bounds checking.
+fn check_axis(axis: usize, ndim: usize) -> PyResult<()> {
+    if axis >= ndim {
+        Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "axis {} is out of bounds for array of dimension {}",
+            axis, ndim
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 /// Test if all elements evaluate to True.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
@@ -401,12 +427,7 @@ pub fn all(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
     match axis {
         None => Ok(pyarray::ReductionResult::Scalar(if x.inner.all() { 1.0 } else { 0.0 })),
         Some(ax) => {
-            if ax >= x.inner.ndim() {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "axis {} is out of bounds for array of dimension {}",
-                    ax, x.inner.ndim()
-                )));
-            }
+            check_axis(ax, x.inner.ndim())?;
             Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.all_axis(ax))))
         }
     }
@@ -419,12 +440,7 @@ pub fn any(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
     match axis {
         None => Ok(pyarray::ReductionResult::Scalar(if x.inner.any() { 1.0 } else { 0.0 })),
         Some(ax) => {
-            if ax >= x.inner.ndim() {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "axis {} is out of bounds for array of dimension {}",
-                    ax, x.inner.ndim()
-                )));
-            }
+            check_axis(ax, x.inner.ndim())?;
             Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.any_axis(ax))))
         }
     }
@@ -435,6 +451,109 @@ pub fn any(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 #[pyo3(signature = (x, a_min=None, a_max=None))]
 pub fn clip(x: &PyRumpyArray, a_min: Option<f64>, a_max: Option<f64>) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.clip(a_min, a_max))
+}
+
+/// Sum of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn sum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.sum())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.sum_axis(ax))))
+        }
+    }
+}
+
+/// Product of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn prod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.prod())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.prod_axis(ax))))
+        }
+    }
+}
+
+/// Mean of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn mean(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.mean())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.mean_axis(ax))))
+        }
+    }
+}
+
+/// Variance of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn var(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.var())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.var_axis(ax))))
+        }
+    }
+}
+
+/// Standard deviation of array elements.
+#[pyfunction]
+#[pyo3(name = "std", signature = (x, axis=None))]
+pub fn std_fn(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.std())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.std_axis(ax))))
+        }
+    }
+}
+
+/// Maximum of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn max(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.max())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.max_axis(ax))))
+        }
+    }
+}
+
+/// Minimum of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn min(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.min())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.min_axis(ax))))
+        }
+    }
+}
+
+/// Index of maximum element (flattened).
+#[pyfunction]
+pub fn argmax(x: &PyRumpyArray) -> usize {
+    x.inner.argmax()
+}
+
+/// Index of minimum element (flattened).
+#[pyfunction]
+pub fn argmin(x: &PyRumpyArray) -> usize {
+    x.inner.argmin()
 }
 
 /// Round to the given number of decimals.
@@ -779,6 +898,17 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(empty_like, m)?)?;
     m.add_function(wrap_pyfunction!(copy, m)?)?;
     m.add_function(wrap_pyfunction!(asarray, m)?)?;
+    m.add_function(wrap_pyfunction!(array, m)?)?;
+    // Reductions
+    m.add_function(wrap_pyfunction!(sum, m)?)?;
+    m.add_function(wrap_pyfunction!(prod, m)?)?;
+    m.add_function(wrap_pyfunction!(mean, m)?)?;
+    m.add_function(wrap_pyfunction!(var, m)?)?;
+    m.add_function(wrap_pyfunction!(std_fn, m)?)?;
+    m.add_function(wrap_pyfunction!(max, m)?)?;
+    m.add_function(wrap_pyfunction!(min, m)?)?;
+    m.add_function(wrap_pyfunction!(argmax, m)?)?;
+    m.add_function(wrap_pyfunction!(argmin, m)?)?;
     // Math ufuncs
     m.add_function(wrap_pyfunction!(sqrt, m)?)?;
     m.add_function(wrap_pyfunction!(exp, m)?)?;
