@@ -5,20 +5,14 @@
 //! Operations work directly on buffers - each dtype uses its native type internally.
 //! There is no universal Rust value type; Python interop (PyObject) is handled separately.
 
+mod macros;
+mod floats;
+mod integers;
+mod float16;
 mod bool;
 mod complex64;
 mod complex128;
 mod datetime64;
-mod float16;
-mod float32;
-mod float64;
-mod int16;
-mod int32;
-mod int64;
-mod uint8;
-mod uint16;
-mod uint32;
-mod uint64;
 
 use self::bool::BoolOps;
 use complex64::Complex64Ops;
@@ -26,15 +20,8 @@ use complex128::Complex128Ops;
 use datetime64::DateTime64Ops;
 pub use datetime64::TimeUnit;
 use float16::Float16Ops;
-use float32::Float32Ops;
-use float64::Float64Ops;
-use int16::Int16Ops;
-use int32::Int32Ops;
-use int64::Int64Ops;
-use uint8::Uint8Ops;
-use uint16::Uint16Ops;
-use uint32::Uint32Ops;
-use uint64::Uint64Ops;
+use floats::{Float32Ops, Float64Ops};
+use integers::{Int16Ops, Int32Ops, Int64Ops, Uint8Ops, Uint16Ops, Uint32Ops, Uint64Ops};
 
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
