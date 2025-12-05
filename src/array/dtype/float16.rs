@@ -1,0 +1,133 @@
+//! Float16 dtype implementation.
+
+use super::{BinaryOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
+use half::f16;
+use std::cmp::Ordering;
+
+/// Float16 dtype operations.
+pub(super) struct Float16Ops;
+
+impl Float16Ops {
+    #[inline]
+    unsafe fn read(ptr: *const u8, byte_offset: isize) -> f16 {
+        *(ptr.offset(byte_offset) as *const f16)
+    }
+
+    #[inline]
+    unsafe fn write(ptr: *mut u8, idx: usize, val: f16) {
+        *(ptr as *mut f16).add(idx) = val;
+    }
+}
+
+impl DTypeOps for Float16Ops {
+    fn kind(&self) -> DTypeKind { DTypeKind::Float16 }
+    fn itemsize(&self) -> usize { 2 }
+    fn typestr(&self) -> &'static str { "<f2" }
+    fn format_char(&self) -> &'static str { "e" }
+    fn name(&self) -> &'static str { "float16" }
+    fn promotion_priority(&self) -> u8 { 80 } // Between integers and float32
+
+    unsafe fn write_zero(&self, ptr: *mut u8, idx: usize) {
+        Self::write(ptr, idx, f16::ZERO);
+    }
+
+    unsafe fn write_one(&self, ptr: *mut u8, idx: usize) {
+        Self::write(ptr, idx, f16::ONE);
+    }
+
+    unsafe fn copy_element(&self, src: *const u8, byte_offset: isize, dst: *mut u8, idx: usize) {
+        Self::write(dst, idx, Self::read(src, byte_offset));
+    }
+
+    unsafe fn unary_op(&self, op: UnaryOp, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize) {
+        // Convert to f32 for math ops, then back to f16
+        let v = Self::read(src, byte_offset).to_f32();
+        let result = match op {
+            UnaryOp::Neg => -v,
+            UnaryOp::Abs => v.abs(),
+            UnaryOp::Sqrt => v.sqrt(),
+            UnaryOp::Exp => v.exp(),
+            UnaryOp::Log => v.ln(),
+            UnaryOp::Sin => v.sin(),
+            UnaryOp::Cos => v.cos(),
+            UnaryOp::Tan => v.tan(),
+            UnaryOp::Floor => v.floor(),
+            UnaryOp::Ceil => v.ceil(),
+            UnaryOp::Arcsin => v.asin(),
+            UnaryOp::Arccos => v.acos(),
+            UnaryOp::Arctan => v.atan(),
+        };
+        Self::write(out, idx, f16::from_f32(result));
+    }
+
+    unsafe fn binary_op(&self, op: BinaryOp, a: *const u8, a_offset: isize, b: *const u8, b_offset: isize, out: *mut u8, idx: usize) {
+        let av = Self::read(a, a_offset).to_f32();
+        let bv = Self::read(b, b_offset).to_f32();
+        let result = match op {
+            BinaryOp::Add => av + bv,
+            BinaryOp::Sub => av - bv,
+            BinaryOp::Mul => av * bv,
+            BinaryOp::Div => av / bv,
+            BinaryOp::Pow => av.powf(bv),
+            BinaryOp::Mod => av % bv,
+            BinaryOp::FloorDiv => (av / bv).floor(),
+        };
+        Self::write(out, idx, f16::from_f32(result));
+    }
+
+    unsafe fn reduce_init(&self, op: ReduceOp, out: *mut u8, idx: usize) {
+        let v = match op {
+            ReduceOp::Sum => f16::ZERO,
+            ReduceOp::Prod => f16::ONE,
+            ReduceOp::Max => f16::NEG_INFINITY,
+            ReduceOp::Min => f16::INFINITY,
+        };
+        Self::write(out, idx, v);
+    }
+
+    unsafe fn reduce_acc(&self, op: ReduceOp, acc: *mut u8, idx: usize, val: *const u8, byte_offset: isize) {
+        let a = Self::read(acc as *const u8, (idx * 2) as isize).to_f32();
+        let v = Self::read(val, byte_offset).to_f32();
+        let result = match op {
+            ReduceOp::Sum => a + v,
+            ReduceOp::Prod => a * v,
+            ReduceOp::Max => a.max(v),
+            ReduceOp::Min => a.min(v),
+        };
+        Self::write(acc, idx, f16::from_f32(result));
+    }
+
+    unsafe fn format_element(&self, ptr: *const u8, byte_offset: isize) -> String {
+        let v = Self::read(ptr, byte_offset).to_f32();
+        let s = format!("{:.4}", v);
+        s.trim_end_matches('0').to_string()
+    }
+
+    unsafe fn compare_elements(&self, a: *const u8, a_offset: isize, b: *const u8, b_offset: isize) -> Ordering {
+        let av = Self::read(a, a_offset);
+        let bv = Self::read(b, b_offset);
+        av.partial_cmp(&bv).unwrap_or(Ordering::Equal)
+    }
+
+    unsafe fn is_truthy(&self, ptr: *const u8, byte_offset: isize) -> bool {
+        Self::read(ptr, byte_offset) != f16::ZERO
+    }
+
+    unsafe fn write_f64(&self, ptr: *mut u8, idx: usize, val: f64) -> bool {
+        Self::write(ptr, idx, f16::from_f64(val));
+        true
+    }
+
+    unsafe fn read_f64(&self, ptr: *const u8, byte_offset: isize) -> Option<f64> {
+        Some(Self::read(ptr, byte_offset).to_f64())
+    }
+
+    unsafe fn write_complex(&self, ptr: *mut u8, idx: usize, real: f64, _imag: f64) -> bool {
+        Self::write(ptr, idx, f16::from_f64(real));
+        true
+    }
+
+    unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
+        Some((Self::read(ptr, byte_offset).to_f64(), 0.0))
+    }
+}

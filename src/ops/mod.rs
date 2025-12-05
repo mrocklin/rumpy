@@ -54,12 +54,36 @@ fn linear_offset(indices: &[usize], strides: &[isize]) -> isize {
     indices.iter().zip(strides).map(|(&i, &s)| i as isize * s).sum()
 }
 
+/// Check if a unary op is transcendental (always returns float).
+fn is_transcendental(op: UnaryOp) -> bool {
+    matches!(op, UnaryOp::Exp | UnaryOp::Log | UnaryOp::Sqrt |
+                 UnaryOp::Sin | UnaryOp::Cos | UnaryOp::Tan |
+                 UnaryOp::Arcsin | UnaryOp::Arccos | UnaryOp::Arctan)
+}
+
 /// Apply a unary operation element-wise, returning a new array.
 fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpError> {
     use crate::array::dtype::DTypeKind;
+    use crate::array::DType;
+
+    let kind = arr.dtype().kind();
+
+    // Transcendentals on non-float types: promote based on itemsize (like NumPy)
+    // 1 byte -> float16, 2 bytes -> float32, 4+ bytes -> float64
+    if is_transcendental(op) && !matches!(kind, DTypeKind::Float16 | DTypeKind::Float64 | DTypeKind::Float32 | DTypeKind::Complex128) {
+        let itemsize = arr.dtype().itemsize();
+        let target_dtype = if itemsize <= 1 {
+            DType::float16()
+        } else if itemsize <= 2 {
+            DType::float32()
+        } else {
+            DType::float64()
+        };
+        let arr_float = arr.astype(target_dtype);
+        return map_unary_op(&arr_float, op);
+    }
 
     let dtype = arr.dtype();
-    let kind = dtype.kind();
 
     // Validate unsupported operations
     if matches!(kind, DTypeKind::Complex128) {

@@ -8,6 +8,7 @@
 mod bool;
 mod complex128;
 mod datetime64;
+mod float16;
 mod float32;
 mod float64;
 mod int32;
@@ -20,6 +21,7 @@ use self::bool::BoolOps;
 use complex128::Complex128Ops;
 use datetime64::DateTime64Ops;
 pub use datetime64::TimeUnit;
+use float16::Float16Ops;
 use float32::Float32Ops;
 use float64::Float64Ops;
 use int32::Int32Ops;
@@ -35,6 +37,7 @@ use std::hash::{Hash, Hasher};
 /// Parametric types include their parameters.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DTypeKind {
+    Float16,
     Float32,
     Float64,
     Int32,
@@ -250,6 +253,7 @@ impl DType {
 
     // === Convenience constructors ===
 
+    pub fn float16() -> Self { DType(Arc::new(Float16Ops)) }
     pub fn float32() -> Self { DType(Arc::new(Float32Ops)) }
     pub fn float64() -> Self { DType(Arc::new(Float64Ops)) }
     pub fn int32() -> Self { DType(Arc::new(Int32Ops)) }
@@ -279,6 +283,7 @@ impl DType {
     /// Parse dtype from string (numpy-style).
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
+            "float16" | "f2" | "<f2" => Some(Self::float16()),
             "float32" | "f4" | "<f4" => Some(Self::float32()),
             "float64" | "f8" | "<f8" | "float" => Some(Self::float64()),
             "int32" | "i4" | "<i4" => Some(Self::int32()),
@@ -348,10 +353,11 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
         return a.clone();
     }
 
-    // Helper to check if dtype is float32
+    // Helper to check if dtype is float
+    let is_f16 = |k: &DTypeKind| matches!(k, Float16);
     let is_f32 = |k: &DTypeKind| matches!(k, Float32);
     let is_f64 = |k: &DTypeKind| matches!(k, Float64);
-    let is_float = |k: &DTypeKind| matches!(k, Float32 | Float64);
+    let is_float = |k: &DTypeKind| matches!(k, Float16 | Float32 | Float64);
 
     // Helper to check if dtype is "large" int (32+ bits)
     let is_large_int = |k: &DTypeKind| matches!(k, Int32 | Int64 | Uint32 | Uint64);
@@ -365,13 +371,20 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
         if is_f32(float_kind) && is_large_int(int_kind) {
             return DType::float64();
         }
+        // int32/int64/uint32/uint64 + float16 -> float64
+        if is_f16(float_kind) && is_large_int(int_kind) {
+            return DType::float64();
+        }
 
-        // Otherwise, use higher priority (float64 > float32 > ints)
+        // Float + float: use higher precision
         if is_f64(float_kind) || is_f64(int_kind) {
             return DType::float64();
         }
-        if is_f32(float_kind) {
+        if is_f32(float_kind) || is_f32(int_kind) {
             return DType::float32();
+        }
+        if is_f16(float_kind) {
+            return DType::float16();
         }
     }
 

@@ -4,6 +4,7 @@
 //! then fallback to DTypeOps trait methods.
 
 use crate::array::dtype::{BinaryOp, DTypeKind, ReduceOp, UnaryOp};
+use half::f16;
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
@@ -236,6 +237,37 @@ fn init_default_loops() -> UFuncRegistry {
     register_float_binary!(reg, DTypeKind::Float64, f64);
     register_float_binary!(reg, DTypeKind::Float32, f32);
 
+    // Float16 binary loops (convert to f32 for ops)
+    macro_rules! register_f16_binary {
+        ($reg:expr, $op:expr, $f:expr) => {
+            $reg.register_binary(
+                $op,
+                TypeSignature::binary(DTypeKind::Float16, DTypeKind::Float16, DTypeKind::Float16),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let (sa, sb, so) = strides;
+                    let mut ap = a_ptr;
+                    let mut bp = b_ptr;
+                    let mut op = out_ptr;
+                    for _ in 0..n {
+                        let a = (*(ap as *const f16)).to_f32();
+                        let b = (*(bp as *const f16)).to_f32();
+                        *(op as *mut f16) = f16::from_f32($f(a, b));
+                        ap = ap.offset(sa);
+                        bp = bp.offset(sb);
+                        op = op.offset(so);
+                    }
+                },
+            );
+        };
+    }
+    register_f16_binary!(reg, BinaryOp::Add, |a: f32, b: f32| a + b);
+    register_f16_binary!(reg, BinaryOp::Sub, |a: f32, b: f32| a - b);
+    register_f16_binary!(reg, BinaryOp::Mul, |a: f32, b: f32| a * b);
+    register_f16_binary!(reg, BinaryOp::Div, |a: f32, b: f32| a / b);
+    register_f16_binary!(reg, BinaryOp::Mod, |a: f32, b: f32| a % b);
+    register_f16_binary!(reg, BinaryOp::Pow, |a: f32, b: f32| a.powf(b));
+    register_f16_binary!(reg, BinaryOp::FloorDiv, |a: f32, b: f32| (a / b).floor());
+
     // Bool binary loops (Add=or, Mul=and)
     reg.register_binary(
         BinaryOp::Add,
@@ -423,6 +455,40 @@ fn init_default_loops() -> UFuncRegistry {
     register_float_unary!(reg, DTypeKind::Float64, f64);
     register_float_unary!(reg, DTypeKind::Float32, f32);
 
+    // Float16 unary loops (convert to f32 for ops)
+    macro_rules! register_f16_unary {
+        ($reg:expr, $op:expr, $f:expr) => {
+            $reg.register_unary(
+                $op,
+                TypeSignature::unary(DTypeKind::Float16, DTypeKind::Float16),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let mut sp = src_ptr;
+                    let mut op = out_ptr;
+                    for _ in 0..n {
+                        let v = (*(sp as *const f16)).to_f32();
+                        *(op as *mut f16) = f16::from_f32($f(v));
+                        sp = sp.offset(ss);
+                        op = op.offset(so);
+                    }
+                },
+            );
+        };
+    }
+    register_f16_unary!(reg, UnaryOp::Neg, |v: f32| -v);
+    register_f16_unary!(reg, UnaryOp::Abs, |v: f32| v.abs());
+    register_f16_unary!(reg, UnaryOp::Sqrt, |v: f32| v.sqrt());
+    register_f16_unary!(reg, UnaryOp::Floor, |v: f32| v.floor());
+    register_f16_unary!(reg, UnaryOp::Ceil, |v: f32| v.ceil());
+    register_f16_unary!(reg, UnaryOp::Exp, |v: f32| v.exp());
+    register_f16_unary!(reg, UnaryOp::Log, |v: f32| v.ln());
+    register_f16_unary!(reg, UnaryOp::Sin, |v: f32| v.sin());
+    register_f16_unary!(reg, UnaryOp::Cos, |v: f32| v.cos());
+    register_f16_unary!(reg, UnaryOp::Tan, |v: f32| v.tan());
+    register_f16_unary!(reg, UnaryOp::Arcsin, |v: f32| v.asin());
+    register_f16_unary!(reg, UnaryOp::Arccos, |v: f32| v.acos());
+    register_f16_unary!(reg, UnaryOp::Arctan, |v: f32| v.atan());
+
     // Signed integer unary ops
     macro_rules! register_signed_int_unary {
         ($reg:expr, $kind:expr, $T:ty) => {
@@ -502,6 +568,46 @@ fn init_default_loops() -> UFuncRegistry {
     }
     register_float_reduce!(reg, DTypeKind::Float64, f64);
     register_float_reduce!(reg, DTypeKind::Float32, f32);
+
+    // Float16 reduce loops (convert to f32 for ops)
+    reg.register_reduce(
+        ReduceOp::Sum, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::ZERO; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f16).add(idx);
+            let a = (*acc).to_f32();
+            let v = (*(val_ptr.offset(byte_offset) as *const f16)).to_f32();
+            *acc = f16::from_f32(a + v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::ONE; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f16).add(idx);
+            let a = (*acc).to_f32();
+            let v = (*(val_ptr.offset(byte_offset) as *const f16)).to_f32();
+            *acc = f16::from_f32(a * v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::NEG_INFINITY; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f16).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f16);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::INFINITY; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f16).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f16);
+            if v < *acc { *acc = v; }
+        },
+    );
 
     // Integer reduce ops (use wrapping arithmetic)
     macro_rules! register_int_reduce {

@@ -7,7 +7,7 @@ Guide for adding new ufunc operations (unary, binary, reduce).
 1. **`src/array/dtype/mod.rs`** - Add to enum (`UnaryOp`, `BinaryOp`, or `ReduceOp`)
 
 2. **`src/array/dtype/*.rs`** - Implement in each dtype's `DTypeOps`:
-   - `float64.rs`, `float32.rs` - floating point
+   - `float64.rs`, `float32.rs`, `float16.rs` - floating point
    - `int64.rs`, `int32.rs` - signed integers
    - `uint64.rs`, `uint32.rs`, `uint8.rs` - unsigned integers
    - `bool.rs`, `complex128.rs`, `datetime64.rs` - special types

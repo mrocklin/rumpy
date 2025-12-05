@@ -1,6 +1,7 @@
 """Tests for math ufuncs."""
 
 import numpy as np
+import pytest
 
 import rumpy as rp
 from helpers import assert_eq
@@ -110,3 +111,25 @@ class TestSinCosPythagorean:
         result = s * s + c * c
         expected = rp.ones(100)
         assert_eq(result, np.asarray(expected))
+
+
+class TestTranscendentalPromotion:
+    """Test that transcendentals promote integer types to float like NumPy."""
+
+    @pytest.mark.parametrize("dtype", ["int64", "int32", "uint64", "uint32", "uint8"])
+    @pytest.mark.parametrize("op", ["exp", "log", "sqrt", "sin", "cos", "tan"])
+    def test_transcendental_promotes_to_float(self, dtype, op):
+        """Transcendentals on integers should return same dtype as NumPy."""
+        rp_op = getattr(rp, op)
+        np_op = getattr(np, op)
+
+        r_arr = rp.asarray([1, 2, 4], dtype=dtype)
+        n_arr = np.array([1, 2, 4], dtype=dtype)
+
+        r_result = rp_op(r_arr)
+        n_result = np_op(n_arr)
+
+        # Verify dtypes match exactly
+        assert r_result.dtype == str(n_result.dtype), f"Expected {n_result.dtype}, got {r_result.dtype}"
+        # Compare values
+        assert_eq(r_result, n_result)
