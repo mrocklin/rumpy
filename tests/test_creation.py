@@ -247,3 +247,27 @@ class TestArrayConstructor:
         orig = rp.arange(5)
         r = rp.array(orig)
         assert_eq(r, orig)
+
+
+class TestDtypeConstants:
+    """Test that dtype constants are available and work with array creation."""
+
+    @pytest.mark.parametrize("attr,expected", [
+        ("float32", "float32"),
+        ("float64", "float64"),
+        ("int16", "int16"),
+        ("int32", "int32"),
+        ("int64", "int64"),
+        ("uint8", "uint8"),
+        ("uint16", "uint16"),
+        ("uint32", "uint32"),
+        ("uint64", "uint64"),
+        ("bool_", "bool"),
+        ("complex64", "complex64"),
+        ("complex128", "complex128"),
+    ])
+    def test_dtype_constant_with_zeros(self, attr, expected):
+        """Dtype constants should work with array creation functions."""
+        dtype_const = getattr(rp, attr)
+        arr = rp.zeros(5, dtype=dtype_const)
+        assert arr.dtype == expected

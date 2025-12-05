@@ -959,5 +959,18 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(inv, m)?)?;
     m.add_function(wrap_pyfunction!(eigh, m)?)?;
     m.add_function(wrap_pyfunction!(diag, m)?)?;
+    // Dtype constants (as strings, compatible with our dtype= parameters)
+    m.add("float32", "float32")?;
+    m.add("float64", "float64")?;
+    m.add("int16", "int16")?;
+    m.add("int32", "int32")?;
+    m.add("int64", "int64")?;
+    m.add("uint8", "uint8")?;
+    m.add("uint16", "uint16")?;
+    m.add("uint32", "uint32")?;
+    m.add("uint64", "uint64")?;
+    m.add("bool_", "bool")?;  // bool_ to avoid Python keyword conflict
+    m.add("complex64", "complex64")?;
+    m.add("complex128", "complex128")?;
     Ok(())
 }
