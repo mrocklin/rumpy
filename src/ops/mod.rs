@@ -6,20 +6,16 @@ pub mod inner;
 pub mod linalg;
 pub mod matmul;
 pub mod outer;
+pub mod registry;
 pub mod solve;
 
 use crate::array::{broadcast_shapes, increment_indices, promote_dtype, DType, RumpyArray};
-use crate::array::dtype::{BinaryOp as DTypeBinaryOp, UnaryOp, ReduceOp};
+use crate::array::dtype::{UnaryOp, ReduceOp};
+use registry::registry;
 use std::sync::Arc;
 
-/// Binary operation types.
-#[derive(Clone, Copy)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-}
+// Re-export BinaryOp from dtype module
+pub use crate::array::dtype::BinaryOp;
 
 /// Comparison operation types.
 #[derive(Clone, Copy)]
@@ -49,9 +45,25 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
     let result_ptr = result_buffer.as_mut_ptr();
     let src_ptr = arr.data_ptr();
     let dtype = arr.dtype();
-    let ops = dtype.ops();
+    let kind = dtype.kind();
 
     let mut indices = vec![0usize; arr.ndim()];
+
+    // Try registry first
+    {
+        let reg = registry().read().unwrap();
+        if let Some((loop_fn, _)) = reg.lookup_unary(op, kind.clone()) {
+            for i in 0..size {
+                let src_offset = arr.byte_offset_for(&indices);
+                unsafe { loop_fn(src_ptr, src_offset, result_ptr, i); }
+                increment_indices(&mut indices, arr.shape());
+            }
+            return result;
+        }
+    }
+
+    // Fallback: trait-based dispatch
+    let ops = dtype.ops();
     for i in 0..size {
         let src_offset = arr.byte_offset_for(&indices);
         unsafe { ops.unary_op(op, src_ptr, src_offset, result_ptr, i); }
@@ -61,7 +73,7 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
 }
 
 /// Apply a binary operation element-wise with broadcasting.
-fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: DTypeBinaryOp) -> Option<RumpyArray> {
+fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
     let out_shape = broadcast_shapes(a.shape(), b.shape())?;
     let a_bc = a.broadcast_to(&out_shape)?;
     let b_bc = b.broadcast_to(&out_shape)?;
@@ -81,10 +93,28 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: DTypeBinaryOp) -> Option<Ru
     let result_dtype_ref = result.dtype();
     let result_ops = result_dtype_ref.ops();
 
-    // If dtypes match, use direct buffer operations
-    let same_dtype = a_bc.dtype() == b_bc.dtype() && a_bc.dtype() == result.dtype();
+    let a_kind = a_bc.dtype().kind();
+    let b_kind = b_bc.dtype().kind();
 
     let mut indices = vec![0usize; out_shape.len()];
+
+    // Try registry first for same-type operations
+    if a_kind == b_kind {
+        let reg = registry().read().unwrap();
+        if let Some((loop_fn, _)) = reg.lookup_binary(op, a_kind.clone(), b_kind) {
+            // Use registered loop
+            for i in 0..size {
+                let a_offset = a_bc.byte_offset_for(&indices);
+                let b_offset = b_bc.byte_offset_for(&indices);
+                unsafe { loop_fn(a_ptr, a_offset, b_ptr, b_offset, result_ptr, i); }
+                increment_indices(&mut indices, &out_shape);
+            }
+            return Some(result);
+        }
+    }
+
+    // Fallback: trait-based dispatch
+    let same_dtype = a_bc.dtype() == b_bc.dtype() && a_bc.dtype() == result.dtype();
 
     if same_dtype {
         for i in 0..size {
@@ -94,28 +124,58 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: DTypeBinaryOp) -> Option<Ru
             increment_indices(&mut indices, &out_shape);
         }
     } else {
-        // Different dtypes: read as f64, operate, write back
+        // Different dtypes: use complex path if result is complex, else f64
         let a_dtype = a_bc.dtype();
         let a_ops = a_dtype.ops();
         let b_dtype = b_bc.dtype();
         let b_ops = b_dtype.ops();
+        let result_is_complex = result.dtype().kind() == crate::array::dtype::DTypeKind::Complex128;
 
-        for i in 0..size {
-            let a_offset = a_bc.byte_offset_for(&indices);
-            let b_offset = b_bc.byte_offset_for(&indices);
+        if result_is_complex {
+            // Complex result: read as complex, operate, write as complex
+            for i in 0..size {
+                let a_offset = a_bc.byte_offset_for(&indices);
+                let b_offset = b_bc.byte_offset_for(&indices);
 
-            let av = unsafe { a_ops.read_f64(a_ptr, a_offset).unwrap_or(0.0) };
-            let bv = unsafe { b_ops.read_f64(b_ptr, b_offset).unwrap_or(0.0) };
+                let av = unsafe { a_ops.read_complex(a_ptr, a_offset).unwrap_or((0.0, 0.0)) };
+                let bv = unsafe { b_ops.read_complex(b_ptr, b_offset).unwrap_or((0.0, 0.0)) };
 
-            let result_val = match op {
-                DTypeBinaryOp::Add => av + bv,
-                DTypeBinaryOp::Sub => av - bv,
-                DTypeBinaryOp::Mul => av * bv,
-                DTypeBinaryOp::Div => if bv != 0.0 { av / bv } else { f64::NAN },
-            };
+                let result_val = match op {
+                    BinaryOp::Add => (av.0 + bv.0, av.1 + bv.1),
+                    BinaryOp::Sub => (av.0 - bv.0, av.1 - bv.1),
+                    BinaryOp::Mul => (av.0 * bv.0 - av.1 * bv.1, av.0 * bv.1 + av.1 * bv.0),
+                    BinaryOp::Div => {
+                        let denom = bv.0 * bv.0 + bv.1 * bv.1;
+                        if denom != 0.0 {
+                            ((av.0 * bv.0 + av.1 * bv.1) / denom, (av.1 * bv.0 - av.0 * bv.1) / denom)
+                        } else {
+                            (f64::NAN, f64::NAN)
+                        }
+                    }
+                };
 
-            unsafe { result_ops.write_f64(result_ptr, i, result_val); }
-            increment_indices(&mut indices, &out_shape);
+                unsafe { result_ops.write_complex(result_ptr, i, result_val.0, result_val.1); }
+                increment_indices(&mut indices, &out_shape);
+            }
+        } else {
+            // Non-complex result: use f64 path
+            for i in 0..size {
+                let a_offset = a_bc.byte_offset_for(&indices);
+                let b_offset = b_bc.byte_offset_for(&indices);
+
+                let av = unsafe { a_ops.read_f64(a_ptr, a_offset).unwrap_or(0.0) };
+                let bv = unsafe { b_ops.read_f64(b_ptr, b_offset).unwrap_or(0.0) };
+
+                let result_val = match op {
+                    BinaryOp::Add => av + bv,
+                    BinaryOp::Sub => av - bv,
+                    BinaryOp::Mul => av * bv,
+                    BinaryOp::Div => if bv != 0.0 { av / bv } else { f64::NAN },
+                };
+
+                unsafe { result_ops.write_f64(result_ptr, i, result_val); }
+                increment_indices(&mut indices, &out_shape);
+            }
         }
     }
     Some(result)
@@ -249,13 +309,7 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
 impl RumpyArray {
     /// Element-wise binary operation with broadcasting.
     pub fn binary_op(&self, other: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
-        let dtype_op = match op {
-            BinaryOp::Add => DTypeBinaryOp::Add,
-            BinaryOp::Sub => DTypeBinaryOp::Sub,
-            BinaryOp::Mul => DTypeBinaryOp::Mul,
-            BinaryOp::Div => DTypeBinaryOp::Div,
-        };
-        map_binary_op(self, other, dtype_op)
+        map_binary_op(self, other, op)
     }
 
     /// Element-wise operation with scalar (arr op scalar).

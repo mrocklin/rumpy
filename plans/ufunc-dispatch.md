@@ -1,7 +1,7 @@
 # Hybrid UFunc Dispatch Plan
 
 **Design doc:** `designs/dtype-system.md`
-**Status:** Planning - ready for Phase 1
+**Status:** Phase 1-3 complete, ready for Phase 4 (reductions)
 
 ## Context
 
@@ -76,11 +76,11 @@ impl UFuncRegistry {
 ```
 
 Tasks:
-- [ ] Define `TypeSignature` struct
-- [ ] Define `InnerLoopFn` type (or trait)
-- [ ] Create `UFuncRegistry` with register/lookup
-- [ ] Add global or lazy-static registry instance
-- [ ] Write tests for registry lookup
+- [x] Define `TypeSignature` struct
+- [x] Define `InnerLoopFn` type (or trait)
+- [x] Create `UFuncRegistry` with register/lookup
+- [x] Add global registry instance (using `OnceLock<RwLock<...>>`)
+- [x] Write tests for registry lookup
 
 ## Phase 2: Wire Up Binary Ops
 
@@ -98,14 +98,20 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: DTypeBinaryOp) -> Option<Ru
 ```
 
 Tasks:
-- [ ] Modify `map_binary_op` to check registry
-- [ ] Register same-type loops for f64, f32, i64, i32, etc.
-- [ ] Verify all existing tests pass
-- [ ] Add test for registry-dispatched operation
+- [x] Modify `map_binary_op` to check registry
+- [x] Register same-type loops for f64, f32, i64, i32
+- [x] Verify all 325 existing tests pass
+- [x] Registry tests verify dispatch (6 tests in registry.rs)
 
-## Phase 3: Unary Ops (future)
+## Phase 3: Unary Ops
 
 Same pattern for `map_unary_op`.
+
+Tasks:
+- [x] Modify `map_unary_op` to check registry first
+- [x] Register unary loops: Neg, Abs, Sqrt, Exp, Log, Sin, Cos, Tan for f64
+- [x] Register Neg, Abs, Sqrt for f32; Neg, Abs for i64, i32
+- [x] All 352 tests pass (27 new dtype interaction tests)
 
 ## Phase 4: Reductions (future)
 
@@ -126,8 +132,17 @@ Same pattern for `reduce_all_op`, `reduce_axis_op`.
 2. New tests verify registry dispatch is used when available
 3. Test mixed-type operations still work via fallback
 
-## Open Decisions
+## Decisions Made
 
-1. **Global registry** (lazy_static) vs **passed registry** - leaning global for simplicity
-2. **InnerLoopFn signature** - needs refinement for strided access
-3. **Promotion** - keep in `map_binary_op` or move to registry lookup
+1. **Global registry** - Using `OnceLock<RwLock<UFuncRegistry>>` (std, no external deps)
+2. **InnerLoopFn signature** - `fn(a_ptr, a_offset, b_ptr, b_offset, out_ptr, out_idx)` - works with strided arrays
+3. **Promotion** - NumPy-compatible rules in `promote_dtype()`:
+   - int32/int64 + float32 -> float64 (safe casting)
+   - int8/int16 + float32 -> float32
+   - complex + anything -> complex128
+   - Mixed-type ops use complex path if result is complex
+
+## Additional Work Done
+
+- **Type promotion tests** (`tests/test_dtype_interactions.py`): 27 tests verifying NumPy compatibility
+- **Complex mixed-type ops**: Fixed to use `read_complex`/`write_complex` when result is complex

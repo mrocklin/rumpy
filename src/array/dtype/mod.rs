@@ -48,7 +48,7 @@ pub enum DTypeKind {
 }
 
 /// Unary operations.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Neg,
     Abs,
@@ -61,7 +61,7 @@ pub enum UnaryOp {
 }
 
 /// Binary operations.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -309,8 +309,66 @@ impl std::fmt::Debug for DType {
     }
 }
 
-/// Promote two dtypes to their common type.
+/// Promote two dtypes to their common type (NumPy-compatible).
+///
+/// Rules:
+/// 1. Same type -> same type
+/// 2. Complex involved -> complex128
+/// 3. Float + int -> float64 if int >= 32 bits and float == float32
+/// 4. Float + float -> higher precision
+/// 5. Int + int -> type that can hold both
+/// 6. Bool acts like int8
 pub fn promote_dtype(a: &DType, b: &DType) -> DType {
+    use DTypeKind::*;
+
+    let ak = a.kind();
+    let bk = b.kind();
+
+    // Same type
+    if ak == bk {
+        return a.clone();
+    }
+
+    // Complex always wins
+    if matches!(ak, Complex128) || matches!(bk, Complex128) {
+        return DType::complex128();
+    }
+
+    // Datetime doesn't promote with other types
+    if matches!(ak, DateTime64(_)) || matches!(bk, DateTime64(_)) {
+        // Return one of them; ops will likely fail anyway
+        return a.clone();
+    }
+
+    // Helper to check if dtype is float32
+    let is_f32 = |k: &DTypeKind| matches!(k, Float32);
+    let is_f64 = |k: &DTypeKind| matches!(k, Float64);
+    let is_float = |k: &DTypeKind| matches!(k, Float32 | Float64);
+
+    // Helper to check if dtype is "large" int (32+ bits)
+    let is_large_int = |k: &DTypeKind| matches!(k, Int32 | Int64 | Uint32 | Uint64);
+
+    // Float + int combinations
+    if is_float(&ak) || is_float(&bk) {
+        // One is float, check if int can safely cast
+        let (float_kind, int_kind) = if is_float(&ak) { (&ak, &bk) } else { (&bk, &ak) };
+
+        // int32/int64/uint32/uint64 + float32 -> float64
+        if is_f32(float_kind) && is_large_int(int_kind) {
+            return DType::float64();
+        }
+
+        // Otherwise, use higher priority (float64 > float32 > ints)
+        if is_f64(float_kind) || is_f64(int_kind) {
+            return DType::float64();
+        }
+        if is_f32(float_kind) {
+            return DType::float32();
+        }
+    }
+
+    // Both are integers (or bool)
+    // Use priority system for int+int
     if a.ops().promotion_priority() >= b.ops().promotion_priority() {
         a.clone()
     } else {
