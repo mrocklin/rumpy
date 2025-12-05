@@ -150,9 +150,6 @@ ALL_DTYPES = [
     "complex128",
 ]
 
-# Exclude complex128 for operations not yet implemented
-NUMERIC_DTYPES = [d for d in ALL_DTYPES if d != "complex128"]
-
 
 class TestBinaryDtypePromotion:
     """Test binary ops return same dtype and values as NumPy across dtype pairs."""
@@ -187,8 +184,8 @@ class TestBinaryDtypePromotion:
         assert r_result.dtype == str(n_result.dtype), f"{dtype_a}+{dtype_b}: Expected {n_result.dtype}, got {r_result.dtype}"
         assert_eq(r_result, n_result)
 
-    @pytest.mark.parametrize("dtype_a", NUMERIC_DTYPES)
-    @pytest.mark.parametrize("dtype_b", NUMERIC_DTYPES)
+    @pytest.mark.parametrize("dtype_a", ALL_DTYPES)
+    @pytest.mark.parametrize("dtype_b", ALL_DTYPES)
     def test_pow_dtype_and_values(self, dtype_a, dtype_b):
         """Power should return same dtype and values as NumPy."""
         r_a = rp.asarray([2, 3, 4], dtype=dtype_a)

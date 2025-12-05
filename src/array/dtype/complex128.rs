@@ -20,6 +20,25 @@ impl Complex128Ops {
         *p.add(1) = imag;
     }
 
+    /// Complex power: z^w = exp(w * ln(z))
+    #[inline]
+    fn pow(ar: f64, ai: f64, br: f64, bi: f64) -> (f64, f64) {
+        // Handle special case: 0^w
+        if ar == 0.0 && ai == 0.0 {
+            return if br > 0.0 { (0.0, 0.0) } else { (f64::NAN, f64::NAN) };
+        }
+        // ln(a) = (ln(|a|), arg(a))
+        let mag_a = (ar * ar + ai * ai).sqrt();
+        let ln_r = mag_a.ln();
+        let ln_i = ai.atan2(ar);
+        // w * ln(a) - complex multiplication
+        let prod_r = br * ln_r - bi * ln_i;
+        let prod_i = br * ln_i + bi * ln_r;
+        // exp(prod) = exp(prod_r) * (cos(prod_i) + i*sin(prod_i))
+        let exp_r = prod_r.exp();
+        (exp_r * prod_i.cos(), exp_r * prod_i.sin())
+    }
+
     /// Complex arcsin: arcsin(z) = -i * log(iz + sqrt(1 - z^2))
     #[inline]
     fn arcsin(r: f64, i: f64) -> (f64, f64) {
@@ -133,7 +152,8 @@ impl DTypeOps for Complex128Ops {
                 let denom = br * br + bi * bi;
                 ((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom)
             }
-            BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
+            BinaryOp::Pow => Self::pow(ar, ai, br, bi),
+            BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
         };
         Self::write(out, idx, out_r, out_i);
     }

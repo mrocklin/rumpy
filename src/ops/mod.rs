@@ -333,7 +333,21 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                             (f64::NAN, f64::NAN)
                         }
                     }
-                    BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
+                    BinaryOp::Pow => {
+                        // z^w = exp(w * ln(z))
+                        if av.0 == 0.0 && av.1 == 0.0 {
+                            if bv.0 > 0.0 { (0.0, 0.0) } else { (f64::NAN, f64::NAN) }
+                        } else {
+                            let mag_a = (av.0 * av.0 + av.1 * av.1).sqrt();
+                            let ln_r = mag_a.ln();
+                            let ln_i = av.1.atan2(av.0);
+                            let prod_r = bv.0 * ln_r - bv.1 * ln_i;
+                            let prod_i = bv.0 * ln_i + bv.1 * ln_r;
+                            let exp_r = prod_r.exp();
+                            (exp_r * prod_i.cos(), exp_r * prod_i.sin())
+                        }
+                    }
+                    BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
                 };
 
                 unsafe { result_ops.write_complex(result_ptr, i, result_val.0, result_val.1); }
