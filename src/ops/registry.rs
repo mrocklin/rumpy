@@ -3,7 +3,7 @@
 //! Provides NumPy-style dispatch: registered loops checked first,
 //! then fallback to DTypeOps trait methods.
 
-use crate::array::dtype::{BinaryOp, DTypeKind, UnaryOp};
+use crate::array::dtype::{BinaryOp, DTypeKind, ReduceOp, UnaryOp};
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
@@ -23,6 +23,13 @@ impl TypeSignature {
     }
 
     pub fn unary(input: DTypeKind, out: DTypeKind) -> Self {
+        Self {
+            inputs: vec![input],
+            output: out,
+        }
+    }
+
+    pub fn reduce(input: DTypeKind, out: DTypeKind) -> Self {
         Self {
             inputs: vec![input],
             output: out,
@@ -51,10 +58,22 @@ pub type UnaryLoopFn = unsafe fn(
     out_idx: usize,
 );
 
+/// Initialize accumulator for reduction.
+pub type ReduceInitFn = unsafe fn(out_ptr: *mut u8, idx: usize);
+
+/// Accumulate one element into reduction.
+pub type ReduceAccFn = unsafe fn(
+    acc_ptr: *mut u8,
+    idx: usize,
+    val_ptr: *const u8,
+    byte_offset: isize,
+);
+
 /// Registry for ufunc inner loops.
 pub struct UFuncRegistry {
     binary_loops: HashMap<(BinaryOp, TypeSignature), BinaryLoopFn>,
     unary_loops: HashMap<(UnaryOp, TypeSignature), UnaryLoopFn>,
+    reduce_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceAccFn)>,
 }
 
 impl UFuncRegistry {
@@ -62,6 +81,7 @@ impl UFuncRegistry {
         Self {
             binary_loops: HashMap::new(),
             unary_loops: HashMap::new(),
+            reduce_loops: HashMap::new(),
         }
     }
 
@@ -99,6 +119,27 @@ impl UFuncRegistry {
     ) -> Option<(UnaryLoopFn, DTypeKind)> {
         let sig = TypeSignature::unary(input.clone(), input.clone());
         self.unary_loops.get(&(op, sig)).map(|&f| (f, input))
+    }
+
+    /// Register a reduce loop for a specific operation and type signature.
+    pub fn register_reduce(
+        &mut self,
+        op: ReduceOp,
+        sig: TypeSignature,
+        init: ReduceInitFn,
+        acc: ReduceAccFn,
+    ) {
+        self.reduce_loops.insert((op, sig), (init, acc));
+    }
+
+    /// Look up a reduce loop. Returns None if no registered loop exists.
+    pub fn lookup_reduce(
+        &self,
+        op: ReduceOp,
+        input: DTypeKind,
+    ) -> Option<(ReduceInitFn, ReduceAccFn, DTypeKind)> {
+        let sig = TypeSignature::reduce(input.clone(), input.clone());
+        self.reduce_loops.get(&(op, sig)).map(|&(init, acc)| (init, acc, input))
     }
 }
 
@@ -357,6 +398,178 @@ fn init_default_loops() -> UFuncRegistry {
         },
     );
 
+    // ========================================================================
+    // Reduce loops
+    // ========================================================================
+
+    // f64 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Float64, DTypeKind::Float64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f64).add(idx) = 0.0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f64);
+            *acc += v;
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Float64, DTypeKind::Float64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f64).add(idx) = 1.0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f64);
+            *acc *= v;
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Float64, DTypeKind::Float64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f64).add(idx) = f64::NEG_INFINITY; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f64);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Float64, DTypeKind::Float64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f64).add(idx) = f64::INFINITY; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f64);
+            if v < *acc { *acc = v; }
+        },
+    );
+
+    // f32 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Float32, DTypeKind::Float32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f32).add(idx) = 0.0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f32);
+            *acc += v;
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Float32, DTypeKind::Float32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f32).add(idx) = 1.0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f32);
+            *acc *= v;
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Float32, DTypeKind::Float32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f32).add(idx) = f32::NEG_INFINITY; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f32);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Float32, DTypeKind::Float32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut f32).add(idx) = f32::INFINITY; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut f32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const f32);
+            if v < *acc { *acc = v; }
+        },
+    );
+
+    // i64 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Int64, DTypeKind::Int64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i64).add(idx) = 0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i64);
+            *acc = acc.read().wrapping_add(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Int64, DTypeKind::Int64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i64).add(idx) = 1; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i64);
+            *acc = acc.read().wrapping_mul(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Int64, DTypeKind::Int64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i64).add(idx) = i64::MIN; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i64);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Int64, DTypeKind::Int64),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i64).add(idx) = i64::MAX; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i64).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i64);
+            if v < *acc { *acc = v; }
+        },
+    );
+
+    // i32 reduce loops
+    reg.register_reduce(
+        ReduceOp::Sum,
+        TypeSignature::reduce(DTypeKind::Int32, DTypeKind::Int32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i32).add(idx) = 0; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i32);
+            *acc = acc.read().wrapping_add(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Prod,
+        TypeSignature::reduce(DTypeKind::Int32, DTypeKind::Int32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i32).add(idx) = 1; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i32);
+            *acc = acc.read().wrapping_mul(v);
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Max,
+        TypeSignature::reduce(DTypeKind::Int32, DTypeKind::Int32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i32).add(idx) = i32::MIN; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i32);
+            if v > *acc { *acc = v; }
+        },
+    );
+    reg.register_reduce(
+        ReduceOp::Min,
+        TypeSignature::reduce(DTypeKind::Int32, DTypeKind::Int32),
+        |out_ptr, idx| unsafe { *(out_ptr as *mut i32).add(idx) = i32::MAX; },
+        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+            let acc = (acc_ptr as *mut i32).add(idx);
+            let v = *(val_ptr.offset(byte_offset) as *const i32);
+            if v < *acc { *acc = v; }
+        },
+    );
+
     reg
 }
 
@@ -498,5 +711,89 @@ mod tests {
         // Exp not registered for i32
         let result = reg.lookup_unary(UnaryOp::Exp, DTypeKind::Int32);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_reduce_lookup_found() {
+        let reg = init_default_loops();
+        let result = reg.lookup_reduce(ReduceOp::Sum, DTypeKind::Float64);
+        assert!(result.is_some());
+        let (_, _, out_dtype) = result.unwrap();
+        assert_eq!(out_dtype, DTypeKind::Float64);
+    }
+
+    #[test]
+    fn test_f64_sum_loop() {
+        let reg = init_default_loops();
+        let (init_fn, acc_fn, _) = reg
+            .lookup_reduce(ReduceOp::Sum, DTypeKind::Float64)
+            .unwrap();
+
+        let values: [f64; 3] = [1.0, 2.0, 3.0];
+        let mut acc: f64 = 0.0;
+
+        unsafe {
+            init_fn(&mut acc as *mut f64 as *mut u8, 0);
+            for v in &values {
+                acc_fn(
+                    &mut acc as *mut f64 as *mut u8,
+                    0,
+                    v as *const f64 as *const u8,
+                    0,
+                );
+            }
+        }
+
+        assert_eq!(acc, 6.0);
+    }
+
+    #[test]
+    fn test_f64_max_loop() {
+        let reg = init_default_loops();
+        let (init_fn, acc_fn, _) = reg
+            .lookup_reduce(ReduceOp::Max, DTypeKind::Float64)
+            .unwrap();
+
+        let values: [f64; 4] = [1.0, 5.0, 2.0, 3.0];
+        let mut acc: f64 = 0.0;
+
+        unsafe {
+            init_fn(&mut acc as *mut f64 as *mut u8, 0);
+            for v in &values {
+                acc_fn(
+                    &mut acc as *mut f64 as *mut u8,
+                    0,
+                    v as *const f64 as *const u8,
+                    0,
+                );
+            }
+        }
+
+        assert_eq!(acc, 5.0);
+    }
+
+    #[test]
+    fn test_i64_prod_loop() {
+        let reg = init_default_loops();
+        let (init_fn, acc_fn, _) = reg
+            .lookup_reduce(ReduceOp::Prod, DTypeKind::Int64)
+            .unwrap();
+
+        let values: [i64; 4] = [2, 3, 4, 5];
+        let mut acc: i64 = 0;
+
+        unsafe {
+            init_fn(&mut acc as *mut i64 as *mut u8, 0);
+            for v in &values {
+                acc_fn(
+                    &mut acc as *mut i64 as *mut u8,
+                    0,
+                    v as *const i64 as *const u8,
+                    0,
+                );
+            }
+        }
+
+        assert_eq!(acc, 120);
     }
 }

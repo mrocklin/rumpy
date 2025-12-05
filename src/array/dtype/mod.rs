@@ -70,7 +70,7 @@ pub enum BinaryOp {
 }
 
 /// Reduce operations.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ReduceOp {
     Sum,
     Prod,

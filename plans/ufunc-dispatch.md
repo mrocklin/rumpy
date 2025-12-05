@@ -1,7 +1,7 @@
 # Hybrid UFunc Dispatch Plan
 
 **Design doc:** `designs/dtype-system.md`
-**Status:** Phase 1-3 complete, ready for Phase 4 (reductions)
+**Status:** Phase 1-4 complete
 
 ## Context
 
@@ -113,23 +113,23 @@ Tasks:
 - [x] Register Neg, Abs, Sqrt for f32; Neg, Abs for i64, i32
 - [x] All 352 tests pass (27 new dtype interaction tests)
 
-## Phase 4: Reductions (future)
+## Phase 4: Reductions
 
 Same pattern for `reduce_all_op`, `reduce_axis_op`.
 
 Tasks:
-- [ ] Add `ReduceLoopFn` type to registry
-- [ ] Wire up `reduce_all_op` and `reduce_axis_op` to check registry
-- [ ] Register reduction loops for common types
+- [x] Add `ReduceInitFn` and `ReduceAccFn` types to registry
+- [x] Wire up `reduce_all_op` and `reduce_axis_op` to check registry
+- [x] Register reduction loops for f64, f32, i64, i32 (Sum, Prod, Max, Min)
+- [x] All 352 tests pass
 
 ## What's Next
 
 Potential next steps (in rough priority order):
-1. **Phase 4 (reductions)** - Complete the hybrid dispatch for sum/prod/max/min
-2. **More dtype loops** - Register loops for uint types, bool, complex128
-3. **Datetime validation** - Error on invalid ops like datetime+datetime (1 xfail test)
-4. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
-5. **Performance** - Consider SIMD loops for hot paths
+1. **More dtype loops** - Register loops for uint types, bool, complex128
+2. **Datetime validation** - Error on invalid ops like datetime+datetime (1 xfail test)
+3. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
+4. **Performance** - Consider SIMD loops for hot paths
 
 ## Why Hybrid?
 

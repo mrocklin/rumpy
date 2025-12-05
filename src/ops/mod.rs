@@ -221,6 +221,31 @@ fn reduce_all_op(arr: &RumpyArray, op: ReduceOp) -> RumpyArray {
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
     let dtype = arr.dtype();
+    let kind = dtype.kind();
+
+    // Try registry first
+    {
+        let reg = registry().read().unwrap();
+        if let Some((init_fn, acc_fn, _)) = reg.lookup_reduce(op, kind.clone()) {
+            // Initialize
+            unsafe { init_fn(result_ptr, 0); }
+
+            if size == 0 {
+                return result;
+            }
+
+            let src_ptr = arr.data_ptr();
+            let mut indices = vec![0usize; arr.ndim()];
+            for _ in 0..size {
+                let src_offset = arr.byte_offset_for(&indices);
+                unsafe { acc_fn(result_ptr, 0, src_ptr, src_offset); }
+                increment_indices(&mut indices, arr.shape());
+            }
+            return result;
+        }
+    }
+
+    // Fallback: trait-based dispatch
     let ops = dtype.ops();
 
     // Initialize accumulator
@@ -264,6 +289,48 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
     let dtype = arr.dtype();
+    let kind = dtype.kind();
+
+    // Try registry first
+    {
+        let reg = registry().read().unwrap();
+        if let Some((init_fn, acc_fn, _)) = reg.lookup_reduce(op, kind.clone()) {
+            // Initialize all accumulators
+            for i in 0..out_size {
+                unsafe { init_fn(result_ptr, i); }
+            }
+
+            if out_size == 0 || axis_len == 0 {
+                return result;
+            }
+
+            let src_ptr = arr.data_ptr();
+
+            // Iterate over output positions
+            let mut out_indices = vec![0usize; out_shape.len()];
+            for i in 0..out_size {
+                // Build input indices by inserting axis position
+                let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+                in_indices.push(0); // placeholder for axis
+                if axis < arr.ndim() - 1 {
+                    in_indices.extend_from_slice(&out_indices[axis..]);
+                }
+
+                // Reduce along axis
+                for j in 0..axis_len {
+                    in_indices[axis] = j;
+                    let src_offset = arr.byte_offset_for(&in_indices);
+                    unsafe { acc_fn(result_ptr, i, src_ptr, src_offset); }
+                }
+
+                increment_indices(&mut out_indices, &out_shape);
+            }
+
+            return result;
+        }
+    }
+
+    // Fallback: trait-based dispatch
     let ops = dtype.ops();
 
     // Initialize all accumulators
