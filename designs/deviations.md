@@ -23,3 +23,11 @@ This is simpler and consistent with how gufuncs work. For the Cartesian product 
 ## dtype Strings Only
 
 Rumpy accepts dtype as strings (`"float64"`) not NumPy dtype objects (`np.float64`).
+
+## Random Number Generation
+
+`random()` and `uniform()` match numpy exactly when using `Generator.from_numpy_state()` with state extracted from numpy's PCG64DXSM.
+
+`integers()` uses Lemire's algorithm for bounded integers, which differs from numpy's algorithm. Values are uniformly distributed but not bit-identical.
+
+`normal()` and `exponential()` use Box-Muller and inverse transform respectively, rather than numpy's ziggurat algorithm. Statistically equivalent but not bit-identical.

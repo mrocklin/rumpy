@@ -1,4 +1,5 @@
 pub mod pyarray;
+pub mod random;
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
@@ -519,6 +520,8 @@ pub fn where_fn(
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
+    // Register random submodule
+    random::register_submodule(m)?;
     // Constructors
     m.add_function(wrap_pyfunction!(zeros, m)?)?;
     m.add_function(wrap_pyfunction!(ones, m)?)?;

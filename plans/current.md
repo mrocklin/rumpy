@@ -6,9 +6,22 @@
 
 ## Status
 
-**Complete**: 320 tests passing. Gufunc infrastructure with matmul, inner, outer, solve.
+**Complete**: 333 tests passing. Random module with Generator class.
 
 ### Recent Work
+
+- [x] **Random module** (`src/random/`)
+  - PCG64DXSM BitGenerator (custom impl for numpy state compatibility)
+  - `rp.random.default_rng(seed)` - create Generator
+  - `Generator.from_numpy_state(state, inc)` - exact numpy compatibility
+  - `random(size)` - uniform [0, 1) - **exact match** with numpy
+  - `uniform(low, high, size)` - **exact match** with numpy
+  - `integers(low, high, size)` - Lemire's algorithm (statistically correct)
+  - `normal(loc, scale, size)` - Box-Muller (statistically correct)
+  - `exponential(scale, size)` - inverse transform (statistically correct)
+  - See `designs/deviations.md` for algorithm differences
+
+### Previous Work
 
 - [x] **Gufunc infrastructure** (`src/ops/gufunc/`) - see `designs/gufuncs.md`
   - Signature parsing: `"(m,n),(n,p)->(m,p)"`
@@ -41,12 +54,18 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: More Linalg
+## Next: More Random & Linalg
 
-See `designs/linalg.md` for faer integration patterns.
+### Random (Phase 2)
+- `poisson(lam, size)` - Poisson distribution
+- `binomial(n, p, size)` - binomial distribution
+- `choice(a, size)` - random choice from array
+- `shuffle(x)` - in-place shuffle
+- (Optional) Ziggurat algorithm for exact numpy normal/exponential matching
 
+### Linalg - see `designs/linalg.md`
 - `dot()` - has complex dimension-dependent semantics
-- `linalg.*` - determinant, trace, solve, etc. (faer supports these)
+- `linalg.*` - determinant, trace, etc. (faer supports these)
 
 ## Known Limitations (Future Work)
 
