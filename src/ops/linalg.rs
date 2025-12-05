@@ -1,6 +1,22 @@
-//! Linear algebra operations: trace, det, norm.
+//! Linear algebra operations: trace, det, norm, qr, svd.
 
-use crate::array::RumpyArray;
+use crate::array::{DType, RumpyArray};
+use faer::MatRef;
+
+/// Copy a faer matrix to a new RumpyArray.
+fn faer_to_rumpy(mat: MatRef<'_, f64>) -> RumpyArray {
+    let (m, n) = (mat.nrows(), mat.ncols());
+    let arr = RumpyArray::zeros(vec![m, n], DType::float64());
+    for i in 0..m {
+        for j in 0..n {
+            unsafe {
+                let ptr = arr.data_ptr().add((i * n + j) * 8) as *mut f64;
+                *ptr = mat[(i, j)];
+            }
+        }
+    }
+    arr
+}
 
 /// Compute trace of a 2D matrix (sum of diagonal elements).
 pub fn trace(a: &RumpyArray) -> Option<f64> {
@@ -73,4 +89,50 @@ pub fn norm(a: &RumpyArray, ord: Option<&str>) -> Option<f64> {
         }
         _ => None, // Other norms not yet implemented
     }
+}
+
+/// QR decomposition: A = QR where Q is orthogonal, R is upper triangular.
+///
+/// Returns thin (Q, R) where Q is m×k, R is k×n, k = min(m,n).
+pub fn qr(a: &RumpyArray) -> Option<(RumpyArray, RumpyArray)> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let (m, n) = (a.shape()[0], a.shape()[1]);
+    let fa = faer::Mat::<f64>::from_fn(m, n, |i, j| a.get_element(&[i, j]));
+
+    let decomp = fa.qr();
+    let q = faer_to_rumpy(decomp.compute_thin_q().as_ref());
+    let r = faer_to_rumpy(decomp.compute_thin_r().as_ref());
+
+    Some((q, r))
+}
+
+/// SVD decomposition: A = U @ diag(S) @ V^T.
+///
+/// Returns thin (U, S, Vt) where U is m×k, S is 1D length k, Vt is k×n.
+pub fn svd(a: &RumpyArray) -> Option<(RumpyArray, RumpyArray, RumpyArray)> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let (m, n) = (a.shape()[0], a.shape()[1]);
+    let k = m.min(n);
+    let fa = faer::Mat::<f64>::from_fn(m, n, |i, j| a.get_element(&[i, j]));
+
+    let decomp = fa.thin_svd();
+
+    let u = faer_to_rumpy(decomp.u());
+    let vt = faer_to_rumpy(decomp.v().transpose());
+
+    // S as 1D array
+    let s = RumpyArray::zeros(vec![k], DType::float64());
+    let fs = decomp.s_diagonal();
+    for i in 0..k {
+        unsafe {
+            let ptr = s.data_ptr().add(i * 8) as *mut f64;
+            *ptr = fs[i];
+        }
+    }
+
+    Some((u, s, vt))
 }

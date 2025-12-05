@@ -6,7 +6,7 @@
 
 ## Status
 
-**Complete**: 338 tests passing. Gufunc infrastructure with matmul, dot, inner, outer, solve, trace, det, norm.
+**Complete**: 347 tests passing. Gufunc infrastructure with matmul, dot, inner, outer, solve, trace, det, norm, qr, svd.
 
 ### Recent Work
 
@@ -26,6 +26,8 @@
 - [x] **trace**: `rp.trace(A)` - sum of diagonal elements
 - [x] **det**: `rp.det(A)` - determinant via LU decomposition
 - [x] **norm**: `rp.norm(A)` - Frobenius norm (default)
+- [x] **qr**: `rp.qr(A)` - QR decomposition returning (Q, R)
+- [x] **svd**: `rp.svd(A)` - SVD decomposition returning (U, S, Vt)
 - [x] `__repr__` and `__str__` match NumPy format exactly
 - [x] `shape` property returns tuple (was list)
 - [x] `strides` property returns tuple (was list)
@@ -45,12 +47,10 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
-## Next: Decompositions
+## Next
 
-See `designs/linalg.md` for faer integration patterns.
-
-- Decompositions: `qr`, `svd`, `eig` (faer supports these)
-- Also added `__float__`/`__int__` for 0D arrays
+- `eig`, `eigvals` - eigenvalue decomposition
+- More norm types (1, 2, inf, nuclear)
 
 ## Known Limitations (Future Work)
 

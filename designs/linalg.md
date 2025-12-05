@@ -51,9 +51,14 @@ let mat_ref = unsafe {
 - Always convert: `elem_stride = byte_stride / sizeof(T)`
 - faer handles non-contiguous memory correctly
 
+## Implemented
+
+- `solve` - linear system via LU
+- `qr` - QR decomposition (thin)
+- `svd` - SVD decomposition (thin)
+- `det`, `trace`, `norm` (Frobenius)
+
 ## Future Work
 
-- More decompositions: `linalg.lu`, `linalg.qr`, `linalg.svd`
-- Solve systems: `linalg.solve`
-- Eigenvalues: `linalg.eig`, `linalg.eigvals`
-- Determinant, trace, norm
+- `eig`, `eigvals` - eigenvalue decomposition
+- More norm types

@@ -510,6 +510,22 @@ pub fn norm(a: &PyRumpyArray, ord: Option<&str>) -> PyResult<f64> {
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("unsupported norm type"))
 }
 
+/// QR decomposition: A = QR.
+#[pyfunction]
+pub fn qr(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
+    crate::ops::linalg::qr(&a.inner)
+        .map(|(q, r)| (PyRumpyArray::new(q), PyRumpyArray::new(r)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("qr requires 2D array"))
+}
+
+/// SVD decomposition: A = U @ diag(S) @ Vt.
+#[pyfunction]
+pub fn svd(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray, PyRumpyArray)> {
+    crate::ops::linalg::svd(&a.inner)
+        .map(|(u, s, vt)| (PyRumpyArray::new(u), PyRumpyArray::new(s), PyRumpyArray::new(vt)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("svd requires 2D array"))
+}
+
 /// Conditional selection: where(condition, x, y).
 /// Returns elements from x where condition is true, else from y.
 #[pyfunction]
@@ -592,5 +608,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(trace, m)?)?;
     m.add_function(wrap_pyfunction!(det, m)?)?;
     m.add_function(wrap_pyfunction!(norm, m)?)?;
+    m.add_function(wrap_pyfunction!(qr, m)?)?;
+    m.add_function(wrap_pyfunction!(svd, m)?)?;
     Ok(())
 }
