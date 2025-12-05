@@ -352,6 +352,38 @@ impl PyRumpyArray {
         self.transpose()
     }
 
+    /// Real part of the array.
+    #[getter]
+    fn real(&self) -> Self {
+        Self::new(self.inner.real())
+    }
+
+    /// Imaginary part of the array.
+    #[getter]
+    fn imag(&self) -> Self {
+        Self::new(self.inner.imag())
+    }
+
+    /// Complex conjugate of the array.
+    fn conj(&self) -> Self {
+        Self::new(self.inner.conj())
+    }
+
+    /// Extract diagonal from 2D array.
+    fn diagonal(&self) -> Self {
+        Self::new(self.inner.diagonal())
+    }
+
+    /// Sum of diagonal elements.
+    fn trace(&self) -> f64 {
+        self.inner.trace()
+    }
+
+    /// Swap two axes.
+    fn swapaxes(&self, axis1: usize, axis2: usize) -> Self {
+        Self::new(self.inner.swapaxes(axis1, axis2))
+    }
+
     /// Create a contiguous copy of the array.
     fn copy(&self) -> Self {
         Self::new(self.inner.copy())
@@ -587,12 +619,26 @@ impl PyRumpyArray {
         }
     }
 
-    fn argmax(&self) -> usize {
-        self.inner.argmax()
+    #[pyo3(signature = (axis=None))]
+    fn argmax(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.argmax() as f64)),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.argmax_axis(ax))))
+            }
+        }
     }
 
-    fn argmin(&self) -> usize {
-        self.inner.argmin()
+    #[pyo3(signature = (axis=None))]
+    fn argmin(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.argmin() as f64)),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.argmin_axis(ax))))
+            }
+        }
     }
 
     /// Dot product with numpy semantics.

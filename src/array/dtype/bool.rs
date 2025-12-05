@@ -59,6 +59,8 @@ impl DTypeOps for BoolOps {
             BinaryOp::Pow => av,  // not meaningful
             BinaryOp::Mod => av,  // not meaningful
             BinaryOp::FloorDiv => av,  // not meaningful
+            BinaryOp::Maximum => av || bv,  // max of bool is OR
+            BinaryOp::Minimum => av && bv,  // min of bool is AND
         };
         Self::write(out, idx, result);
     }

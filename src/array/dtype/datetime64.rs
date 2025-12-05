@@ -90,6 +90,8 @@ impl DTypeOps for DateTime64Ops {
             BinaryOp::Pow => if bv >= 0 { av.wrapping_pow(bv as u32) } else { 0 },
             BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
             BinaryOp::FloorDiv => if bv != 0 { av.div_euclid(bv) } else { 0 },
+            BinaryOp::Maximum => av.max(bv),
+            BinaryOp::Minimum => av.min(bv),
         };
         Self::write(out, idx, result);
     }

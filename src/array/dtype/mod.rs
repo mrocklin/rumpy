@@ -67,14 +67,23 @@ pub enum UnaryOp {
     Sqrt,
     Exp,
     Log,
+    Log10,
+    Log2,
     Sin,
     Cos,
     Tan,
+    Sinh,
+    Cosh,
+    Tanh,
     Floor,
     Ceil,
     Arcsin,
     Arccos,
     Arctan,
+    Sign,
+    Isnan,
+    Isinf,
+    Isfinite,
 }
 
 /// Binary operations.
@@ -87,6 +96,8 @@ pub enum BinaryOp {
     Pow,
     Mod,
     FloorDiv,
+    Maximum,
+    Minimum,
 }
 
 /// Reduce operations.

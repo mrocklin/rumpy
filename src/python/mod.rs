@@ -402,8 +402,121 @@ pub fn arctan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
 }
 
 #[pyfunction]
+pub fn log10(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.log10())
+}
+
+#[pyfunction]
+pub fn log2(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.log2())
+}
+
+#[pyfunction]
+pub fn sinh(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.sinh())
+}
+
+#[pyfunction]
+pub fn cosh(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.cosh())
+}
+
+#[pyfunction]
+pub fn tanh(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.tanh())
+}
+
+#[pyfunction]
+pub fn sign(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.sign())
+}
+
+#[pyfunction]
+pub fn isnan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.isnan())
+}
+
+#[pyfunction]
+pub fn isinf(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.isinf())
+}
+
+#[pyfunction]
+pub fn isfinite(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.isfinite())
+}
+
+#[pyfunction]
 pub fn abs(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
     unary_result_to_py(x.inner.abs())
+}
+
+// Element-wise binary functions
+
+#[pyfunction]
+pub fn maximum(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    x1.inner.binary_op(&x2.inner, crate::array::dtype::BinaryOp::Maximum)
+        .map(PyRumpyArray::new)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{:?}", e)))
+}
+
+#[pyfunction]
+pub fn minimum(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    x1.inner.binary_op(&x2.inner, crate::array::dtype::BinaryOp::Minimum)
+        .map(PyRumpyArray::new)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{:?}", e)))
+}
+
+// Complex accessors
+
+#[pyfunction]
+pub fn real(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.real())
+}
+
+#[pyfunction]
+pub fn imag(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.imag())
+}
+
+#[pyfunction]
+pub fn conj(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.conj())
+}
+
+#[pyfunction]
+pub fn diagonal(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.diagonal())
+}
+
+#[pyfunction]
+pub fn count_nonzero(x: &PyRumpyArray) -> usize {
+    x.inner.count_nonzero()
+}
+
+#[pyfunction]
+pub fn swapaxes(x: &PyRumpyArray, axis1: usize, axis2: usize) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.swapaxes(axis1, axis2))
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, axis=-1))]
+pub fn sort(x: &PyRumpyArray, axis: Option<isize>) -> PyRumpyArray {
+    let resolved_axis = axis.map(|a| resolve_axis(a, x.inner.ndim()));
+    PyRumpyArray::new(x.inner.sort(resolved_axis))
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, axis=-1))]
+pub fn argsort(x: &PyRumpyArray, axis: Option<isize>) -> PyRumpyArray {
+    let resolved_axis = axis.map(|a| resolve_axis(a, x.inner.ndim()));
+    PyRumpyArray::new(x.inner.argsort(resolved_axis))
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, n=1, axis=-1))]
+pub fn diff(x: &PyRumpyArray, n: usize, axis: isize) -> PyRumpyArray {
+    PyRumpyArray::new(x.inner.diff(n, resolve_axis(axis, x.inner.ndim())))
 }
 
 // Module-level reduction functions
@@ -417,6 +530,15 @@ fn check_axis(axis: usize, ndim: usize) -> PyResult<()> {
         )))
     } else {
         Ok(())
+    }
+}
+
+/// Resolve a potentially negative axis to a positive index.
+fn resolve_axis(axis: isize, ndim: usize) -> usize {
+    if axis < 0 {
+        (ndim as isize + axis) as usize
+    } else {
+        axis as usize
     }
 }
 
@@ -544,16 +666,30 @@ pub fn min(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
     }
 }
 
-/// Index of maximum element (flattened).
+/// Index of maximum element.
 #[pyfunction]
-pub fn argmax(x: &PyRumpyArray) -> usize {
-    x.inner.argmax()
+#[pyo3(signature = (x, axis=None))]
+pub fn argmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.argmax() as f64)),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.argmax_axis(ax))))
+        }
+    }
 }
 
-/// Index of minimum element (flattened).
+/// Index of minimum element.
 #[pyfunction]
-pub fn argmin(x: &PyRumpyArray) -> usize {
-    x.inner.argmin()
+#[pyo3(signature = (x, axis=None))]
+pub fn argmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.argmin() as f64)),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.argmin_axis(ax))))
+        }
+    }
 }
 
 /// Round to the given number of decimals.
@@ -711,22 +847,72 @@ pub fn squeeze(arr: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(arr.inner.squeeze())
 }
 
-/// Sort array (flattened).
+/// Reverse the order of elements along given axis.
 #[pyfunction]
-pub fn sort(arr: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(arr.inner.sort())
+#[pyo3(signature = (arr, axis=None))]
+pub fn flip(arr: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    match axis {
+        None => {
+            // Flip all axes
+            let mut result = arr.inner.clone();
+            for ax in 0..result.ndim() {
+                result = result.flip(ax).unwrap();
+            }
+            Ok(PyRumpyArray::new(result))
+        }
+        Some(ax) => {
+            let ndim = arr.inner.ndim();
+            let axis = if ax < 0 {
+                (ndim as isize + ax) as usize
+            } else {
+                ax as usize
+            };
+            arr.inner.flip(axis)
+                .map(PyRumpyArray::new)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err(format!(
+                        "axis {} is out of bounds for array of dimension {}",
+                        axis, ndim
+                    ))
+                })
+        }
+    }
 }
 
-/// Return indices that would sort the array (flattened).
+/// Flip array vertically (axis=0).
 #[pyfunction]
-pub fn argsort(arr: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(arr.inner.argsort())
+pub fn flipud(arr: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    if arr.inner.ndim() < 1 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "flipud requires array with at least 1 dimension"
+        ));
+    }
+    Ok(PyRumpyArray::new(arr.inner.flip(0).unwrap()))
 }
+
+/// Flip array horizontally (axis=1).
+#[pyfunction]
+pub fn fliplr(arr: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    if arr.inner.ndim() < 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "fliplr requires array with at least 2 dimensions"
+        ));
+    }
+    Ok(PyRumpyArray::new(arr.inner.flip(1).unwrap()))
+}
+
+// sort and argsort are defined earlier with axis parameter
 
 /// Return unique sorted values.
 #[pyfunction]
 pub fn unique(arr: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(arr.inner.unique())
+}
+
+/// Return indices of non-zero elements.
+#[pyfunction]
+pub fn nonzero(arr: &PyRumpyArray) -> Vec<PyRumpyArray> {
+    arr.inner.nonzero().into_iter().map(PyRumpyArray::new).collect()
 }
 
 /// Matrix multiplication.
@@ -921,7 +1107,27 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arcsin, m)?)?;
     m.add_function(wrap_pyfunction!(arccos, m)?)?;
     m.add_function(wrap_pyfunction!(arctan, m)?)?;
+    m.add_function(wrap_pyfunction!(log10, m)?)?;
+    m.add_function(wrap_pyfunction!(log2, m)?)?;
+    m.add_function(wrap_pyfunction!(sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(cosh, m)?)?;
+    m.add_function(wrap_pyfunction!(tanh, m)?)?;
+    m.add_function(wrap_pyfunction!(sign, m)?)?;
+    m.add_function(wrap_pyfunction!(isnan, m)?)?;
+    m.add_function(wrap_pyfunction!(isinf, m)?)?;
+    m.add_function(wrap_pyfunction!(isfinite, m)?)?;
     m.add_function(wrap_pyfunction!(abs, m)?)?;
+    m.add_function(wrap_pyfunction!(maximum, m)?)?;
+    m.add_function(wrap_pyfunction!(minimum, m)?)?;
+    m.add_function(wrap_pyfunction!(real, m)?)?;
+    m.add_function(wrap_pyfunction!(imag, m)?)?;
+    m.add_function(wrap_pyfunction!(conj, m)?)?;
+    m.add_function(wrap_pyfunction!(diagonal, m)?)?;
+    m.add_function(wrap_pyfunction!(count_nonzero, m)?)?;
+    m.add_function(wrap_pyfunction!(swapaxes, m)?)?;
+    m.add_function(wrap_pyfunction!(sort, m)?)?;
+    m.add_function(wrap_pyfunction!(argsort, m)?)?;
+    m.add_function(wrap_pyfunction!(diff, m)?)?;
     m.add_function(wrap_pyfunction!(all, m)?)?;
     m.add_function(wrap_pyfunction!(any, m)?)?;
     m.add_function(wrap_pyfunction!(clip, m)?)?;
@@ -933,6 +1139,9 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Shape manipulation
     m.add_function(wrap_pyfunction!(expand_dims, m)?)?;
     m.add_function(wrap_pyfunction!(squeeze, m)?)?;
+    m.add_function(wrap_pyfunction!(flip, m)?)?;
+    m.add_function(wrap_pyfunction!(flipud, m)?)?;
+    m.add_function(wrap_pyfunction!(fliplr, m)?)?;
     // Concatenation
     m.add_function(wrap_pyfunction!(concatenate, m)?)?;
     m.add_function(wrap_pyfunction!(stack, m)?)?;
@@ -941,10 +1150,9 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Splitting
     m.add_function(wrap_pyfunction!(split, m)?)?;
     m.add_function(wrap_pyfunction!(array_split, m)?)?;
-    // Sorting
-    m.add_function(wrap_pyfunction!(sort, m)?)?;
-    m.add_function(wrap_pyfunction!(argsort, m)?)?;
+    // Sorting - sort and argsort are registered earlier with axis parameter
     m.add_function(wrap_pyfunction!(unique, m)?)?;
+    m.add_function(wrap_pyfunction!(nonzero, m)?)?;
     // Linear algebra
     m.add_function(wrap_pyfunction!(matmul, m)?)?;
     m.add_function(wrap_pyfunction!(dot, m)?)?;

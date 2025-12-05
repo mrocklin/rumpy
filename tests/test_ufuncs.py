@@ -1,4 +1,4 @@
-"""Tests for math ufuncs."""
+"""Tests for math ufuncs (unary and binary element-wise functions)."""
 
 import numpy as np
 import pytest
@@ -198,3 +198,474 @@ class TestBinaryDtypePromotion:
 
         assert r_result.dtype == str(n_result.dtype), f"{dtype_a}**{dtype_b}: Expected {n_result.dtype}, got {r_result.dtype}"
         assert_eq(r_result, n_result)
+
+
+class TestFloorCeil:
+    """Test floor and ceil operations."""
+
+    def test_floor_float64(self):
+        n = np.array([1.1, 2.5, 3.9, -1.1, -2.5])
+        r = rp.asarray(n)
+        assert_eq(rp.floor(r), np.floor(n))
+
+    def test_ceil_float64(self):
+        n = np.array([1.1, 2.5, 3.9, -1.1, -2.5])
+        r = rp.asarray(n)
+        assert_eq(rp.ceil(r), np.ceil(n))
+
+    def test_floor_float32(self):
+        n = np.array([1.1, 2.5, 3.9], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.floor(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.floor(n))
+
+    def test_ceil_float32(self):
+        n = np.array([1.1, 2.5, 3.9], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.ceil(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.ceil(n))
+
+    def test_floor_integers_noop(self):
+        """Floor of integers should be unchanged."""
+        n = np.array([1, 2, 3], dtype="int64")
+        r = rp.asarray(n)
+        n_result = np.floor(n)
+        r_result = rp.floor(r)
+        assert_eq(r_result, n_result)
+
+    def test_ceil_integers_noop(self):
+        """Ceil of integers should be unchanged."""
+        n = np.array([1, 2, 3], dtype="int64")
+        r = rp.asarray(n)
+        n_result = np.ceil(n)
+        r_result = rp.ceil(r)
+        assert_eq(r_result, n_result)
+
+
+class TestInverseTrig:
+    """Test inverse trigonometric functions."""
+
+    def test_arcsin(self):
+        n = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+        r = rp.asarray(n)
+        assert_eq(rp.arcsin(r), np.arcsin(n))
+
+    def test_arccos(self):
+        n = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+        r = rp.asarray(n)
+        assert_eq(rp.arccos(r), np.arccos(n))
+
+    def test_arctan(self):
+        n = np.array([-10.0, -1.0, 0.0, 1.0, 10.0])
+        r = rp.asarray(n)
+        assert_eq(rp.arctan(r), np.arctan(n))
+
+    def test_arcsin_float32(self):
+        n = np.array([-1.0, 0.0, 1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.arcsin(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.arcsin(n))
+
+    def test_arccos_float32(self):
+        n = np.array([-1.0, 0.0, 1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.arccos(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.arccos(n))
+
+    def test_arctan_float32(self):
+        n = np.array([-1.0, 0.0, 1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.arctan(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.arctan(n))
+
+    def test_arcsin_out_of_domain(self):
+        """arcsin of value outside [-1, 1] should return nan."""
+        n = np.array([2.0, -2.0])
+        r = rp.asarray(n)
+        n_result = np.arcsin(n)
+        r_result = rp.arcsin(r)
+        assert np.isnan(n_result).all()
+        assert_eq(r_result, n_result)
+
+    def test_arccos_out_of_domain(self):
+        """arccos of value outside [-1, 1] should return nan."""
+        n = np.array([2.0, -2.0])
+        r = rp.asarray(n)
+        n_result = np.arccos(n)
+        r_result = rp.arccos(r)
+        assert np.isnan(n_result).all()
+        assert_eq(r_result, n_result)
+
+
+class TestComplexUnsupported:
+    """Test that operations unsupported on complex raise TypeError like NumPy."""
+
+    def test_floor_complex_raises(self):
+        """floor on complex128 should raise TypeError."""
+        n = np.array([1.5 + 2.5j])
+        r = rp.asarray(n)
+
+        with pytest.raises(TypeError):
+            np.floor(n)
+
+        with pytest.raises(TypeError):
+            rp.floor(r)
+
+    def test_ceil_complex_raises(self):
+        """ceil on complex128 should raise TypeError."""
+        n = np.array([1.5 + 2.5j])
+        r = rp.asarray(n)
+
+        with pytest.raises(TypeError):
+            np.ceil(n)
+
+        with pytest.raises(TypeError):
+            rp.ceil(r)
+
+
+class TestComplexInverseTrig:
+    """Test inverse trig functions on complex numbers."""
+
+    def test_arcsin_complex(self):
+        """arcsin on complex128 should match NumPy."""
+        n = np.array([1+2j, 0.5+0.5j, 1+0j, -1+0j, 0+1j])
+        r = rp.asarray(n)
+        assert_eq(rp.arcsin(r), np.arcsin(n))
+
+    def test_arccos_complex(self):
+        """arccos on complex128 should match NumPy."""
+        n = np.array([1+2j, 0.5+0.5j, 1+0j, -1+0j, 0+1j])
+        r = rp.asarray(n)
+        assert_eq(rp.arccos(r), np.arccos(n))
+
+    def test_arctan_complex(self):
+        """arctan on complex128 should match NumPy."""
+        n = np.array([1+2j, 0.5+0.5j, 1+0j, -1+0j])
+        r = rp.asarray(n)
+        assert_eq(rp.arctan(r), np.arctan(n))
+
+
+class TestLog10Log2:
+    """Test log10 and log2 functions."""
+
+    def test_log10_float64(self):
+        n = np.array([1.0, 10.0, 100.0, 1000.0])
+        r = rp.asarray(n)
+        assert_eq(rp.log10(r), np.log10(n))
+
+    def test_log2_float64(self):
+        n = np.array([1.0, 2.0, 4.0, 8.0, 16.0])
+        r = rp.asarray(n)
+        assert_eq(rp.log2(r), np.log2(n))
+
+    def test_log10_float32(self):
+        n = np.array([1.0, 10.0, 100.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.log10(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.log10(n))
+
+    def test_log2_float32(self):
+        n = np.array([1.0, 2.0, 4.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.log2(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.log2(n))
+
+    def test_log10_int_promotes(self):
+        """log10 of int should promote to float64."""
+        n = np.array([1, 10, 100], dtype="int64")
+        r = rp.asarray(n)
+        r_result = rp.log10(r)
+        n_result = np.log10(n)
+        assert r_result.dtype == "float64"
+        assert_eq(r_result, n_result)
+
+
+class TestHyperbolic:
+    """Test hyperbolic functions sinh, cosh, tanh."""
+
+    def test_sinh_float64(self):
+        n = np.array([0.0, 1.0, -1.0, 2.0])
+        r = rp.asarray(n)
+        assert_eq(rp.sinh(r), np.sinh(n))
+
+    def test_cosh_float64(self):
+        n = np.array([0.0, 1.0, -1.0, 2.0])
+        r = rp.asarray(n)
+        assert_eq(rp.cosh(r), np.cosh(n))
+
+    def test_tanh_float64(self):
+        n = np.array([0.0, 1.0, -1.0, 2.0])
+        r = rp.asarray(n)
+        assert_eq(rp.tanh(r), np.tanh(n))
+
+    def test_sinh_float32(self):
+        n = np.array([0.0, 1.0, -1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.sinh(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.sinh(n))
+
+    def test_cosh_float32(self):
+        n = np.array([0.0, 1.0, -1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.cosh(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.cosh(n))
+
+    def test_tanh_float32(self):
+        n = np.array([0.0, 1.0, -1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.tanh(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.tanh(n))
+
+    def test_hyperbolic_complex(self):
+        n = np.array([1+2j, 0+1j, 1+0j])
+        r = rp.asarray(n)
+        assert_eq(rp.sinh(r), np.sinh(n))
+        assert_eq(rp.cosh(r), np.cosh(n))
+        assert_eq(rp.tanh(r), np.tanh(n))
+
+
+class TestSign:
+    """Test sign function."""
+
+    def test_sign_float64(self):
+        n = np.array([3.0, 0.0, -3.0, 5.5, -2.5])
+        r = rp.asarray(n)
+        assert_eq(rp.sign(r), np.sign(n))
+
+    def test_sign_float32(self):
+        n = np.array([3.0, 0.0, -3.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.sign(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.sign(n))
+
+    def test_sign_int64(self):
+        n = np.array([3, 0, -3], dtype="int64")
+        r = rp.asarray(n)
+        result = rp.sign(r)
+        assert result.dtype == "int64"
+        assert_eq(result, np.sign(n))
+
+
+class TestIsnanIsinfIsfinite:
+    """Test isnan, isinf, isfinite functions."""
+
+    def test_isnan_float64(self):
+        n = np.array([1.0, np.nan, 2.0, np.nan])
+        r = rp.asarray(n)
+        n_result = np.isnan(n)
+        r_result = rp.isnan(r)
+        # rumpy returns float array with 0/1, numpy returns bool
+        assert_eq(r_result, n_result.astype(float))
+
+    def test_isinf_float64(self):
+        n = np.array([1.0, np.inf, -np.inf, 0.0])
+        r = rp.asarray(n)
+        n_result = np.isinf(n)
+        r_result = rp.isinf(r)
+        assert_eq(r_result, n_result.astype(float))
+
+    def test_isfinite_float64(self):
+        n = np.array([1.0, np.inf, np.nan, -np.inf, 0.0])
+        r = rp.asarray(n)
+        n_result = np.isfinite(n)
+        r_result = rp.isfinite(r)
+        assert_eq(r_result, n_result.astype(float))
+
+    def test_isnan_int(self):
+        """Integers are never NaN."""
+        n = np.array([1, 2, 3], dtype="int64")
+        r = rp.asarray(n)
+        r_result = rp.isnan(r)
+        assert_eq(r_result, np.zeros(3))
+
+    def test_isinf_int(self):
+        """Integers are never infinite."""
+        n = np.array([1, 2, 3], dtype="int64")
+        r = rp.asarray(n)
+        r_result = rp.isinf(r)
+        assert_eq(r_result, np.zeros(3))
+
+    def test_isfinite_int(self):
+        """Integers are always finite."""
+        n = np.array([1, 2, 3], dtype="int64")
+        r = rp.asarray(n)
+        r_result = rp.isfinite(r)
+        assert_eq(r_result, np.ones(3))
+
+
+class TestMaximumMinimum:
+    """Test maximum and minimum element-wise functions."""
+
+    def test_maximum_float64(self):
+        a = np.array([1.0, 5.0, 3.0])
+        b = np.array([4.0, 2.0, 3.0])
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.maximum(ra, rb), np.maximum(a, b))
+
+    def test_minimum_float64(self):
+        a = np.array([1.0, 5.0, 3.0])
+        b = np.array([4.0, 2.0, 3.0])
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.minimum(ra, rb), np.minimum(a, b))
+
+    def test_maximum_int64(self):
+        a = np.array([1, 5, 3], dtype="int64")
+        b = np.array([4, 2, 3], dtype="int64")
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        result = rp.maximum(ra, rb)
+        assert result.dtype == "int64"
+        assert_eq(result, np.maximum(a, b))
+
+    def test_minimum_int64(self):
+        a = np.array([1, 5, 3], dtype="int64")
+        b = np.array([4, 2, 3], dtype="int64")
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        result = rp.minimum(ra, rb)
+        assert result.dtype == "int64"
+        assert_eq(result, np.minimum(a, b))
+
+    def test_maximum_broadcast(self):
+        a = np.array([[1.0, 2.0, 3.0]])
+        b = np.array([[10.0], [1.0]])
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.maximum(ra, rb), np.maximum(a, b))
+
+    def test_minimum_broadcast(self):
+        a = np.array([[1.0, 2.0, 3.0]])
+        b = np.array([[10.0], [1.0]])
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.minimum(ra, rb), np.minimum(a, b))
+
+    def test_maximum_with_nan(self):
+        """maximum propagates NaN like NumPy."""
+        a = np.array([1.0, np.nan, 3.0])
+        b = np.array([2.0, 2.0, np.nan])
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        r_result = rp.maximum(ra, rb)
+        n_result = np.maximum(a, b)
+        assert_eq(r_result, n_result)
+
+    def test_minimum_with_nan(self):
+        """minimum propagates NaN like NumPy."""
+        a = np.array([1.0, np.nan, 3.0])
+        b = np.array([2.0, 2.0, np.nan])
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        r_result = rp.minimum(ra, rb)
+        n_result = np.minimum(a, b)
+        assert_eq(r_result, n_result)
+
+
+class TestCountNonzero:
+    """Test count_nonzero function."""
+
+    def test_count_nonzero_1d(self):
+        n = np.array([0, 1, 0, 2, 3, 0])
+        r = rp.asarray(n)
+        assert rp.count_nonzero(r) == np.count_nonzero(n)
+
+    def test_count_nonzero_2d(self):
+        n = np.array([[0, 1, 2], [3, 0, 0]])
+        r = rp.asarray(n)
+        assert rp.count_nonzero(r) == np.count_nonzero(n)
+
+    def test_count_nonzero_float(self):
+        n = np.array([0.0, 1.5, 0.0, -2.5])
+        r = rp.asarray(n)
+        assert rp.count_nonzero(r) == np.count_nonzero(n)
+
+    def test_count_nonzero_all_zero(self):
+        n = np.zeros(5)
+        r = rp.asarray(n)
+        assert rp.count_nonzero(r) == 0
+
+    def test_count_nonzero_all_nonzero(self):
+        n = np.array([1, 2, 3])
+        r = rp.asarray(n)
+        assert rp.count_nonzero(r) == 3
+
+
+class TestComplexAccessors:
+    """Test real, imag, conj for complex arrays."""
+
+    def test_real_complex128(self):
+        n = np.array([1+2j, 3+4j, 5+6j])
+        r = rp.asarray(n)
+        assert_eq(rp.real(r), np.real(n))
+
+    def test_imag_complex128(self):
+        n = np.array([1+2j, 3+4j, 5+6j])
+        r = rp.asarray(n)
+        assert_eq(rp.imag(r), np.imag(n))
+
+    def test_conj_complex128(self):
+        n = np.array([1+2j, 3+4j, 5+6j])
+        r = rp.asarray(n)
+        assert_eq(rp.conj(r), np.conj(n))
+
+    def test_real_complex64(self):
+        n = np.array([1+2j, 3+4j], dtype="complex64")
+        r = rp.asarray(n)
+        result = rp.real(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.real(n))
+
+    def test_imag_complex64(self):
+        n = np.array([1+2j, 3+4j], dtype="complex64")
+        r = rp.asarray(n)
+        result = rp.imag(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.imag(n))
+
+    def test_conj_complex64(self):
+        n = np.array([1+2j, 3+4j], dtype="complex64")
+        r = rp.asarray(n)
+        result = rp.conj(r)
+        assert result.dtype == "complex64"
+        assert_eq(result, np.conj(n))
+
+    def test_real_float_passthrough(self):
+        """real of float array returns the array unchanged."""
+        n = np.array([1.0, 2.0, 3.0])
+        r = rp.asarray(n)
+        assert_eq(rp.real(r), np.real(n))
+
+    def test_imag_float_zeros(self):
+        """imag of float array returns zeros."""
+        n = np.array([1.0, 2.0, 3.0])
+        r = rp.asarray(n)
+        assert_eq(rp.imag(r), np.imag(n))
+
+    def test_conj_float_passthrough(self):
+        """conj of float array returns the array unchanged."""
+        n = np.array([1.0, 2.0, 3.0])
+        r = rp.asarray(n)
+        assert_eq(rp.conj(r), np.conj(n))
+
+    def test_real_method(self):
+        """Test .real property on array."""
+        n = np.array([1+2j, 3+4j])
+        r = rp.asarray(n)
+        assert_eq(r.real, n.real)
+
+    def test_imag_method(self):
+        """Test .imag property on array."""
+        n = np.array([1+2j, 3+4j])
+        r = rp.asarray(n)
+        assert_eq(r.imag, n.imag)
+
+    def test_conj_method(self):
+        """Test .conj() method on array."""
+        n = np.array([1+2j, 3+4j])
+        r = rp.asarray(n)
+        assert_eq(r.conj(), n.conj())

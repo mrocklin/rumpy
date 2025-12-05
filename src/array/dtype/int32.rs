@@ -46,14 +46,23 @@ impl DTypeOps for Int32Ops {
             UnaryOp::Sqrt => (v as f64).sqrt() as i32,
             UnaryOp::Exp => (v as f64).exp() as i32,
             UnaryOp::Log => (v as f64).ln() as i32,
+            UnaryOp::Log10 => (v as f64).log10() as i32,
+            UnaryOp::Log2 => (v as f64).log2() as i32,
             UnaryOp::Sin => (v as f64).sin() as i32,
             UnaryOp::Cos => (v as f64).cos() as i32,
             UnaryOp::Tan => (v as f64).tan() as i32,
+            UnaryOp::Sinh => (v as f64).sinh() as i32,
+            UnaryOp::Cosh => (v as f64).cosh() as i32,
+            UnaryOp::Tanh => (v as f64).tanh() as i32,
             UnaryOp::Floor => v,
             UnaryOp::Ceil => v,
             UnaryOp::Arcsin => (v as f64).asin() as i32,
             UnaryOp::Arccos => (v as f64).acos() as i32,
             UnaryOp::Arctan => (v as f64).atan() as i32,
+            UnaryOp::Sign => if v > 0 { 1 } else if v < 0 { -1 } else { 0 },
+            UnaryOp::Isnan => 0,
+            UnaryOp::Isinf => 0,
+            UnaryOp::Isfinite => 1,
         };
         Self::write(out, idx, result);
     }
@@ -69,6 +78,8 @@ impl DTypeOps for Int32Ops {
             BinaryOp::Pow => if bv >= 0 { av.wrapping_pow(bv as u32) } else { 0 },
             BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
             BinaryOp::FloorDiv => if bv != 0 { av.div_euclid(bv) } else { 0 },
+            BinaryOp::Maximum => av.max(bv),
+            BinaryOp::Minimum => av.min(bv),
         };
         Self::write(out, idx, result);
     }

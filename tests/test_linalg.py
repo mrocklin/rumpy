@@ -260,6 +260,34 @@ class TestEigh:
         assert_eq(VtV, rp.eye(2))
 
 
+class TestDiagonal:
+    """Tests for diagonal extraction (module function and array method)."""
+
+    def test_diagonal_square(self):
+        """Extract diagonal from square matrix."""
+        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+        r = rp.asarray(n)
+        assert_eq(rp.diagonal(r), np.diagonal(n))
+
+    def test_diagonal_rectangular(self):
+        """Extract diagonal from rectangular matrix."""
+        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        r = rp.asarray(n)
+        assert_eq(rp.diagonal(r), np.diagonal(n))
+
+    def test_diagonal_method(self):
+        """Test .diagonal() array method."""
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rp.asarray(n)
+        assert_eq(r.diagonal(), n.diagonal())
+
+    def test_trace_method(self):
+        """Test .trace() array method."""
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rp.asarray(n)
+        assert abs(r.trace() - n.trace()) < 1e-10
+
+
 class TestDiag:
     """Tests for diagonal utility."""
 

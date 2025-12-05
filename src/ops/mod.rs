@@ -57,8 +57,9 @@ fn linear_offset(indices: &[usize], strides: &[isize]) -> isize {
 
 /// Check if a unary op is transcendental (always returns float).
 fn is_transcendental(op: UnaryOp) -> bool {
-    matches!(op, UnaryOp::Exp | UnaryOp::Log | UnaryOp::Sqrt |
+    matches!(op, UnaryOp::Exp | UnaryOp::Log | UnaryOp::Log10 | UnaryOp::Log2 | UnaryOp::Sqrt |
                  UnaryOp::Sin | UnaryOp::Cos | UnaryOp::Tan |
+                 UnaryOp::Sinh | UnaryOp::Cosh | UnaryOp::Tanh |
                  UnaryOp::Arcsin | UnaryOp::Arccos | UnaryOp::Arctan)
 }
 
@@ -350,6 +351,12 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                         }
                     }
                     BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
+                    BinaryOp::Maximum => if av.0.is_nan() || av.1.is_nan() || bv.0.is_nan() || bv.1.is_nan() {
+                        (f64::NAN, f64::NAN)
+                    } else if av.0 > bv.0 || (av.0 == bv.0 && av.1 >= bv.1) { av } else { bv },
+                    BinaryOp::Minimum => if av.0.is_nan() || av.1.is_nan() || bv.0.is_nan() || bv.1.is_nan() {
+                        (f64::NAN, f64::NAN)
+                    } else if av.0 < bv.0 || (av.0 == bv.0 && av.1 <= bv.1) { av } else { bv },
                 };
 
                 unsafe { result_ops.write_complex(result_ptr, i, result_val.0, result_val.1); }
@@ -372,6 +379,8 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                     BinaryOp::Pow => av.powf(bv),
                     BinaryOp::Mod => av % bv,
                     BinaryOp::FloorDiv => (av / bv).floor(),
+                    BinaryOp::Maximum => if av.is_nan() || bv.is_nan() { f64::NAN } else { av.max(bv) },
+                    BinaryOp::Minimum => if av.is_nan() || bv.is_nan() { f64::NAN } else { av.min(bv) },
                 };
 
                 unsafe { result_ops.write_f64(result_ptr, i, result_val); }
@@ -795,6 +804,71 @@ impl RumpyArray {
         min_idx
     }
 
+    /// Index of maximum element along axis.
+    pub fn argmax_axis(&self, axis: usize) -> RumpyArray {
+        self.arg_reduce_axis(axis, |a, b| a > b)
+    }
+
+    /// Index of minimum element along axis.
+    pub fn argmin_axis(&self, axis: usize) -> RumpyArray {
+        self.arg_reduce_axis(axis, |a, b| a < b)
+    }
+
+    /// Helper for argmax_axis/argmin_axis.
+    fn arg_reduce_axis<F>(&self, axis: usize, is_better: F) -> RumpyArray
+    where
+        F: Fn(f64, f64) -> bool,
+    {
+        let shape = self.shape();
+        let axis_len = shape[axis];
+
+        // Output shape: remove the axis dimension
+        let mut out_shape: Vec<usize> = shape[..axis].to_vec();
+        out_shape.extend_from_slice(&shape[axis + 1..]);
+        if out_shape.is_empty() {
+            out_shape = vec![1];
+        }
+
+        let out_size: usize = out_shape.iter().product();
+        let mut result = RumpyArray::zeros(out_shape.clone(), DType::int64());
+
+        if out_size == 0 || axis_len == 0 {
+            return result;
+        }
+
+        let buffer = result.buffer_mut();
+        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+        let int64_dtype = DType::int64();
+        let ops = int64_dtype.ops();
+
+        let mut outer_indices = vec![0usize; out_shape.len()];
+        for out_i in 0..out_size {
+            // Build indices for the input array
+            let mut in_indices: Vec<usize> = outer_indices[..axis.min(outer_indices.len())].to_vec();
+            in_indices.push(0);
+            if axis < self.ndim() - 1 && outer_indices.len() > axis {
+                in_indices.extend_from_slice(&outer_indices[axis..]);
+            }
+
+            // Find best index along axis
+            let mut best_val = self.get_element(&in_indices);
+            let mut best_idx: i64 = 0;
+            for j in 1..axis_len {
+                in_indices[axis] = j;
+                let val = self.get_element(&in_indices);
+                if is_better(val, best_val) {
+                    best_val = val;
+                    best_idx = j as i64;
+                }
+            }
+
+            unsafe { ops.write_f64(result_ptr, out_i, best_idx as f64); }
+            increment_indices(&mut outer_indices, &out_shape);
+        }
+        result
+    }
+
     /// Collect all elements into a Vec (flattened, row-major order).
     fn to_vec(&self) -> Vec<f64> {
         let size = self.size();
@@ -807,21 +881,7 @@ impl RumpyArray {
         values
     }
 
-    /// Sort array (flattened, returns new 1D array).
-    pub fn sort(&self) -> RumpyArray {
-        let mut values = self.to_vec();
-        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        RumpyArray::from_vec(values, self.dtype())
-    }
-
-    /// Return indices that would sort the array (flattened).
-    pub fn argsort(&self) -> RumpyArray {
-        let values = self.to_vec();
-        let mut indexed: Vec<(usize, f64)> = values.into_iter().enumerate().map(|(i, v)| (i, v)).collect();
-        indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        let result: Vec<f64> = indexed.into_iter().map(|(i, _)| i as f64).collect();
-        RumpyArray::from_vec(result, DType::int64())
-    }
+    // sort and argsort with axis parameter are defined later
 
     /// Return unique sorted values.
     pub fn unique(&self) -> RumpyArray {
@@ -829,6 +889,32 @@ impl RumpyArray {
         values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         values.dedup_by(|a, b| (*a - *b).abs() < f64::EPSILON);
         RumpyArray::from_vec(values, self.dtype())
+    }
+
+    /// Return indices of non-zero elements (tuple of arrays, one per dimension).
+    pub fn nonzero(&self) -> Vec<RumpyArray> {
+        let ndim = self.ndim();
+        let mut indices_per_dim: Vec<Vec<i64>> = vec![Vec::new(); ndim];
+
+        let mut indices = vec![0usize; ndim];
+        let size = self.size();
+        for _ in 0..size {
+            let val = self.get_element(&indices);
+            if val != 0.0 {
+                for (dim, &idx) in indices.iter().enumerate() {
+                    indices_per_dim[dim].push(idx as i64);
+                }
+            }
+            increment_indices(&mut indices, self.shape());
+        }
+
+        indices_per_dim
+            .into_iter()
+            .map(|v| {
+                let data: Vec<f64> = v.into_iter().map(|x| x as f64).collect();
+                RumpyArray::from_vec(data, DType::int64())
+            })
+            .collect()
     }
 
     // Math ufuncs
@@ -886,6 +972,443 @@ impl RumpyArray {
     /// Inverse tangent (arctangent) of each element.
     pub fn arctan(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Arctan)
+    }
+
+    /// Base-10 logarithm of each element.
+    pub fn log10(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Log10)
+    }
+
+    /// Base-2 logarithm of each element.
+    pub fn log2(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Log2)
+    }
+
+    /// Hyperbolic sine of each element.
+    pub fn sinh(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Sinh)
+    }
+
+    /// Hyperbolic cosine of each element.
+    pub fn cosh(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Cosh)
+    }
+
+    /// Hyperbolic tangent of each element.
+    pub fn tanh(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Tanh)
+    }
+
+    /// Element-wise sign indication.
+    pub fn sign(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Sign)
+    }
+
+    /// Test element-wise for NaN.
+    pub fn isnan(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Isnan)
+    }
+
+    /// Test element-wise for infinity.
+    pub fn isinf(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Isinf)
+    }
+
+    /// Test element-wise for finiteness.
+    pub fn isfinite(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Isfinite)
+    }
+
+    /// Return the real part of the array.
+    /// For complex arrays, extracts the real component.
+    /// For real arrays, returns a copy.
+    pub fn real(&self) -> RumpyArray {
+        use crate::array::dtype::DTypeKind;
+
+        let kind = self.dtype().kind();
+        let size = self.size();
+
+        match kind {
+            DTypeKind::Complex128 => {
+                let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float64());
+                let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+
+                let mut indices = vec![0usize; self.ndim()];
+                for i in 0..size {
+                    let (re, _im) = self.get_complex_element(&indices);
+                    unsafe { *(result_ptr as *mut f64).add(i) = re; }
+                    increment_indices(&mut indices, self.shape());
+                }
+                result
+            }
+            DTypeKind::Complex64 => {
+                let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float32());
+                let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+
+                let mut indices = vec![0usize; self.ndim()];
+                for i in 0..size {
+                    let (re, _im) = self.get_complex_element(&indices);
+                    unsafe { *(result_ptr as *mut f32).add(i) = re as f32; }
+                    increment_indices(&mut indices, self.shape());
+                }
+                result
+            }
+            _ => self.copy()
+        }
+    }
+
+    /// Return the imaginary part of the array.
+    /// For complex arrays, extracts the imaginary component.
+    /// For real arrays, returns zeros.
+    pub fn imag(&self) -> RumpyArray {
+        use crate::array::dtype::DTypeKind;
+
+        let kind = self.dtype().kind();
+        let size = self.size();
+
+        match kind {
+            DTypeKind::Complex128 => {
+                let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float64());
+                let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+
+                let mut indices = vec![0usize; self.ndim()];
+                for i in 0..size {
+                    let (_re, im) = self.get_complex_element(&indices);
+                    unsafe { *(result_ptr as *mut f64).add(i) = im; }
+                    increment_indices(&mut indices, self.shape());
+                }
+                result
+            }
+            DTypeKind::Complex64 => {
+                let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float32());
+                let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+
+                let mut indices = vec![0usize; self.ndim()];
+                for i in 0..size {
+                    let (_re, im) = self.get_complex_element(&indices);
+                    unsafe { *(result_ptr as *mut f32).add(i) = im as f32; }
+                    increment_indices(&mut indices, self.shape());
+                }
+                result
+            }
+            _ => RumpyArray::zeros(self.shape().to_vec(), self.dtype().clone())
+        }
+    }
+
+    /// Return the complex conjugate of the array.
+    /// For complex arrays, negates the imaginary component.
+    /// For real arrays, returns a copy.
+    pub fn conj(&self) -> RumpyArray {
+        use crate::array::dtype::DTypeKind;
+
+        let kind = self.dtype().kind();
+        let size = self.size();
+
+        match kind {
+            DTypeKind::Complex128 => {
+                let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::complex128());
+                let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+
+                let mut indices = vec![0usize; self.ndim()];
+                for i in 0..size {
+                    let (re, im) = self.get_complex_element(&indices);
+                    unsafe {
+                        *(result_ptr as *mut f64).add(i * 2) = re;
+                        *(result_ptr as *mut f64).add(i * 2 + 1) = -im;
+                    }
+                    increment_indices(&mut indices, self.shape());
+                }
+                result
+            }
+            DTypeKind::Complex64 => {
+                let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::complex64());
+                let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+
+                let mut indices = vec![0usize; self.ndim()];
+                for i in 0..size {
+                    let (re, im) = self.get_complex_element(&indices);
+                    unsafe {
+                        *(result_ptr as *mut f32).add(i * 2) = re as f32;
+                        *(result_ptr as *mut f32).add(i * 2 + 1) = -im as f32;
+                    }
+                    increment_indices(&mut indices, self.shape());
+                }
+                result
+            }
+            _ => self.copy()
+        }
+    }
+
+    /// Extract diagonal from a 2D array.
+    pub fn diagonal(&self) -> RumpyArray {
+        assert!(self.ndim() >= 2, "diagonal requires at least 2D array");
+        let shape = self.shape();
+        let n = shape[0].min(shape[1]);
+        let dtype = self.dtype().clone();
+
+        let mut result = RumpyArray::zeros(vec![n], dtype.clone());
+        if n == 0 {
+            return result;
+        }
+
+        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+        let ops = dtype.ops();
+
+        for i in 0..n {
+            let mut indices = vec![0usize; self.ndim()];
+            indices[0] = i;
+            indices[1] = i;
+            let byte_offset = self.byte_offset_for(&indices);
+            unsafe { ops.copy_element(self.data_ptr(), byte_offset, result_ptr, i); }
+        }
+        result
+    }
+
+    /// Return sum of diagonal elements (trace).
+    pub fn trace(&self) -> f64 {
+        assert!(self.ndim() >= 2, "trace requires at least 2D array");
+        let shape = self.shape();
+        let n = shape[0].min(shape[1]);
+
+        let mut sum = 0.0;
+        for i in 0..n {
+            let mut indices = vec![0usize; self.ndim()];
+            indices[0] = i;
+            indices[1] = i;
+            sum += self.get_element(&indices);
+        }
+        sum
+    }
+
+    /// Swap two axes of the array.
+    pub fn swapaxes(&self, axis1: usize, axis2: usize) -> RumpyArray {
+        let ndim = self.ndim();
+        assert!(axis1 < ndim, "axis1 out of bounds");
+        assert!(axis2 < ndim, "axis2 out of bounds");
+
+        if axis1 == axis2 {
+            return self.copy();
+        }
+
+        // Build permutation: swap axis1 and axis2
+        let mut axes: Vec<usize> = (0..ndim).collect();
+        axes.swap(axis1, axis2);
+
+        self.transpose_axes(&axes)
+    }
+
+    /// Sort array along an axis.
+    pub fn sort(&self, axis: Option<usize>) -> RumpyArray {
+        // If axis is None, flatten and sort
+        let axis = match axis {
+            None => {
+                let flat = self.reshape(vec![self.size()]).expect("flatten should work");
+                return flat.sort(Some(0));
+            }
+            Some(ax) => ax,
+        };
+        assert!(axis < self.ndim(), "axis out of bounds");
+
+        let shape = self.shape();
+        let axis_len = shape[axis];
+        let dtype = self.dtype().clone();
+
+        let mut result = self.copy();
+        if axis_len <= 1 {
+            return result;
+        }
+
+        // For each position along other axes, sort the elements along the target axis
+        let mut out_shape: Vec<usize> = shape[..axis].to_vec();
+        out_shape.extend_from_slice(&shape[axis + 1..]);
+        if out_shape.is_empty() {
+            out_shape = vec![1];
+        }
+        let out_size: usize = out_shape.iter().product();
+
+        let ops = dtype.ops();
+        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+
+        let mut out_indices = vec![0usize; out_shape.len()];
+        for _ in 0..out_size {
+            // Collect values along axis
+            let mut values: Vec<(f64, usize)> = Vec::with_capacity(axis_len);
+            for k in 0..axis_len {
+                let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+                in_indices.push(k);
+                if axis < self.ndim() - 1 {
+                    in_indices.extend_from_slice(&out_indices[axis..]);
+                }
+                values.push((self.get_element(&in_indices), k));
+            }
+
+            // Sort by value
+            values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            // Write sorted values back
+            for (k, (val, _)) in values.iter().enumerate() {
+                let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+                in_indices.push(k);
+                if axis < self.ndim() - 1 {
+                    in_indices.extend_from_slice(&out_indices[axis..]);
+                }
+                let byte_offset = result.byte_offset_for(&in_indices);
+                let linear_idx = byte_offset as usize / dtype.itemsize();
+                unsafe { ops.write_f64(result_ptr, linear_idx, *val); }
+            }
+
+            increment_indices(&mut out_indices, &out_shape);
+        }
+        result
+    }
+
+    /// Return indices that would sort the array along an axis.
+    pub fn argsort(&self, axis: Option<usize>) -> RumpyArray {
+        // If axis is None, flatten and argsort
+        let axis = match axis {
+            None => {
+                let flat = self.reshape(vec![self.size()]).expect("flatten should work");
+                return flat.argsort(Some(0));
+            }
+            Some(ax) => ax,
+        };
+        assert!(axis < self.ndim(), "axis out of bounds");
+
+        let shape = self.shape();
+        let axis_len = shape[axis];
+
+        let mut result = RumpyArray::zeros(shape.to_vec(), DType::int64());
+        if axis_len <= 1 {
+            // For single element, index is 0
+            return result;
+        }
+
+        let mut out_shape: Vec<usize> = shape[..axis].to_vec();
+        out_shape.extend_from_slice(&shape[axis + 1..]);
+        if out_shape.is_empty() {
+            out_shape = vec![1];
+        }
+        let out_size: usize = out_shape.iter().product();
+
+        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr() as *mut i64;
+
+        let mut out_indices = vec![0usize; out_shape.len()];
+        for _ in 0..out_size {
+            // Collect values along axis with their indices
+            let mut values: Vec<(f64, usize)> = Vec::with_capacity(axis_len);
+            for k in 0..axis_len {
+                let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+                in_indices.push(k);
+                if axis < self.ndim() - 1 {
+                    in_indices.extend_from_slice(&out_indices[axis..]);
+                }
+                values.push((self.get_element(&in_indices), k));
+            }
+
+            // Sort by value, keeping track of original indices
+            values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            // Write sorted indices back
+            for (k, (_, orig_idx)) in values.iter().enumerate() {
+                let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
+                in_indices.push(k);
+                if axis < self.ndim() - 1 {
+                    in_indices.extend_from_slice(&out_indices[axis..]);
+                }
+                let byte_offset = result.byte_offset_for(&in_indices);
+                let linear_idx = byte_offset as usize / 8; // i64 is 8 bytes
+                unsafe { *result_ptr.add(linear_idx) = *orig_idx as i64; }
+            }
+
+            increment_indices(&mut out_indices, &out_shape);
+        }
+        result
+    }
+
+    /// Count number of non-zero elements.
+    pub fn count_nonzero(&self) -> usize {
+        let size = self.size();
+        if size == 0 {
+            return 0;
+        }
+        let mut count = 0;
+        let mut indices = vec![0usize; self.ndim()];
+        for _ in 0..size {
+            let val = self.get_element(&indices);
+            if val != 0.0 {
+                count += 1;
+            }
+            increment_indices(&mut indices, self.shape());
+        }
+        count
+    }
+
+    /// Calculate the n-th discrete difference along the given axis.
+    pub fn diff(&self, n: usize, axis: usize) -> RumpyArray {
+        assert!(axis < self.ndim(), "axis out of bounds");
+
+        if n == 0 {
+            return self.copy();
+        }
+
+        let axis_len = self.shape()[axis];
+        if axis_len <= n {
+            // Result has size 0 along axis
+            let mut new_shape = self.shape().to_vec();
+            new_shape[axis] = 0;
+            return RumpyArray::zeros(new_shape, self.dtype().clone());
+        }
+
+        // Single diff: result[i] = input[i+1] - input[i]
+        let mut new_shape = self.shape().to_vec();
+        new_shape[axis] = axis_len - 1;
+
+        let dtype = self.dtype().clone();
+        let mut result = RumpyArray::zeros(new_shape.clone(), dtype.clone());
+
+        // Iterate over all positions in output
+        let out_size: usize = new_shape.iter().product();
+        if out_size == 0 {
+            return result;
+        }
+
+        let ops = dtype.ops();
+        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+
+        let mut out_indices = vec![0usize; self.ndim()];
+        for _ in 0..out_size {
+            // Get value at out_indices and at out_indices with axis+1
+            let val1 = self.get_element(&out_indices);
+
+            let mut next_indices = out_indices.clone();
+            next_indices[axis] += 1;
+            let val2 = self.get_element(&next_indices);
+
+            let diff_val = val2 - val1;
+
+            let byte_offset = result.byte_offset_for(&out_indices);
+            let linear_idx = byte_offset as usize / dtype.itemsize();
+            unsafe { ops.write_f64(result_ptr, linear_idx, diff_val); }
+
+            increment_indices(&mut out_indices, &new_shape);
+        }
+
+        // Apply recursively for n > 1
+        if n > 1 {
+            result.diff(n - 1, axis)
+        } else {
+            result
+        }
     }
 
     /// Test if all elements evaluate to True.

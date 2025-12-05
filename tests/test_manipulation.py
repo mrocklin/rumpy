@@ -331,3 +331,212 @@ class TestTolist:
         arr = rumpy.arange(0)
         n = np.arange(0, dtype=np.float64)
         assert arr.tolist() == n.tolist()
+
+
+class TestFlip:
+    """Test flip, flipud, fliplr functions."""
+
+    def test_flip_1d(self):
+        r = rumpy.arange(5)
+        n = np.arange(5, dtype=np.float64)
+        assert_eq(rumpy.flip(r), np.flip(n))
+
+    def test_flip_2d_axis0(self):
+        r = rumpy.arange(6).reshape(2, 3)
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        assert_eq(rumpy.flip(r, axis=0), np.flip(n, axis=0))
+
+    def test_flip_2d_axis1(self):
+        r = rumpy.arange(6).reshape(2, 3)
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        assert_eq(rumpy.flip(r, axis=1), np.flip(n, axis=1))
+
+    def test_flip_2d_all_axes(self):
+        r = rumpy.arange(6).reshape(2, 3)
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        assert_eq(rumpy.flip(r), np.flip(n))
+
+    def test_flip_negative_axis(self):
+        r = rumpy.arange(6).reshape(2, 3)
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        assert_eq(rumpy.flip(r, axis=-1), np.flip(n, axis=-1))
+
+    def test_flipud(self):
+        r = rumpy.arange(6).reshape(2, 3)
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        assert_eq(rumpy.flipud(r), np.flipud(n))
+
+    def test_flipud_1d(self):
+        r = rumpy.arange(5)
+        n = np.arange(5, dtype=np.float64)
+        assert_eq(rumpy.flipud(r), np.flipud(n))
+
+    def test_fliplr(self):
+        r = rumpy.arange(6).reshape(2, 3)
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        assert_eq(rumpy.fliplr(r), np.fliplr(n))
+
+    def test_flip_3d(self):
+        r = rumpy.arange(24).reshape(2, 3, 4)
+        n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        assert_eq(rumpy.flip(r, axis=0), np.flip(n, axis=0))
+        assert_eq(rumpy.flip(r, axis=1), np.flip(n, axis=1))
+        assert_eq(rumpy.flip(r, axis=2), np.flip(n, axis=2))
+
+
+class TestNonzero:
+    """Test nonzero() function."""
+
+    def test_nonzero_1d(self):
+        r = rumpy.asarray([0.0, 1.0, 0.0, 2.0, 3.0, 0.0])
+        n = np.array([0.0, 1.0, 0.0, 2.0, 3.0, 0.0])
+        r_idx = rumpy.nonzero(r)
+        n_idx = np.nonzero(n)
+        assert len(r_idx) == len(n_idx)
+        for ri, ni in zip(r_idx, n_idx):
+            assert_eq(ri, ni)
+
+    def test_nonzero_2d(self):
+        r = rumpy.asarray([[0.0, 1.0], [2.0, 0.0], [0.0, 3.0]])
+        n = np.array([[0.0, 1.0], [2.0, 0.0], [0.0, 3.0]])
+        r_idx = rumpy.nonzero(r)
+        n_idx = np.nonzero(n)
+        assert len(r_idx) == len(n_idx)
+        for ri, ni in zip(r_idx, n_idx):
+            assert_eq(ri, ni)
+
+    def test_nonzero_all_zeros(self):
+        r = rumpy.zeros(5)
+        n = np.zeros(5)
+        r_idx = rumpy.nonzero(r)
+        n_idx = np.nonzero(n)
+        assert len(r_idx) == len(n_idx)
+        for ri, ni in zip(r_idx, n_idx):
+            assert_eq(ri, ni)
+
+    def test_nonzero_all_nonzero(self):
+        r = rumpy.arange(1, 6)
+        n = np.arange(1, 6, dtype=np.float64)
+        r_idx = rumpy.nonzero(r)
+        n_idx = np.nonzero(n)
+        assert len(r_idx) == len(n_idx)
+        for ri, ni in zip(r_idx, n_idx):
+            assert_eq(ri, ni)
+
+    def test_nonzero_3d(self):
+        r = rumpy.zeros((2, 3, 2))
+        # Set some nonzero values - create a fresh array with values
+        r = rumpy.asarray([[[1.0, 0.0], [0.0, 2.0], [0.0, 0.0]],
+                          [[0.0, 0.0], [3.0, 0.0], [0.0, 4.0]]])
+        n = np.array([[[1.0, 0.0], [0.0, 2.0], [0.0, 0.0]],
+                      [[0.0, 0.0], [3.0, 0.0], [0.0, 4.0]]])
+        r_idx = rumpy.nonzero(r)
+        n_idx = np.nonzero(n)
+        assert len(r_idx) == len(n_idx)
+        for ri, ni in zip(r_idx, n_idx):
+            assert_eq(ri, ni)
+
+
+class TestSort:
+    """Test sort function."""
+
+    def test_sort_1d(self):
+        n = np.array([3.0, 1.0, 4.0, 1.0, 5.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.sort(r), np.sort(n))
+
+    def test_sort_2d_default(self):
+        """Sort along last axis by default."""
+        n = np.array([[3.0, 1.0, 2.0], [6.0, 4.0, 5.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.sort(r), np.sort(n))
+
+    def test_sort_2d_axis0(self):
+        n = np.array([[3.0, 1.0, 2.0], [1.0, 4.0, 0.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.sort(r, axis=0), np.sort(n, axis=0))
+
+    def test_sort_int(self):
+        n = np.array([3, 1, 4, 1, 5], dtype="int64")
+        r = rumpy.asarray(n)
+        result = rumpy.sort(r)
+        assert result.dtype == "int64"
+        assert_eq(result, np.sort(n))
+
+
+class TestArgsort:
+    """Test argsort function."""
+
+    def test_argsort_1d(self):
+        n = np.array([3.0, 1.0, 4.0, 1.0, 5.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.argsort(r), np.argsort(n))
+
+    def test_argsort_2d_default(self):
+        """Argsort along last axis by default."""
+        n = np.array([[3.0, 1.0, 2.0], [6.0, 4.0, 5.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.argsort(r), np.argsort(n))
+
+    def test_argsort_2d_axis0(self):
+        n = np.array([[3.0, 1.0, 2.0], [1.0, 4.0, 0.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.argsort(r, axis=0), np.argsort(n, axis=0))
+
+
+class TestSwapaxes:
+    """Test swapaxes function."""
+
+    def test_swapaxes_2d(self):
+        n = np.arange(6).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.swapaxes(r, 0, 1), np.swapaxes(n, 0, 1))
+
+    def test_swapaxes_3d(self):
+        n = np.arange(24).reshape(2, 3, 4)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.swapaxes(r, 0, 2), np.swapaxes(n, 0, 2))
+        assert_eq(rumpy.swapaxes(r, 1, 2), np.swapaxes(n, 1, 2))
+
+    def test_swapaxes_method(self):
+        n = np.arange(6).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(r.swapaxes(0, 1), n.swapaxes(0, 1))
+
+    def test_swapaxes_same_axis(self):
+        """Swapping same axis returns copy."""
+        n = np.arange(6).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.swapaxes(r, 1, 1), np.swapaxes(n, 1, 1))
+
+
+class TestDiff:
+    """Test diff function."""
+
+    def test_diff_1d(self):
+        n = np.array([1.0, 2.0, 4.0, 7.0, 0.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.diff(r), np.diff(n))
+
+    def test_diff_1d_n2(self):
+        """Second order difference."""
+        n = np.array([1.0, 2.0, 4.0, 7.0, 0.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.diff(r, n=2), np.diff(n, n=2))
+
+    def test_diff_2d_default(self):
+        """Diff along last axis by default."""
+        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.diff(r), np.diff(n))
+
+    def test_diff_2d_axis0(self):
+        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.diff(r, axis=0), np.diff(n, axis=0))
+
+    def test_diff_int(self):
+        """Diff on integer arrays."""
+        n = np.array([1, 3, 6, 10])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.diff(r), np.diff(n))

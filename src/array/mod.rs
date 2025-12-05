@@ -220,6 +220,27 @@ impl RumpyArray {
         self.view_with(0, new_shape, new_strides)
     }
 
+    /// Transpose with specified axis order. Returns a view.
+    pub fn transpose_axes(&self, axes: &[usize]) -> Self {
+        assert_eq!(axes.len(), self.ndim(), "axes must have same length as ndim");
+        let new_shape: Vec<usize> = axes.iter().map(|&a| self.shape[a]).collect();
+        let new_strides: Vec<isize> = axes.iter().map(|&a| self.strides[a]).collect();
+        self.view_with(0, new_shape, new_strides)
+    }
+
+    /// Flip array along given axis. Returns a view.
+    pub fn flip(&self, axis: usize) -> Option<Self> {
+        if axis >= self.ndim() {
+            return None;
+        }
+        let len = self.shape[axis] as isize;
+        if len == 0 {
+            return Some(self.clone());
+        }
+        // slice from len-1 to -1 (exclusive) with step -1
+        Some(self.slice_axis(axis, len - 1, -1, -1))
+    }
+
     /// Broadcast array to a new shape. Returns a view with zero strides for broadcast dims.
     /// Returns None if shape is incompatible.
     pub fn broadcast_to(&self, new_shape: &[usize]) -> Option<Self> {
@@ -339,6 +360,18 @@ impl RumpyArray {
         let byte_offset = self.byte_offset_for(indices);
         let ptr = self.data_ptr();
         unsafe { self.dtype.ops().read_f64(ptr, byte_offset).unwrap_or(0.0) }
+    }
+
+    /// Get single element by indices as complex (real, imag).
+    /// For non-complex types, imag is 0.0.
+    pub fn get_complex_element(&self, indices: &[usize]) -> (f64, f64) {
+        assert_eq!(indices.len(), self.ndim(), "wrong number of indices");
+        for (i, &idx) in indices.iter().enumerate() {
+            assert!(idx < self.shape[i], "index out of bounds");
+        }
+        let byte_offset = self.byte_offset_for(indices);
+        let ptr = self.data_ptr();
+        unsafe { self.dtype.ops().read_complex(ptr, byte_offset).unwrap_or((0.0, 0.0)) }
     }
 
     /// Compute byte offset for given indices (relative to data_ptr, not buffer start).

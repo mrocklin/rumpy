@@ -137,6 +137,47 @@ impl DTypeOps for Complex64Ops {
                 let log_i = div_i.atan2(div_r);
                 (-log_i / 2.0, log_r / 2.0)
             }
+            UnaryOp::Log10 => {
+                // log10(z) = log(z) / log(10)
+                let mag = (r * r + i * i).sqrt();
+                let log_r = mag.ln();
+                let log_i = i.atan2(r);
+                let ln10 = 10.0_f32.ln();
+                (log_r / ln10, log_i / ln10)
+            }
+            UnaryOp::Log2 => {
+                // log2(z) = log(z) / log(2)
+                let mag = (r * r + i * i).sqrt();
+                let log_r = mag.ln();
+                let log_i = i.atan2(r);
+                let ln2 = 2.0_f32.ln();
+                (log_r / ln2, log_i / ln2)
+            }
+            UnaryOp::Sinh => {
+                // sinh(a+bi) = sinh(a)*cos(b) + i*cosh(a)*sin(b)
+                (r.sinh() * i.cos(), r.cosh() * i.sin())
+            }
+            UnaryOp::Cosh => {
+                // cosh(a+bi) = cosh(a)*cos(b) + i*sinh(a)*sin(b)
+                (r.cosh() * i.cos(), r.sinh() * i.sin())
+            }
+            UnaryOp::Tanh => {
+                // tanh(z) = sinh(z) / cosh(z)
+                let sinh_r = r.sinh() * i.cos();
+                let sinh_i = r.cosh() * i.sin();
+                let cosh_r = r.cosh() * i.cos();
+                let cosh_i = r.sinh() * i.sin();
+                let denom = cosh_r * cosh_r + cosh_i * cosh_i;
+                ((sinh_r * cosh_r + sinh_i * cosh_i) / denom,
+                 (sinh_i * cosh_r - sinh_r * cosh_i) / denom)
+            }
+            UnaryOp::Sign => {
+                let mag = (r * r + i * i).sqrt();
+                if mag == 0.0 { (0.0, 0.0) } else { (r / mag, i / mag) }
+            }
+            UnaryOp::Isnan => (if r.is_nan() || i.is_nan() { 1.0 } else { 0.0 }, 0.0),
+            UnaryOp::Isinf => (if r.is_infinite() || i.is_infinite() { 1.0 } else { 0.0 }, 0.0),
+            UnaryOp::Isfinite => (if r.is_finite() && i.is_finite() { 1.0 } else { 0.0 }, 0.0),
         };
         Self::write(out, idx, out_r, out_i);
     }
@@ -154,6 +195,14 @@ impl DTypeOps for Complex64Ops {
             }
             BinaryOp::Pow => Self::pow(ar, ai, br, bi),
             BinaryOp::Mod | BinaryOp::FloorDiv => (f32::NAN, f32::NAN),
+            // Complex max/min: NumPy compares by real part first, then imaginary
+            // NaN propagation: if any component is NaN, result is NaN
+            BinaryOp::Maximum => if ar.is_nan() || ai.is_nan() || br.is_nan() || bi.is_nan() {
+                (f32::NAN, f32::NAN)
+            } else if ar > br || (ar == br && ai >= bi) { (ar, ai) } else { (br, bi) },
+            BinaryOp::Minimum => if ar.is_nan() || ai.is_nan() || br.is_nan() || bi.is_nan() {
+                (f32::NAN, f32::NAN)
+            } else if ar < br || (ar == br && ai <= bi) { (ar, ai) } else { (br, bi) },
         };
         Self::write(out, idx, out_r, out_i);
     }

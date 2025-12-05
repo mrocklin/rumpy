@@ -190,6 +190,59 @@ class TestProdAxis:
         assert_eq(r.prod(axis=1), n.prod(axis=1))
 
 
+class TestArgmaxArgminAxis:
+    """Test argmax/argmin along axis."""
+
+    def test_argmax_flat(self):
+        r = rp.asarray([3, 1, 4, 1, 5, 9, 2, 6])
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6], dtype=np.float64)
+        assert int(r.argmax()) == n.argmax()
+
+    def test_argmin_flat(self):
+        r = rp.asarray([3, 1, 4, 1, 5, 9, 2, 6])
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6], dtype=np.float64)
+        assert int(r.argmin()) == n.argmin()
+
+    def test_argmax_axis0(self):
+        r = rp.asarray([[1, 5, 3], [4, 2, 6]])
+        n = np.array([[1, 5, 3], [4, 2, 6]], dtype=np.float64)
+        assert_eq(r.argmax(axis=0), n.argmax(axis=0))
+
+    def test_argmax_axis1(self):
+        r = rp.asarray([[1, 5, 3], [4, 2, 6]])
+        n = np.array([[1, 5, 3], [4, 2, 6]], dtype=np.float64)
+        assert_eq(r.argmax(axis=1), n.argmax(axis=1))
+
+    def test_argmin_axis0(self):
+        r = rp.asarray([[1, 5, 3], [4, 2, 6]])
+        n = np.array([[1, 5, 3], [4, 2, 6]], dtype=np.float64)
+        assert_eq(r.argmin(axis=0), n.argmin(axis=0))
+
+    def test_argmin_axis1(self):
+        r = rp.asarray([[1, 5, 3], [4, 2, 6]])
+        n = np.array([[1, 5, 3], [4, 2, 6]], dtype=np.float64)
+        assert_eq(r.argmin(axis=1), n.argmin(axis=1))
+
+    def test_argmax_3d(self):
+        r = rp.arange(24).reshape(2, 3, 4)
+        n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        assert_eq(r.argmax(axis=0), n.argmax(axis=0))
+        assert_eq(r.argmax(axis=1), n.argmax(axis=1))
+        assert_eq(r.argmax(axis=2), n.argmax(axis=2))
+
+    def test_argmax_module_func(self):
+        r = rp.asarray([[1, 5, 3], [4, 2, 6]])
+        n = np.array([[1, 5, 3], [4, 2, 6]], dtype=np.float64)
+        assert_eq(rp.argmax(r, axis=0), np.argmax(n, axis=0))
+        assert_eq(rp.argmax(r, axis=1), np.argmax(n, axis=1))
+
+    def test_argmin_module_func(self):
+        r = rp.asarray([[1, 5, 3], [4, 2, 6]])
+        n = np.array([[1, 5, 3], [4, 2, 6]], dtype=np.float64)
+        assert_eq(rp.argmin(r, axis=0), np.argmin(n, axis=0))
+        assert_eq(rp.argmin(r, axis=1), np.argmin(n, axis=1))
+
+
 # ============================================================================
 # Boolean reductions
 # ============================================================================

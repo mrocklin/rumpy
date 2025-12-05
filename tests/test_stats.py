@@ -99,7 +99,7 @@ class TestSort:
 
     def test_sort_2d_flattened(self):
         arr = rumpy.asarray([[3, 1], [4, 2]])
-        r = rumpy.sort(arr)
+        r = rumpy.sort(arr, axis=None)
         n = np.sort(np.array([[3, 1], [4, 2]]), axis=None)
         assert_eq(r, n)
 

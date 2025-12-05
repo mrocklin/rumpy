@@ -46,14 +46,23 @@ impl DTypeOps for Float32Ops {
             UnaryOp::Sqrt => v.sqrt(),
             UnaryOp::Exp => v.exp(),
             UnaryOp::Log => v.ln(),
+            UnaryOp::Log10 => v.log10(),
+            UnaryOp::Log2 => v.log2(),
             UnaryOp::Sin => v.sin(),
             UnaryOp::Cos => v.cos(),
             UnaryOp::Tan => v.tan(),
+            UnaryOp::Sinh => v.sinh(),
+            UnaryOp::Cosh => v.cosh(),
+            UnaryOp::Tanh => v.tanh(),
             UnaryOp::Floor => v.floor(),
             UnaryOp::Ceil => v.ceil(),
             UnaryOp::Arcsin => v.asin(),
             UnaryOp::Arccos => v.acos(),
             UnaryOp::Arctan => v.atan(),
+            UnaryOp::Sign => if v > 0.0 { 1.0 } else if v < 0.0 { -1.0 } else { 0.0 },
+            UnaryOp::Isnan => if v.is_nan() { 1.0 } else { 0.0 },
+            UnaryOp::Isinf => if v.is_infinite() { 1.0 } else { 0.0 },
+            UnaryOp::Isfinite => if v.is_finite() { 1.0 } else { 0.0 },
         };
         Self::write(out, idx, result);
     }
@@ -69,6 +78,8 @@ impl DTypeOps for Float32Ops {
             BinaryOp::Pow => av.powf(bv),
             BinaryOp::Mod => av % bv,
             BinaryOp::FloorDiv => (av / bv).floor(),
+            BinaryOp::Maximum => if av.is_nan() || bv.is_nan() { f32::NAN } else { av.max(bv) },
+            BinaryOp::Minimum => if av.is_nan() || bv.is_nan() { f32::NAN } else { av.min(bv) },
         };
         Self::write(out, idx, result);
     }

@@ -46,14 +46,23 @@ impl DTypeOps for Uint64Ops {
             UnaryOp::Sqrt => (v as f64).sqrt() as u64,
             UnaryOp::Exp => (v as f64).exp() as u64,
             UnaryOp::Log => (v as f64).ln() as u64,
+            UnaryOp::Log10 => (v as f64).log10() as u64,
+            UnaryOp::Log2 => (v as f64).log2() as u64,
             UnaryOp::Sin => (v as f64).sin() as u64,
             UnaryOp::Cos => (v as f64).cos() as u64,
             UnaryOp::Tan => (v as f64).tan() as u64,
+            UnaryOp::Sinh => (v as f64).sinh() as u64,
+            UnaryOp::Cosh => (v as f64).cosh() as u64,
+            UnaryOp::Tanh => (v as f64).tanh() as u64,
             UnaryOp::Floor => v,
             UnaryOp::Ceil => v,
             UnaryOp::Arcsin => (v as f64).asin() as u64,
             UnaryOp::Arccos => (v as f64).acos() as u64,
             UnaryOp::Arctan => (v as f64).atan() as u64,
+            UnaryOp::Sign => if v > 0 { 1 } else { 0 },
+            UnaryOp::Isnan => 0,
+            UnaryOp::Isinf => 0,
+            UnaryOp::Isfinite => 1,
         };
         Self::write(out, idx, result);
     }
@@ -69,6 +78,8 @@ impl DTypeOps for Uint64Ops {
             BinaryOp::Pow => av.wrapping_pow(bv as u32),
             BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
             BinaryOp::FloorDiv => if bv != 0 { av / bv } else { 0 },
+            BinaryOp::Maximum => av.max(bv),
+            BinaryOp::Minimum => av.min(bv),
         };
         Self::write(out, idx, result);
     }
