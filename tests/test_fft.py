@@ -5,6 +5,8 @@ import pytest
 import rumpy as rp
 from helpers import assert_eq
 
+# Seed for reproducibility
+np.random.seed(42)
 
 # Test dtypes covering different sizes and types
 FFT_DTYPES = [
