@@ -1,63 +1,42 @@
 # Strided Inner Loops Plan
 
 **Design doc:** `designs/strided-loops.md`
-**Status:** Phase 1 complete
+**Status:** Phase 2 complete
 
 ## Context
 
-Current loop functions operate on single elements with byte offsets. The dispatch
-code computes offsets per-element, preventing SIMD. NumPy's approach passes strides
-to the loop, letting it iterate internally with potential fast paths.
+NumPy's inner loops receive stride info and iterate internally. This enables:
+1. SIMD auto-vectorization for contiguous arrays (via slices)
+2. Batched iteration for strided arrays (one call per inner row, not per element)
 
 ## Phase 1: Change Loop Signatures ✓
 
-Modify registry to use strided loop signatures.
-
-Files modified:
-- `src/ops/registry.rs` - new function types, macros with contiguous fast path
-- `src/ops/mod.rs` - update dispatch to pass strides
-
-New signatures:
+New signatures pass stride tuples:
 ```rust
 type BinaryLoopFn = unsafe fn(*const u8, *const u8, *mut u8, usize, (isize, isize, isize));
 type UnaryLoopFn = unsafe fn(*const u8, *mut u8, usize, (isize, isize));
 ```
 
-Tasks:
-- [x] Update BinaryLoopFn signature in registry.rs
-- [x] Update UnaryLoopFn signature in registry.rs
-- [x] Create macros for strided loops with contiguous fast path
-- [x] Update map_binary_op to pass strides and call loop once
-- [x] Update map_unary_op to pass strides and call loop once
-- [x] Update all registered loops to new signature
-- [x] Update registry tests
-- [x] All 372 tests pass
+## Phase 2: Strided Batching ✓
 
-## Phase 2: Contiguous Fast Path ✓
+NumPy-style dispatch: iterate over all but innermost dimension, call loop once per row.
 
-Internal contiguous detection was added as part of Phase 1. The macros
-`register_strided_binary!` and `register_strided_unary!` include a contiguous
-fast path that uses slices (LLVM auto-vectorizes these).
+**Benchmark (1M elements, release build):**
+| Case | NumPy | Rumpy | Ratio |
+|------|-------|-------|-------|
+| Contiguous Add | 0.76ms | 0.39ms | 0.51x (faster) |
+| Strided 1D Add | 0.87ms | 0.76ms | 0.87x (faster) |
 
-Tasks:
-- [x] Create macro for binary loops with contiguous fast path
-- [x] Create macro for unary loops with contiguous fast path
-- [x] Re-register loops using macros
-- [ ] Benchmark contiguous vs strided performance
+**Registration consolidation:** Nested macros reduced registry.rs from 1054 to 820 lines.
 
 ## Phase 3: Reductions
 
-Same pattern for reduce loops. Not yet implemented - reduce loops still use
-the per-element signature.
-
-Tasks:
-- [ ] Update ReduceInitFn and ReduceAccFn signatures
-- [ ] Update reduce_all_op and reduce_axis_op
-- [ ] Re-register reduction loops
+Reduce loops still use per-element signature. Future work:
+- [ ] Update ReduceInitFn/ReduceAccFn to strided signatures
+- [ ] Update reduce_all_op and reduce_axis_op dispatch
 
 ## Notes
 
-- Keep trait-based fallback for dtypes without registered loops
-- Strided case uses pointer arithmetic
-- Contiguous case uses slice iteration (LLVM auto-vectorizes)
-- Dispatch checks `is_c_contiguous()` to choose fast path vs per-element path
+- Contiguous: loop uses slices (LLVM auto-vectorizes)
+- Strided: loop uses pointer arithmetic with actual strides
+- Dispatch iterates outer dims, calls loop once per inner row

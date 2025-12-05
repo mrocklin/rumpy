@@ -48,6 +48,12 @@ pub enum ComparisonOp {
 // Core ufunc machinery
 // ============================================================================
 
+/// Compute byte offset from indices and strides.
+#[inline]
+fn linear_offset(indices: &[usize], strides: &[isize]) -> isize {
+    indices.iter().zip(strides).map(|(&i, &s)| i as isize * s).sum()
+}
+
 /// Apply a unary operation element-wise, returning a new array.
 fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpError> {
     use crate::array::dtype::DTypeKind;
@@ -84,20 +90,36 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
                 let strides = (itemsize, itemsize);
                 unsafe { loop_fn(src_ptr, result_ptr, size, strides); }
             } else {
-                // Strided path: iterate with stride info
-                let mut indices = vec![0usize; arr.ndim()];
-                for i in 0..size {
-                    let src_offset = arr.byte_offset_for(&indices);
-                    // Call loop for single element
-                    unsafe {
-                        loop_fn(
-                            src_ptr.offset(src_offset),
-                            result_ptr.offset(i as isize * itemsize),
-                            1,
-                            (itemsize, itemsize),  // doesn't matter for n=1
-                        );
+                // Strided path: call loop once per innermost row with actual strides
+                let ndim = arr.ndim();
+                let src_strides = arr.strides();
+
+                if ndim == 0 {
+                    // Scalar
+                    unsafe { loop_fn(src_ptr, result_ptr, 1, (itemsize, itemsize)); }
+                } else if ndim == 1 {
+                    // 1D: single call with actual stride
+                    unsafe { loop_fn(src_ptr, result_ptr, size, (src_strides[0], itemsize)); }
+                } else {
+                    // nD: iterate over all but last dimension, call once per row
+                    let inner_size = arr.shape()[ndim - 1];
+                    let inner_stride = src_strides[ndim - 1];
+                    let outer_shape = &arr.shape()[..ndim - 1];
+                    let outer_size: usize = outer_shape.iter().product();
+
+                    let mut outer_indices = vec![0usize; ndim - 1];
+                    for i in 0..outer_size {
+                        let src_offset = linear_offset(&outer_indices, src_strides);
+                        unsafe {
+                            loop_fn(
+                                src_ptr.offset(src_offset),
+                                result_ptr.offset(i as isize * inner_size as isize * itemsize),
+                                inner_size,
+                                (inner_stride, itemsize),
+                            );
+                        }
+                        increment_indices(&mut outer_indices, outer_shape);
                     }
-                    increment_indices(&mut indices, arr.shape());
                 }
             }
             return Ok(result);
@@ -172,21 +194,40 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                 let strides = (itemsize, itemsize, itemsize);
                 unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, strides); }
             } else {
-                // Strided path: iterate with stride info
-                for i in 0..size {
-                    let a_offset = a_bc.byte_offset_for(&indices);
-                    let b_offset = b_bc.byte_offset_for(&indices);
-                    // Call loop for single element
-                    unsafe {
-                        loop_fn(
-                            a_ptr.offset(a_offset),
-                            b_ptr.offset(b_offset),
-                            result_ptr.offset(i as isize * itemsize),
-                            1,
-                            (itemsize, itemsize, itemsize),  // doesn't matter for n=1
-                        );
+                // Strided path: call loop once per innermost row with actual strides
+                let ndim = out_shape.len();
+                let a_strides = a_bc.strides();
+                let b_strides = b_bc.strides();
+
+                if ndim == 0 {
+                    // Scalar
+                    unsafe { loop_fn(a_ptr, b_ptr, result_ptr, 1, (itemsize, itemsize, itemsize)); }
+                } else if ndim == 1 {
+                    // 1D: single call with actual strides
+                    unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, (a_strides[0], b_strides[0], itemsize)); }
+                } else {
+                    // nD: iterate over all but last dimension, call once per row
+                    let inner_size = out_shape[ndim - 1];
+                    let a_inner_stride = a_strides[ndim - 1];
+                    let b_inner_stride = b_strides[ndim - 1];
+                    let outer_shape = &out_shape[..ndim - 1];
+                    let outer_size: usize = outer_shape.iter().product();
+
+                    let mut outer_indices = vec![0usize; ndim - 1];
+                    for i in 0..outer_size {
+                        let a_offset = linear_offset(&outer_indices, a_strides);
+                        let b_offset = linear_offset(&outer_indices, b_strides);
+                        unsafe {
+                            loop_fn(
+                                a_ptr.offset(a_offset),
+                                b_ptr.offset(b_offset),
+                                result_ptr.offset(i as isize * inner_size as isize * itemsize),
+                                inner_size,
+                                (a_inner_stride, b_inner_stride, itemsize),
+                            );
+                        }
+                        increment_indices(&mut outer_indices, outer_shape);
                     }
-                    increment_indices(&mut indices, &out_shape);
                 }
             }
             return Ok(result);
