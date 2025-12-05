@@ -117,6 +117,20 @@ Tasks:
 
 Same pattern for `reduce_all_op`, `reduce_axis_op`.
 
+Tasks:
+- [ ] Add `ReduceLoopFn` type to registry
+- [ ] Wire up `reduce_all_op` and `reduce_axis_op` to check registry
+- [ ] Register reduction loops for common types
+
+## What's Next
+
+Potential next steps (in rough priority order):
+1. **Phase 4 (reductions)** - Complete the hybrid dispatch for sum/prod/max/min
+2. **More dtype loops** - Register loops for uint types, bool, complex128
+3. **Datetime validation** - Error on invalid ops like datetime+datetime (1 xfail test)
+4. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
+5. **Performance** - Consider SIMD loops for hot paths
+
 ## Why Hybrid?
 
 | Scenario | Pure Trait | Pure Registry | Hybrid |

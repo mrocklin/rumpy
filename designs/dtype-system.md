@@ -21,6 +21,13 @@ Enable adding new dtypes with minimal code changes, including parametric types l
 
 **`DTypeKind` enum**: Used for equality, hashing, and pattern matching. Parametric types include their parameters in the enum variant.
 
+**Hybrid dispatch (registry + trait)**: Operations check a global `UFuncRegistry` first for type-specific loops, falling back to `DTypeOps` trait methods. This enables:
+- Optimized loops for common types without touching trait code
+- Type-specific behavior (e.g., bitwise only for ints)
+- New dtypes work immediately via trait fallback
+
+**NumPy-compatible type promotion**: `promote_dtype()` follows NumPy's safe-casting rules (e.g., int64+float32→float64).
+
 ## Adding a Simple DType
 
 1. Create `src/array/dtype/newtype.rs` with struct + `DTypeOps` impl
@@ -63,5 +70,7 @@ impl DType {
 
 ## Key Files
 
-- `src/array/dtype/mod.rs` - `DType`, `DTypeKind`, `DTypeOps` trait
+- `src/array/dtype/mod.rs` - `DType`, `DTypeKind`, `DTypeOps` trait, `promote_dtype()`
 - `src/array/dtype/*.rs` - dtype implementations (float64, int64, uint8, datetime64, etc.)
+- `src/ops/registry.rs` - `UFuncRegistry` for type-specific inner loops
+- `src/ops/mod.rs` - `map_binary_op`, `map_unary_op` with registry dispatch
