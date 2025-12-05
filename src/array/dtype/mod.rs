@@ -58,6 +58,11 @@ pub enum UnaryOp {
     Sin,
     Cos,
     Tan,
+    Floor,
+    Ceil,
+    Arcsin,
+    Arccos,
+    Arctan,
 }
 
 /// Binary operations.

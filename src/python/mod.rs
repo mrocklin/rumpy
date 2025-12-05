@@ -273,34 +273,65 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
 
 // Math ufuncs (module-level functions like np.sqrt, np.exp, etc.)
 
-#[pyfunction]
-pub fn sqrt(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.sqrt())
+fn unary_result_to_py(result: Result<RumpyArray, crate::ops::UnaryOpError>) -> PyResult<PyRumpyArray> {
+    result
+        .map(PyRumpyArray::new)
+        .map_err(|_| pyo3::exceptions::PyTypeError::new_err("ufunc not supported for this dtype"))
 }
 
 #[pyfunction]
-pub fn exp(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.exp())
+pub fn sqrt(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.sqrt())
 }
 
 #[pyfunction]
-pub fn log(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.log())
+pub fn exp(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.exp())
 }
 
 #[pyfunction]
-pub fn sin(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.sin())
+pub fn log(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.log())
 }
 
 #[pyfunction]
-pub fn cos(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.cos())
+pub fn sin(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.sin())
 }
 
 #[pyfunction]
-pub fn tan(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.tan())
+pub fn cos(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.cos())
+}
+
+#[pyfunction]
+pub fn tan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.tan())
+}
+
+#[pyfunction]
+pub fn floor(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.floor())
+}
+
+#[pyfunction]
+pub fn ceil(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.ceil())
+}
+
+#[pyfunction]
+pub fn arcsin(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.arcsin())
+}
+
+#[pyfunction]
+pub fn arccos(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.arccos())
+}
+
+#[pyfunction]
+pub fn arctan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    unary_result_to_py(x.inner.arctan())
 }
 
 /// Concatenate arrays along an axis.
@@ -609,6 +640,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sin, m)?)?;
     m.add_function(wrap_pyfunction!(cos, m)?)?;
     m.add_function(wrap_pyfunction!(tan, m)?)?;
+    m.add_function(wrap_pyfunction!(floor, m)?)?;
+    m.add_function(wrap_pyfunction!(ceil, m)?)?;
+    m.add_function(wrap_pyfunction!(arcsin, m)?)?;
+    m.add_function(wrap_pyfunction!(arccos, m)?)?;
+    m.add_function(wrap_pyfunction!(arctan, m)?)?;
     // Conditional
     m.add_function(wrap_pyfunction!(where_fn, m)?)?;
     // Shape manipulation

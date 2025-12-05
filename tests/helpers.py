@@ -33,8 +33,8 @@ def assert_eq(a, b, rtol=1e-7, atol=1e-14):
         # For now, just note the difference - values should still match
         pass
 
-    # For floating point, use allclose with NaN handling
-    if np.issubdtype(a_np.dtype, np.floating):
+    # For floating point or complex, use allclose with NaN handling
+    if np.issubdtype(a_np.dtype, np.floating) or np.issubdtype(a_np.dtype, np.complexfloating):
         np.testing.assert_allclose(
             a_np, b_np, rtol=rtol, atol=atol, equal_nan=True
         )

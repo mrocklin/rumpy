@@ -19,6 +19,21 @@ impl Complex128Ops {
         *p = real;
         *p.add(1) = imag;
     }
+
+    /// Complex arcsin: arcsin(z) = -i * log(iz + sqrt(1 - z^2))
+    #[inline]
+    fn arcsin(r: f64, i: f64) -> (f64, f64) {
+        let iz = (-i, r);
+        let one_minus_z2 = (1.0 - r * r + i * i, -2.0 * r * i);
+        let mag = (one_minus_z2.0 * one_minus_z2.0 + one_minus_z2.1 * one_minus_z2.1).sqrt();
+        let sqrt_r = ((mag + one_minus_z2.0) / 2.0).sqrt();
+        let sqrt_i = one_minus_z2.1.signum() * ((mag - one_minus_z2.0) / 2.0).sqrt();
+        let sum = (iz.0 + sqrt_r, iz.1 + sqrt_i);
+        let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
+        let log_r = log_mag.ln();
+        let log_i = sum.1.atan2(sum.0);
+        (log_i, -log_r)
+    }
 }
 
 impl DTypeOps for Complex128Ops {
@@ -82,6 +97,26 @@ impl DTypeOps for Complex128Ops {
                 let denom = cos_r * cos_r + cos_i * cos_i;
                 ((sin_r * cos_r + sin_i * cos_i) / denom,
                  (sin_i * cos_r - sin_r * cos_i) / denom)
+            }
+            UnaryOp::Floor => (r.floor(), i.floor()),
+            UnaryOp::Ceil => (r.ceil(), i.ceil()),
+            UnaryOp::Arcsin => Self::arcsin(r, i),
+            UnaryOp::Arccos => {
+                // arccos(z) = pi/2 - arcsin(z)
+                let asin = Self::arcsin(r, i);
+                (std::f64::consts::FRAC_PI_2 - asin.0, -asin.1)
+            }
+            UnaryOp::Arctan => {
+                // arctan(z) = (i/2) * log((1-iz)/(1+iz))
+                let num = (1.0 + i, -r);  // 1 - iz
+                let den = (1.0 - i, r);   // 1 + iz
+                let den_mag2 = den.0 * den.0 + den.1 * den.1;
+                let div_r = (num.0 * den.0 + num.1 * den.1) / den_mag2;
+                let div_i = (num.1 * den.0 - num.0 * den.1) / den_mag2;
+                let log_mag = (div_r * div_r + div_i * div_i).sqrt();
+                let log_r = log_mag.ln();
+                let log_i = div_i.atan2(div_r);
+                (-log_i / 2.0, log_r / 2.0)
             }
         };
         Self::write(out, idx, out_r, out_i);

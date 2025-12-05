@@ -143,10 +143,23 @@ Registered loops for all remaining dtypes:
 - [x] Proper error types: ShapeMismatch -> ValueError, UnsupportedDtype -> TypeError
 - [x] All 353 tests pass (former xfail test now passes)
 
+## New Operations
+
+Added floor, ceil, and inverse trig (arcsin, arccos, arctan):
+- [x] Added Floor, Ceil, Arcsin, Arccos, Arctan to UnaryOp enum
+- [x] Implemented in all dtypes (float64, float32, int64, int32, uint*, bool, complex128, datetime64)
+- [x] Registered loops for f64 and f32 in registry
+- [x] Added Python bindings (rp.floor, rp.ceil, rp.arcsin, rp.arccos, rp.arctan)
+- [x] Added `UnaryOpError` for validation (like `BinaryOpError`)
+- [x] floor/ceil on complex raises TypeError (matching NumPy)
+- [x] Implemented correct complex inverse trig formulas (arcsin, arccos, arctan)
+- [x] Fixed helpers.py to use allclose for complex comparisons
+- [x] 19 tests in test_new_ops.py, all 372 tests pass
+
 ## What's Next
 
 Potential next steps (in rough priority order):
-1. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
+1. **New operations** - Bitwise ops (and, or, xor, not, shifts)
 2. **Performance** - Consider SIMD loops for hot paths
 
 ## Why Hybrid?

@@ -474,6 +474,46 @@ fn init_default_loops() -> UFuncRegistry {
             *(out_ptr as *mut f64).add(out_idx) = v.tan();
         },
     );
+    reg.register_unary(
+        UnaryOp::Floor,
+        TypeSignature::unary(DTypeKind::Float64, DTypeKind::Float64),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f64);
+            *(out_ptr as *mut f64).add(out_idx) = v.floor();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Ceil,
+        TypeSignature::unary(DTypeKind::Float64, DTypeKind::Float64),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f64);
+            *(out_ptr as *mut f64).add(out_idx) = v.ceil();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Arcsin,
+        TypeSignature::unary(DTypeKind::Float64, DTypeKind::Float64),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f64);
+            *(out_ptr as *mut f64).add(out_idx) = v.asin();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Arccos,
+        TypeSignature::unary(DTypeKind::Float64, DTypeKind::Float64),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f64);
+            *(out_ptr as *mut f64).add(out_idx) = v.acos();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Arctan,
+        TypeSignature::unary(DTypeKind::Float64, DTypeKind::Float64),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f64);
+            *(out_ptr as *mut f64).add(out_idx) = v.atan();
+        },
+    );
 
     // f32 unary loops
     reg.register_unary(
@@ -498,6 +538,46 @@ fn init_default_loops() -> UFuncRegistry {
         |src_ptr, src_off, out_ptr, out_idx| unsafe {
             let v = *(src_ptr.offset(src_off) as *const f32);
             *(out_ptr as *mut f32).add(out_idx) = v.sqrt();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Floor,
+        TypeSignature::unary(DTypeKind::Float32, DTypeKind::Float32),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f32);
+            *(out_ptr as *mut f32).add(out_idx) = v.floor();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Ceil,
+        TypeSignature::unary(DTypeKind::Float32, DTypeKind::Float32),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f32);
+            *(out_ptr as *mut f32).add(out_idx) = v.ceil();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Arcsin,
+        TypeSignature::unary(DTypeKind::Float32, DTypeKind::Float32),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f32);
+            *(out_ptr as *mut f32).add(out_idx) = v.asin();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Arccos,
+        TypeSignature::unary(DTypeKind::Float32, DTypeKind::Float32),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f32);
+            *(out_ptr as *mut f32).add(out_idx) = v.acos();
+        },
+    );
+    reg.register_unary(
+        UnaryOp::Arctan,
+        TypeSignature::unary(DTypeKind::Float32, DTypeKind::Float32),
+        |src_ptr, src_off, out_ptr, out_idx| unsafe {
+            let v = *(src_ptr.offset(src_off) as *const f32);
+            *(out_ptr as *mut f32).add(out_idx) = v.atan();
         },
     );
 

@@ -338,11 +338,11 @@ impl PyRumpyArray {
     // Unary operations
 
     fn __neg__(&self) -> Self {
-        Self::new(self.inner.neg())
+        Self::new(self.inner.neg().expect("neg always succeeds"))
     }
 
     fn __abs__(&self) -> Self {
-        Self::new(self.inner.abs())
+        Self::new(self.inner.abs().expect("abs always succeeds"))
     }
 
     fn __float__(&self) -> PyResult<f64> {

@@ -49,6 +49,11 @@ impl DTypeOps for Float32Ops {
             UnaryOp::Sin => v.sin(),
             UnaryOp::Cos => v.cos(),
             UnaryOp::Tan => v.tan(),
+            UnaryOp::Floor => v.floor(),
+            UnaryOp::Ceil => v.ceil(),
+            UnaryOp::Arcsin => v.asin(),
+            UnaryOp::Arccos => v.acos(),
+            UnaryOp::Arctan => v.atan(),
         };
         Self::write(out, idx, result);
     }

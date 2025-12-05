@@ -26,6 +26,13 @@ pub enum BinaryOpError {
     UnsupportedDtype,
 }
 
+/// Error type for unary operations.
+#[derive(Debug, Clone)]
+pub enum UnaryOpError {
+    /// Operation not supported for this dtype
+    UnsupportedDtype,
+}
+
 /// Comparison operation types.
 #[derive(Clone, Copy)]
 pub enum ComparisonOp {
@@ -42,19 +49,30 @@ pub enum ComparisonOp {
 // ============================================================================
 
 /// Apply a unary operation element-wise, returning a new array.
-fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
-    let mut result = RumpyArray::zeros(arr.shape().to_vec(), arr.dtype());
+fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpError> {
+    use crate::array::dtype::DTypeKind;
+
+    let dtype = arr.dtype();
+    let kind = dtype.kind();
+
+    // Validate unsupported operations
+    if matches!(kind, DTypeKind::Complex128) {
+        match op {
+            UnaryOp::Floor | UnaryOp::Ceil => return Err(UnaryOpError::UnsupportedDtype),
+            _ => {}
+        }
+    }
+
+    let mut result = RumpyArray::zeros(arr.shape().to_vec(), dtype.clone());
     let size = arr.size();
     if size == 0 {
-        return result;
+        return Ok(result);
     }
 
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
     let src_ptr = arr.data_ptr();
-    let dtype = arr.dtype();
-    let kind = dtype.kind();
 
     let mut indices = vec![0usize; arr.ndim()];
 
@@ -67,7 +85,7 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
                 unsafe { loop_fn(src_ptr, src_offset, result_ptr, i); }
                 increment_indices(&mut indices, arr.shape());
             }
-            return result;
+            return Ok(result);
         }
     }
 
@@ -78,7 +96,7 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
         unsafe { ops.unary_op(op, src_ptr, src_offset, result_ptr, i); }
         increment_indices(&mut indices, arr.shape());
     }
-    result
+    Ok(result)
 }
 
 /// Apply a binary operation element-wise with broadcasting.
@@ -437,12 +455,12 @@ impl RumpyArray {
     }
 
     /// Negate each element.
-    pub fn neg(&self) -> RumpyArray {
+    pub fn neg(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Neg)
     }
 
     /// Absolute value of each element.
-    pub fn abs(&self) -> RumpyArray {
+    pub fn abs(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Abs)
     }
 
@@ -575,7 +593,7 @@ impl RumpyArray {
 
     /// Standard deviation along axis.
     pub fn std_axis(&self, axis: usize) -> RumpyArray {
-        map_unary_op(&self.var_axis(axis), UnaryOp::Sqrt)
+        map_unary_op(&self.var_axis(axis), UnaryOp::Sqrt).expect("sqrt always succeeds on numeric types")
     }
 
     /// Index of maximum element (flattened).
@@ -657,33 +675,58 @@ impl RumpyArray {
     // Math ufuncs
 
     /// Square root of each element.
-    pub fn sqrt(&self) -> RumpyArray {
+    pub fn sqrt(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Sqrt)
     }
 
     /// Exponential (e^x) of each element.
-    pub fn exp(&self) -> RumpyArray {
+    pub fn exp(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Exp)
     }
 
     /// Natural logarithm of each element.
-    pub fn log(&self) -> RumpyArray {
+    pub fn log(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Log)
     }
 
     /// Sine of each element (radians).
-    pub fn sin(&self) -> RumpyArray {
+    pub fn sin(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Sin)
     }
 
     /// Cosine of each element (radians).
-    pub fn cos(&self) -> RumpyArray {
+    pub fn cos(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Cos)
     }
 
     /// Tangent of each element (radians).
-    pub fn tan(&self) -> RumpyArray {
+    pub fn tan(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Tan)
+    }
+
+    /// Floor of each element.
+    pub fn floor(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Floor)
+    }
+
+    /// Ceiling of each element.
+    pub fn ceil(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Ceil)
+    }
+
+    /// Inverse sine (arcsine) of each element.
+    pub fn arcsin(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Arcsin)
+    }
+
+    /// Inverse cosine (arccosine) of each element.
+    pub fn arccos(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Arccos)
+    }
+
+    /// Inverse tangent (arctangent) of each element.
+    pub fn arctan(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Arctan)
     }
 }
 

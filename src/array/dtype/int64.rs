@@ -50,6 +50,11 @@ impl DTypeOps for Int64Ops {
             UnaryOp::Sin => (v as f64).sin() as i64,
             UnaryOp::Cos => (v as f64).cos() as i64,
             UnaryOp::Tan => (v as f64).tan() as i64,
+            UnaryOp::Floor => v,  // integers are already integers
+            UnaryOp::Ceil => v,
+            UnaryOp::Arcsin => (v as f64).asin() as i64,
+            UnaryOp::Arccos => (v as f64).acos() as i64,
+            UnaryOp::Arctan => (v as f64).atan() as i64,
         };
         Self::write(out, idx, result);
     }
