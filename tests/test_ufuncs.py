@@ -114,12 +114,20 @@ class TestSinCosPythagorean:
 
 
 class TestTranscendentalPromotion:
-    """Test that transcendentals promote integer types to float like NumPy."""
+    """Test that transcendentals return same dtype and values as NumPy."""
 
-    @pytest.mark.parametrize("dtype", ["int64", "int32", "uint64", "uint32", "uint8"])
+    @pytest.mark.parametrize(
+        "dtype",
+        [
+            "int64", "int32", "int16",
+            "uint64", "uint32", "uint16", "uint8",
+            "float64", "float32", "float16",
+            "complex128",
+        ],
+    )
     @pytest.mark.parametrize("op", ["exp", "log", "sqrt", "sin", "cos", "tan"])
-    def test_transcendental_promotes_to_float(self, dtype, op):
-        """Transcendentals on integers should return same dtype as NumPy."""
+    def test_transcendental_dtype_and_values(self, dtype, op):
+        """Transcendentals should return same dtype and values as NumPy."""
         rp_op = getattr(rp, op)
         np_op = getattr(np, op)
 

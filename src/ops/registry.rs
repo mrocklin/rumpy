@@ -229,8 +229,10 @@ fn init_default_loops() -> UFuncRegistry {
     register_arithmetic!(reg, DTypeKind::Float32, f32);
     register_arithmetic!(reg, DTypeKind::Int64, i64);
     register_arithmetic!(reg, DTypeKind::Int32, i32);
+    register_arithmetic!(reg, DTypeKind::Int16, i16);
     register_arithmetic!(reg, DTypeKind::Uint64, u64);
     register_arithmetic!(reg, DTypeKind::Uint32, u32);
+    register_arithmetic!(reg, DTypeKind::Uint16, u16);
     register_arithmetic!(reg, DTypeKind::Uint8, u8);
 
     // Float-specific binary ops (pow, floordiv)
@@ -498,10 +500,12 @@ fn init_default_loops() -> UFuncRegistry {
     }
     register_signed_int_unary!(reg, DTypeKind::Int64, i64);
     register_signed_int_unary!(reg, DTypeKind::Int32, i32);
+    register_signed_int_unary!(reg, DTypeKind::Int16, i16);
 
     // Unsigned integer abs (identity)
     register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint64, u64, |v: u64| v);
     register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint32, u32, |v: u32| v);
+    register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint16, u16, |v: u16| v);
     register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint8, u8, |v: u8| v);
 
     // complex128 unary loops (no contiguous fast path - needs special handling)
@@ -650,8 +654,10 @@ fn init_default_loops() -> UFuncRegistry {
     }
     register_int_reduce!(reg, DTypeKind::Int64, i64);
     register_int_reduce!(reg, DTypeKind::Int32, i32);
+    register_int_reduce!(reg, DTypeKind::Int16, i16);
     register_int_reduce!(reg, DTypeKind::Uint64, u64);
     register_int_reduce!(reg, DTypeKind::Uint32, u32);
+    register_int_reduce!(reg, DTypeKind::Uint16, u16);
     register_int_reduce!(reg, DTypeKind::Uint8, u8);
 
     // bool reduce loops (Sum=any, Prod=all)

@@ -8,8 +8,8 @@ Guide for adding new ufunc operations (unary, binary, reduce).
 
 2. **`src/array/dtype/*.rs`** - Implement in each dtype's `DTypeOps`:
    - `float64.rs`, `float32.rs`, `float16.rs` - floating point
-   - `int64.rs`, `int32.rs` - signed integers
-   - `uint64.rs`, `uint32.rs`, `uint8.rs` - unsigned integers
+   - `int64.rs`, `int32.rs`, `int16.rs` - signed integers
+   - `uint64.rs`, `uint32.rs`, `uint16.rs`, `uint8.rs` - unsigned integers
    - `bool.rs`, `complex128.rs`, `datetime64.rs` - special types
 
 3. **`src/ops/registry.rs`** - Register fast loops (optional but recommended):

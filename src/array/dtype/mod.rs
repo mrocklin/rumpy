@@ -11,9 +11,11 @@ mod datetime64;
 mod float16;
 mod float32;
 mod float64;
+mod int16;
 mod int32;
 mod int64;
 mod uint8;
+mod uint16;
 mod uint32;
 mod uint64;
 
@@ -24,9 +26,11 @@ pub use datetime64::TimeUnit;
 use float16::Float16Ops;
 use float32::Float32Ops;
 use float64::Float64Ops;
+use int16::Int16Ops;
 use int32::Int32Ops;
 use int64::Int64Ops;
 use uint8::Uint8Ops;
+use uint16::Uint16Ops;
 use uint32::Uint32Ops;
 use uint64::Uint64Ops;
 
@@ -40,9 +44,11 @@ pub enum DTypeKind {
     Float16,
     Float32,
     Float64,
+    Int16,
     Int32,
     Int64,
     Uint8,
+    Uint16,
     Uint32,
     Uint64,
     Bool,
@@ -116,8 +122,8 @@ pub trait DTypeOps: Send + Sync + 'static {
 
     /// Whether this is an integer type.
     fn is_integer(&self) -> bool {
-        matches!(self.kind(), DTypeKind::Int32 | DTypeKind::Int64 |
-                 DTypeKind::Uint8 | DTypeKind::Uint32 | DTypeKind::Uint64)
+        matches!(self.kind(), DTypeKind::Int16 | DTypeKind::Int32 | DTypeKind::Int64 |
+                 DTypeKind::Uint8 | DTypeKind::Uint16 | DTypeKind::Uint32 | DTypeKind::Uint64)
     }
 
     // === Buffer operations ===
@@ -256,9 +262,11 @@ impl DType {
     pub fn float16() -> Self { DType(Arc::new(Float16Ops)) }
     pub fn float32() -> Self { DType(Arc::new(Float32Ops)) }
     pub fn float64() -> Self { DType(Arc::new(Float64Ops)) }
+    pub fn int16() -> Self { DType(Arc::new(Int16Ops)) }
     pub fn int32() -> Self { DType(Arc::new(Int32Ops)) }
     pub fn int64() -> Self { DType(Arc::new(Int64Ops)) }
     pub fn uint8() -> Self { DType(Arc::new(Uint8Ops)) }
+    pub fn uint16() -> Self { DType(Arc::new(Uint16Ops)) }
     pub fn uint32() -> Self { DType(Arc::new(Uint32Ops)) }
     pub fn uint64() -> Self { DType(Arc::new(Uint64Ops)) }
     pub fn bool() -> Self { DType(Arc::new(BoolOps)) }
@@ -286,9 +294,11 @@ impl DType {
             "float16" | "f2" | "<f2" => Some(Self::float16()),
             "float32" | "f4" | "<f4" => Some(Self::float32()),
             "float64" | "f8" | "<f8" | "float" => Some(Self::float64()),
+            "int16" | "i2" | "<i2" => Some(Self::int16()),
             "int32" | "i4" | "<i4" => Some(Self::int32()),
             "int64" | "i8" | "<i8" | "int" => Some(Self::int64()),
             "uint8" | "u1" | "|u1" => Some(Self::uint8()),
+            "uint16" | "u2" | "<u2" => Some(Self::uint16()),
             "uint32" | "u4" | "<u4" => Some(Self::uint32()),
             "uint64" | "u8" | "<u8" => Some(Self::uint64()),
             "bool" | "?" | "|b1" => Some(Self::bool()),
