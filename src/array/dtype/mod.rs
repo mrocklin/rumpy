@@ -1,8 +1,12 @@
 //! Extensible data type system for rumpy arrays.
 //!
 //! `DType` wraps `Arc<dyn DTypeOps>`, enabling parametric types like datetime[ns].
+//!
+//! Operations work directly on buffers - each dtype uses its native type internally.
+//! There is no universal Rust value type; Python interop (PyObject) is handled separately.
 
 mod bool;
+mod complex128;
 mod datetime64;
 mod float32;
 mod float64;
@@ -13,6 +17,7 @@ mod uint32;
 mod uint64;
 
 use self::bool::BoolOps;
+use complex128::Complex128Ops;
 use datetime64::DateTime64Ops;
 pub use datetime64::TimeUnit;
 use float32::Float32Ops;
@@ -39,12 +44,47 @@ pub enum DTypeKind {
     Uint64,
     Bool,
     DateTime64(TimeUnit),
+    Complex128,
+}
+
+/// Unary operations.
+#[derive(Clone, Copy, Debug)]
+pub enum UnaryOp {
+    Neg,
+    Abs,
+    Sqrt,
+    Exp,
+    Log,
+    Sin,
+    Cos,
+    Tan,
+}
+
+/// Binary operations.
+#[derive(Clone, Copy, Debug)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+/// Reduce operations.
+#[derive(Clone, Copy, Debug)]
+pub enum ReduceOp {
+    Sum,
+    Prod,
+    Max,
+    Min,
 }
 
 /// Trait defining all dtype-specific behavior.
 ///
+/// Operations work directly on buffers - each dtype uses its native type internally.
 /// Implement this trait to add a new dtype.
 pub trait DTypeOps: Send + Sync + 'static {
+    // === Metadata ===
+
     /// The kind of this dtype (for equality/hashing).
     fn kind(&self) -> DTypeKind;
 
@@ -60,45 +100,119 @@ pub trait DTypeOps: Send + Sync + 'static {
     /// Human-readable name (e.g., "float64").
     fn name(&self) -> &'static str;
 
-    /// Read element from buffer at byte offset, returning as f64.
-    ///
-    /// # Safety
-    /// Caller must ensure ptr + byte_offset is valid and aligned.
-    unsafe fn read_element(&self, ptr: *const u8, byte_offset: isize) -> f64;
-
-    /// Write f64 value to buffer at element index (not byte offset).
-    ///
-    /// # Safety
-    /// Caller must ensure ptr points to valid memory for idx elements.
-    unsafe fn write_element(&self, ptr: *mut u8, idx: usize, val: f64);
-
-    /// The zero value for this dtype (as f64).
-    fn zero_value(&self) -> f64 { 0.0 }
-
-    /// The one value for this dtype (as f64).
-    fn one_value(&self) -> f64 { 1.0 }
-
     /// Priority for type promotion. Higher priority wins.
     fn promotion_priority(&self) -> u8;
-
-    /// Format element value as string for repr/str.
-    fn format_element(&self, val: f64) -> String {
-        // Default: format based on whether it's an integer or float type
-        if self.is_integer() {
-            format!("{}", val as i64)
-        } else {
-            // NumPy style: "0." not "0.0"
-            let s = format!("{:.8}", val);
-            let s = s.trim_end_matches('0');
-            // Keep trailing dot but no trailing zero
-            s.to_string()
-        }
-    }
 
     /// Whether this is an integer type.
     fn is_integer(&self) -> bool {
         matches!(self.kind(), DTypeKind::Int32 | DTypeKind::Int64 |
                  DTypeKind::Uint8 | DTypeKind::Uint32 | DTypeKind::Uint64)
+    }
+
+    // === Buffer operations ===
+
+    /// Write zero value at element index.
+    ///
+    /// # Safety
+    /// Caller must ensure ptr points to valid memory for idx elements.
+    unsafe fn write_zero(&self, ptr: *mut u8, idx: usize);
+
+    /// Write one value at element index.
+    ///
+    /// # Safety
+    /// Caller must ensure ptr points to valid memory for idx elements.
+    unsafe fn write_one(&self, ptr: *mut u8, idx: usize);
+
+    /// Copy element from src (at byte_offset) to dst (at element index).
+    ///
+    /// # Safety
+    /// Both pointers must be valid.
+    unsafe fn copy_element(&self, src: *const u8, byte_offset: isize, dst: *mut u8, idx: usize);
+
+    /// Apply unary operation: out[idx] = op(src at byte_offset).
+    ///
+    /// # Safety
+    /// Both pointers must be valid.
+    unsafe fn unary_op(&self, op: UnaryOp, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize);
+
+    /// Apply binary operation: out[idx] = a op b.
+    ///
+    /// # Safety
+    /// All pointers must be valid.
+    unsafe fn binary_op(&self, op: BinaryOp, a: *const u8, a_offset: isize, b: *const u8, b_offset: isize, out: *mut u8, idx: usize);
+
+    /// Write reduction identity value at element index.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn reduce_init(&self, op: ReduceOp, out: *mut u8, idx: usize);
+
+    /// Accumulate: acc[idx] = op(acc[idx], val at byte_offset).
+    ///
+    /// # Safety
+    /// Both pointers must be valid.
+    unsafe fn reduce_acc(&self, op: ReduceOp, acc: *mut u8, idx: usize, val: *const u8, byte_offset: isize);
+
+    /// Format element at byte_offset as string for repr/str.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn format_element(&self, ptr: *const u8, byte_offset: isize) -> String;
+
+    /// Compare two elements for ordering (for sort/argmax/etc).
+    /// Returns Ordering.
+    ///
+    /// # Safety
+    /// Both pointers must be valid.
+    unsafe fn compare_elements(&self, a: *const u8, a_offset: isize, b: *const u8, b_offset: isize) -> std::cmp::Ordering;
+
+    /// Check if element is "truthy" (nonzero). Used for boolean indexing.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn is_truthy(&self, ptr: *const u8, byte_offset: isize) -> bool;
+
+    // === Scalar conversion (for Python interop, implemented in python module) ===
+    // These are handled separately to avoid PyO3 dependency in core dtype module.
+
+    /// Write a scalar f64 value at element index.
+    /// Used for creating arrays from Python floats/ints.
+    /// Returns false if this dtype doesn't support f64 conversion.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn write_f64(&self, ptr: *mut u8, idx: usize, val: f64) -> bool {
+        let _ = (ptr, idx, val);
+        false
+    }
+
+    /// Read element as f64 (if possible).
+    /// Returns None if this dtype doesn't support f64 conversion.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn read_f64(&self, ptr: *const u8, byte_offset: isize) -> Option<f64> {
+        let _ = (ptr, byte_offset);
+        None
+    }
+
+    /// Write a complex value (real, imag) at element index.
+    /// Returns false if this dtype doesn't support complex conversion.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn write_complex(&self, ptr: *mut u8, idx: usize, real: f64, imag: f64) -> bool {
+        let _ = (ptr, idx, real, imag);
+        false
+    }
+
+    /// Read element as complex (real, imag) if possible.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
+        let _ = (ptr, byte_offset);
+        None
     }
 }
 
@@ -141,6 +255,7 @@ impl DType {
     pub fn datetime64_us() -> Self { Self::datetime64(TimeUnit::Microseconds) }
     pub fn datetime64_ms() -> Self { Self::datetime64(TimeUnit::Milliseconds) }
     pub fn datetime64_s() -> Self { Self::datetime64(TimeUnit::Seconds) }
+    pub fn complex128() -> Self { DType(Arc::new(Complex128Ops)) }
 
     // === Delegated methods ===
 
@@ -168,6 +283,7 @@ impl DType {
             "datetime64[us]" | "<M8[us]" => Some(Self::datetime64_us()),
             "datetime64[ms]" | "<M8[ms]" => Some(Self::datetime64_ms()),
             "datetime64[s]" | "<M8[s]" => Some(Self::datetime64_s()),
+            "complex128" | "c16" | "<c16" => Some(Self::complex128()),
             _ => None,
         }
     }

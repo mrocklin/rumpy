@@ -8,7 +8,8 @@ pub mod matmul;
 pub mod outer;
 pub mod solve;
 
-use crate::array::{broadcast_shapes, increment_indices, promote_dtype, write_element, DType, RumpyArray};
+use crate::array::{broadcast_shapes, increment_indices, promote_dtype, DType, RumpyArray};
+use crate::array::dtype::{BinaryOp as DTypeBinaryOp, UnaryOp, ReduceOp};
 use std::sync::Arc;
 
 /// Binary operation types.
@@ -35,11 +36,8 @@ pub enum ComparisonOp {
 // Core ufunc machinery
 // ============================================================================
 
-/// Apply a unary function element-wise, returning a new array.
-fn map_unary<F>(arr: &RumpyArray, f: F) -> RumpyArray
-where
-    F: Fn(f64) -> f64,
-{
+/// Apply a unary operation element-wise, returning a new array.
+fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
     let mut result = RumpyArray::zeros(arr.shape().to_vec(), arr.dtype());
     let size = arr.size();
     if size == 0 {
@@ -49,47 +47,82 @@ where
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
+    let src_ptr = arr.data_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
 
     let mut indices = vec![0usize; arr.ndim()];
     for i in 0..size {
-        let val = f(arr.get_element(&indices));
-        unsafe { write_element(result_ptr, i, val, &arr.dtype()); }
+        let src_offset = arr.byte_offset_for(&indices);
+        unsafe { ops.unary_op(op, src_ptr, src_offset, result_ptr, i); }
         increment_indices(&mut indices, arr.shape());
     }
     result
 }
 
-/// Apply a binary function element-wise with broadcasting.
-fn map_binary<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
-where
-    F: Fn(f64, f64) -> f64,
-{
+/// Apply a binary operation element-wise with broadcasting.
+fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: DTypeBinaryOp) -> Option<RumpyArray> {
     let out_shape = broadcast_shapes(a.shape(), b.shape())?;
-    let a = a.broadcast_to(&out_shape)?;
-    let b = b.broadcast_to(&out_shape)?;
+    let a_bc = a.broadcast_to(&out_shape)?;
+    let b_bc = b.broadcast_to(&out_shape)?;
 
-    let result_dtype = promote_dtype(&a.dtype(), &b.dtype());
-    let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype);
+    let result_dtype = promote_dtype(&a_bc.dtype(), &b_bc.dtype());
+    let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype.clone());
     let size = result.size();
     if size == 0 {
         return Some(result);
     }
 
-    let dtype = result.dtype();
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
+    let a_ptr = a_bc.data_ptr();
+    let b_ptr = b_bc.data_ptr();
+    let result_dtype_ref = result.dtype();
+    let result_ops = result_dtype_ref.ops();
+
+    // If dtypes match, use direct buffer operations
+    let same_dtype = a_bc.dtype() == b_bc.dtype() && a_bc.dtype() == result.dtype();
 
     let mut indices = vec![0usize; out_shape.len()];
-    for i in 0..size {
-        let val = f(a.get_element(&indices), b.get_element(&indices));
-        unsafe { write_element(result_ptr, i, val, &dtype); }
-        increment_indices(&mut indices, &out_shape);
+
+    if same_dtype {
+        for i in 0..size {
+            let a_offset = a_bc.byte_offset_for(&indices);
+            let b_offset = b_bc.byte_offset_for(&indices);
+            unsafe { result_ops.binary_op(op, a_ptr, a_offset, b_ptr, b_offset, result_ptr, i); }
+            increment_indices(&mut indices, &out_shape);
+        }
+    } else {
+        // Different dtypes: read as f64, operate, write back
+        let a_dtype = a_bc.dtype();
+        let a_ops = a_dtype.ops();
+        let b_dtype = b_bc.dtype();
+        let b_ops = b_dtype.ops();
+
+        for i in 0..size {
+            let a_offset = a_bc.byte_offset_for(&indices);
+            let b_offset = b_bc.byte_offset_for(&indices);
+
+            let av = unsafe { a_ops.read_f64(a_ptr, a_offset).unwrap_or(0.0) };
+            let bv = unsafe { b_ops.read_f64(b_ptr, b_offset).unwrap_or(0.0) };
+
+            let result_val = match op {
+                DTypeBinaryOp::Add => av + bv,
+                DTypeBinaryOp::Sub => av - bv,
+                DTypeBinaryOp::Mul => av * bv,
+                DTypeBinaryOp::Div => if bv != 0.0 { av / bv } else { f64::NAN },
+            };
+
+            unsafe { result_ops.write_f64(result_ptr, i, result_val); }
+            increment_indices(&mut indices, &out_shape);
+        }
     }
     Some(result)
 }
 
 /// Apply a comparison function element-wise, returning bool array.
+/// Note: comparison still uses f64 for now, since ordering on complex is tricky.
 fn map_compare<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
 where
     F: Fn(f64, f64) -> bool,
@@ -104,44 +137,57 @@ where
         return Some(result);
     }
 
-    let dtype = result.dtype();
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
+    let dtype = result.dtype();
+    let ops = dtype.ops();
 
     let mut indices = vec![0usize; out_shape.len()];
     for i in 0..size {
         let val = if f(a.get_element(&indices), b.get_element(&indices)) { 1.0 } else { 0.0 };
-        unsafe { write_element(result_ptr, i, val, &dtype); }
+        unsafe { ops.write_f64(result_ptr, i, val); }
         increment_indices(&mut indices, &out_shape);
     }
     Some(result)
 }
 
-/// Reduce array along all axes using a binary function.
-fn reduce_all<F>(arr: &RumpyArray, init: f64, f: F) -> f64
-where
-    F: Fn(f64, f64) -> f64,
-{
+/// Reduce array along all axes, returning a 0-d array.
+fn reduce_all_op(arr: &RumpyArray, op: ReduceOp) -> RumpyArray {
+    let mut result = RumpyArray::zeros(vec![1], arr.dtype());
     let size = arr.size();
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+
+    // Initialize accumulator
+    unsafe { ops.reduce_init(op, result_ptr, 0); }
+
     if size == 0 {
-        return init;
+        return result;
     }
 
-    let mut acc = init;
+    let src_ptr = arr.data_ptr();
     let mut indices = vec![0usize; arr.ndim()];
     for _ in 0..size {
-        acc = f(acc, arr.get_element(&indices));
+        let src_offset = arr.byte_offset_for(&indices);
+        unsafe { ops.reduce_acc(op, result_ptr, 0, src_ptr, src_offset); }
         increment_indices(&mut indices, arr.shape());
     }
-    acc
+    result
 }
 
-/// Reduce array along a specific axis using a binary function.
-fn reduce_axis<F>(arr: &RumpyArray, axis: usize, init: f64, f: F) -> RumpyArray
-where
-    F: Fn(f64, f64) -> f64,
-{
+/// Get reduction result as f64 (for backwards compatibility).
+fn reduce_all_f64(arr: &RumpyArray, op: ReduceOp) -> f64 {
+    let result = reduce_all_op(arr, op);
+    result.get_element(&[0])
+}
+
+/// Reduce array along a specific axis.
+fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
     // Output shape: remove the reduction axis
     let mut out_shape: Vec<usize> = arr.shape().to_vec();
     let axis_len = out_shape.remove(axis);
@@ -154,20 +200,22 @@ where
     let mut result = RumpyArray::zeros(out_shape.clone(), arr.dtype());
     let out_size = result.size();
 
-    if out_size == 0 || axis_len == 0 {
-        // Fill with init for empty reduction
-        let buffer = result.buffer_mut();
-        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
-        let result_ptr = result_buffer.as_mut_ptr();
-        for i in 0..out_size {
-            unsafe { write_element(result_ptr, i, init, &arr.dtype()); }
-        }
-        return result;
-    }
-
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+
+    // Initialize all accumulators
+    for i in 0..out_size {
+        unsafe { ops.reduce_init(op, result_ptr, i); }
+    }
+
+    if out_size == 0 || axis_len == 0 {
+        return result;
+    }
+
+    let src_ptr = arr.data_ptr();
 
     // Iterate over output positions
     let mut out_indices = vec![0usize; out_shape.len()];
@@ -180,13 +228,12 @@ where
         }
 
         // Reduce along axis
-        let mut acc = init;
         for j in 0..axis_len {
             in_indices[axis] = j;
-            acc = f(acc, arr.get_element(&in_indices));
+            let src_offset = arr.byte_offset_for(&in_indices);
+            unsafe { ops.reduce_acc(op, result_ptr, i, src_ptr, src_offset); }
         }
 
-        unsafe { write_element(result_ptr, i, acc, &arr.dtype()); }
         increment_indices(&mut out_indices, &out_shape);
     }
 
@@ -202,33 +249,26 @@ where
 impl RumpyArray {
     /// Element-wise binary operation with broadcasting.
     pub fn binary_op(&self, other: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
-        let f = match op {
-            BinaryOp::Add => |a, b| a + b,
-            BinaryOp::Sub => |a, b| a - b,
-            BinaryOp::Mul => |a, b| a * b,
-            BinaryOp::Div => |a, b| a / b,
+        let dtype_op = match op {
+            BinaryOp::Add => DTypeBinaryOp::Add,
+            BinaryOp::Sub => DTypeBinaryOp::Sub,
+            BinaryOp::Mul => DTypeBinaryOp::Mul,
+            BinaryOp::Div => DTypeBinaryOp::Div,
         };
-        map_binary(self, other, f)
+        map_binary_op(self, other, dtype_op)
     }
 
     /// Element-wise operation with scalar (arr op scalar).
     pub fn scalar_op(&self, scalar: f64, op: BinaryOp) -> RumpyArray {
-        match op {
-            BinaryOp::Add => map_unary(self, |a| a + scalar),
-            BinaryOp::Sub => map_unary(self, |a| a - scalar),
-            BinaryOp::Mul => map_unary(self, |a| a * scalar),
-            BinaryOp::Div => map_unary(self, |a| a / scalar),
-        }
+        // Create a scalar array and use binary_op with broadcasting
+        let scalar_arr = RumpyArray::full(vec![1], scalar, self.dtype());
+        self.binary_op(&scalar_arr, op).expect("scalar broadcast always works")
     }
 
     /// Scalar on left side (scalar op arr).
     pub fn rscalar_op(&self, scalar: f64, op: BinaryOp) -> RumpyArray {
-        match op {
-            BinaryOp::Add => map_unary(self, |a| scalar + a),
-            BinaryOp::Sub => map_unary(self, |a| scalar - a),
-            BinaryOp::Mul => map_unary(self, |a| scalar * a),
-            BinaryOp::Div => map_unary(self, |a| scalar / a),
-        }
+        let scalar_arr = RumpyArray::full(vec![1], scalar, self.dtype());
+        scalar_arr.binary_op(self, op).expect("scalar broadcast always works")
     }
 
     /// Element-wise comparison with broadcasting.
@@ -253,52 +293,52 @@ impl RumpyArray {
 
     /// Negate each element.
     pub fn neg(&self) -> RumpyArray {
-        map_unary(self, |x| -x)
+        map_unary_op(self, UnaryOp::Neg)
     }
 
     /// Absolute value of each element.
     pub fn abs(&self) -> RumpyArray {
-        map_unary(self, |x| x.abs())
+        map_unary_op(self, UnaryOp::Abs)
     }
 
     /// Sum all elements.
     pub fn sum(&self) -> f64 {
-        reduce_all(self, 0.0, |a, b| a + b)
+        reduce_all_f64(self, ReduceOp::Sum)
     }
 
     /// Sum along axis.
     pub fn sum_axis(&self, axis: usize) -> RumpyArray {
-        reduce_axis(self, axis, 0.0, |a, b| a + b)
+        reduce_axis_op(self, axis, ReduceOp::Sum)
     }
 
     /// Product of all elements.
     pub fn prod(&self) -> f64 {
-        reduce_all(self, 1.0, |a, b| a * b)
+        reduce_all_f64(self, ReduceOp::Prod)
     }
 
     /// Product along axis.
     pub fn prod_axis(&self, axis: usize) -> RumpyArray {
-        reduce_axis(self, axis, 1.0, |a, b| a * b)
+        reduce_axis_op(self, axis, ReduceOp::Prod)
     }
 
     /// Maximum element.
     pub fn max(&self) -> f64 {
-        reduce_all(self, f64::NEG_INFINITY, |a, b| a.max(b))
+        reduce_all_f64(self, ReduceOp::Max)
     }
 
     /// Maximum along axis.
     pub fn max_axis(&self, axis: usize) -> RumpyArray {
-        reduce_axis(self, axis, f64::NEG_INFINITY, |a, b| a.max(b))
+        reduce_axis_op(self, axis, ReduceOp::Max)
     }
 
     /// Minimum element.
     pub fn min(&self) -> f64 {
-        reduce_all(self, f64::INFINITY, |a, b| a.min(b))
+        reduce_all_f64(self, ReduceOp::Min)
     }
 
     /// Minimum along axis.
     pub fn min_axis(&self, axis: usize) -> RumpyArray {
-        reduce_axis(self, axis, f64::INFINITY, |a, b| a.min(b))
+        reduce_axis_op(self, axis, ReduceOp::Min)
     }
 
     /// Mean of all elements.
@@ -313,7 +353,9 @@ impl RumpyArray {
     pub fn mean_axis(&self, axis: usize) -> RumpyArray {
         let sum = self.sum_axis(axis);
         let count = self.shape()[axis] as f64;
-        map_unary(&sum, |x| x / count)
+        // Divide each element by count
+        let count_arr = RumpyArray::full(vec![1], count, sum.dtype());
+        sum.binary_op(&count_arr, BinaryOp::Div).expect("broadcast works")
     }
 
     /// Variance of all elements.
@@ -356,6 +398,8 @@ impl RumpyArray {
         let buffer = result.buffer_mut();
         let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
         let result_ptr = result_buffer.as_mut_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
 
         let mut out_indices = vec![0usize; out_shape.len()];
         for i in 0..out_size {
@@ -372,7 +416,7 @@ impl RumpyArray {
                 sum_sq += diff * diff;
             }
 
-            unsafe { write_element(result_ptr, i, sum_sq / axis_len as f64, &self.dtype()); }
+            unsafe { ops.write_f64(result_ptr, i, sum_sq / axis_len as f64); }
             increment_indices(&mut out_indices, &out_shape);
         }
 
@@ -386,7 +430,7 @@ impl RumpyArray {
 
     /// Standard deviation along axis.
     pub fn std_axis(&self, axis: usize) -> RumpyArray {
-        map_unary(&self.var_axis(axis), |x| x.sqrt())
+        map_unary_op(&self.var_axis(axis), UnaryOp::Sqrt)
     }
 
     /// Index of maximum element (flattened).
@@ -469,32 +513,32 @@ impl RumpyArray {
 
     /// Square root of each element.
     pub fn sqrt(&self) -> RumpyArray {
-        map_unary(self, |x| x.sqrt())
+        map_unary_op(self, UnaryOp::Sqrt)
     }
 
     /// Exponential (e^x) of each element.
     pub fn exp(&self) -> RumpyArray {
-        map_unary(self, |x| x.exp())
+        map_unary_op(self, UnaryOp::Exp)
     }
 
     /// Natural logarithm of each element.
     pub fn log(&self) -> RumpyArray {
-        map_unary(self, |x| x.ln())
+        map_unary_op(self, UnaryOp::Log)
     }
 
     /// Sine of each element (radians).
     pub fn sin(&self) -> RumpyArray {
-        map_unary(self, |x| x.sin())
+        map_unary_op(self, UnaryOp::Sin)
     }
 
     /// Cosine of each element (radians).
     pub fn cos(&self) -> RumpyArray {
-        map_unary(self, |x| x.cos())
+        map_unary_op(self, UnaryOp::Cos)
     }
 
     /// Tangent of each element (radians).
     pub fn tan(&self) -> RumpyArray {
-        map_unary(self, |x| x.tan())
+        map_unary_op(self, UnaryOp::Tan)
     }
 }
 
@@ -507,11 +551,11 @@ pub fn where_select(condition: &RumpyArray, x: &RumpyArray, y: &RumpyArray) -> O
     let out_shape = broadcast_shapes(&shape_cx, y.shape())?;
 
     let cond = condition.broadcast_to(&out_shape)?;
-    let x = x.broadcast_to(&out_shape)?;
-    let y = y.broadcast_to(&out_shape)?;
+    let x_bc = x.broadcast_to(&out_shape)?;
+    let y_bc = y.broadcast_to(&out_shape)?;
 
     // Result dtype is promoted from x and y
-    let result_dtype = promote_dtype(&x.dtype(), &y.dtype());
+    let result_dtype = promote_dtype(&x_bc.dtype(), &y_bc.dtype());
     let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype);
     let size = result.size();
 
@@ -519,21 +563,56 @@ pub fn where_select(condition: &RumpyArray, x: &RumpyArray, y: &RumpyArray) -> O
         return Some(result);
     }
 
-    let dtype = result.dtype();
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
+    let result_dtype_ref = result.dtype();
+    let result_ops = result_dtype_ref.ops();
+
+    let cond_ptr = cond.data_ptr();
+    let cond_dtype = cond.dtype();
+    let cond_ops = cond_dtype.ops();
+    let x_ptr = x_bc.data_ptr();
+    let y_ptr = y_bc.data_ptr();
+
+    // Check if all dtypes match for direct copy
+    let same_dtype = x_bc.dtype() == y_bc.dtype() && x_bc.dtype() == result.dtype();
 
     let mut indices = vec![0usize; out_shape.len()];
-    for i in 0..size {
-        let cond_val = cond.get_element(&indices);
-        let val = if cond_val != 0.0 {
-            x.get_element(&indices)
-        } else {
-            y.get_element(&indices)
-        };
-        unsafe { write_element(result_ptr, i, val, &dtype); }
-        increment_indices(&mut indices, &out_shape);
+
+    if same_dtype {
+        for i in 0..size {
+            let cond_offset = cond.byte_offset_for(&indices);
+            let is_true = unsafe { cond_ops.is_truthy(cond_ptr, cond_offset) };
+            if is_true {
+                let x_offset = x_bc.byte_offset_for(&indices);
+                unsafe { result_ops.copy_element(x_ptr, x_offset, result_ptr, i); }
+            } else {
+                let y_offset = y_bc.byte_offset_for(&indices);
+                unsafe { result_ops.copy_element(y_ptr, y_offset, result_ptr, i); }
+            }
+            increment_indices(&mut indices, &out_shape);
+        }
+    } else {
+        // Different dtypes: read as f64, write as f64
+        let x_dtype = x_bc.dtype();
+        let x_ops = x_dtype.ops();
+        let y_dtype = y_bc.dtype();
+        let y_ops = y_dtype.ops();
+
+        for i in 0..size {
+            let cond_offset = cond.byte_offset_for(&indices);
+            let is_true = unsafe { cond_ops.is_truthy(cond_ptr, cond_offset) };
+            let val = if is_true {
+                let x_offset = x_bc.byte_offset_for(&indices);
+                unsafe { x_ops.read_f64(x_ptr, x_offset).unwrap_or(0.0) }
+            } else {
+                let y_offset = y_bc.byte_offset_for(&indices);
+                unsafe { y_ops.read_f64(y_ptr, y_offset).unwrap_or(0.0) }
+            };
+            unsafe { result_ops.write_f64(result_ptr, i, val); }
+            increment_indices(&mut indices, &out_shape);
+        }
     }
 
     Some(result)

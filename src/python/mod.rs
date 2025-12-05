@@ -6,7 +6,7 @@ use pyo3::types::PyList;
 
 pub use pyarray::{parse_dtype, parse_shape, PyRumpyArray};
 
-use crate::array::{increment_indices, read_element, write_element, DType, RumpyArray};
+use crate::array::{increment_indices, DType, RumpyArray};
 
 /// Create an array filled with zeros.
 #[pyfunction]
@@ -180,9 +180,8 @@ fn from_array_interface(
             .map(|(&idx, &stride)| idx as isize * stride)
             .sum();
 
-        // Read from source, write to destination
-        let val = unsafe { read_element(src_ptr, src_offset, &dtype) };
-        unsafe { write_element(dst_ptr, i, val, &dtype); }
+        // Copy element from source to destination
+        unsafe { dtype.ops().copy_element(src_ptr, src_offset, dst_ptr, i); }
 
         increment_indices(&mut indices, &shape);
     }
@@ -264,6 +263,7 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
         ('u', 4) => Ok(DType::uint32()),
         ('u', 1) => Ok(DType::uint8()),
         ('b', 1) => Ok(DType::bool()),
+        ('c', 16) => Ok(DType::complex128()),
         _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Unsupported dtype: {}",
             typestr

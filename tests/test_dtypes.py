@@ -206,3 +206,40 @@ class TestDateTime64Interop:
         n = np.zeros((2, 3), dtype="datetime64[ns]")
         assert r.shape == (2, 3)
         assert_eq(r, n)
+
+
+class TestComplex128:
+    """Test complex128 dtype."""
+
+    def test_complex128_zeros(self):
+        r = rp.zeros(5, dtype="complex128")
+        n = np.zeros(5, dtype=np.complex128)
+        assert r.dtype == "complex128"
+        assert r.itemsize == 16
+        assert_eq(r, n)
+
+    def test_complex128_ones(self):
+        r = rp.ones(5, dtype="complex128")
+        n = np.ones(5, dtype=np.complex128)
+        assert_eq(r, n)
+
+    def test_complex128_2d(self):
+        r = rp.zeros((3, 4), dtype="complex128")
+        n = np.zeros((3, 4), dtype=np.complex128)
+        assert_eq(r, n)
+
+
+class TestComplex128Interop:
+    """Test numpy interop with complex128."""
+
+    def test_numpy_complex128_to_rumpy(self):
+        n = np.array([1+2j, 3+4j, 5+6j], dtype=np.complex128)
+        r = rp.asarray(n)
+        assert r.dtype == "complex128"
+        assert_eq(r, n)
+
+    def test_rumpy_complex128_to_numpy(self):
+        r = rp.zeros(3, dtype="complex128")
+        n = np.asarray(r)
+        assert n.dtype == np.complex128
+        assert_eq(r, n)

@@ -56,7 +56,7 @@ impl RumpyArray {
         let ops = arr.dtype.ops();
 
         for (i, &v) in data.iter().enumerate() {
-            unsafe { ops.write_element(ptr, i, v); }
+            unsafe { ops.write_f64(ptr, i, v); }
         }
         arr
     }
@@ -80,10 +80,9 @@ impl RumpyArray {
         let ptr = buffer.as_mut_ptr();
         let size: usize = self.shape.iter().product();
         let ops = self.dtype.ops();
-        let one = ops.one_value();
 
         for i in 0..size {
-            unsafe { ops.write_element(ptr, i, one); }
+            unsafe { ops.write_one(ptr, i); }
         }
     }
 
@@ -265,7 +264,7 @@ impl RumpyArray {
 
         for i in 0..n {
             let val = start + (i as f64) * step;
-            unsafe { ops.write_element(ptr, i, val); }
+            unsafe { ops.write_f64(ptr, i, val); }
         }
         arr
     }
@@ -287,7 +286,7 @@ impl RumpyArray {
 
         for i in 0..num {
             let val = start + (i as f64) * step;
-            unsafe { ops.write_element(ptr, i, val); }
+            unsafe { ops.write_f64(ptr, i, val); }
         }
         arr
     }
@@ -303,11 +302,10 @@ impl RumpyArray {
         let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
         let ptr = buffer.as_mut_ptr();
         let ops = arr.dtype.ops();
-        let one = ops.one_value();
 
         for i in 0..n {
             let idx = i * n + i;
-            unsafe { ops.write_element(ptr, idx, one); }
+            unsafe { ops.write_one(ptr, idx); }
         }
         arr
     }
@@ -326,22 +324,30 @@ impl RumpyArray {
         let ops = arr.dtype.ops();
 
         for i in 0..size {
-            unsafe { ops.write_element(ptr, i, value); }
+            unsafe { ops.write_f64(ptr, i, value); }
         }
         arr
     }
 
     /// Get single element by indices. Returns as f64 for simplicity.
+    /// Returns 0.0 for dtypes that don't support f64 conversion (like complex).
     pub fn get_element(&self, indices: &[usize]) -> f64 {
         assert_eq!(indices.len(), self.ndim(), "wrong number of indices");
-        let mut byte_offset = self.offset as isize;
         for (i, &idx) in indices.iter().enumerate() {
             assert!(idx < self.shape[i], "index out of bounds");
+        }
+        let byte_offset = self.byte_offset_for(indices);
+        let ptr = self.data_ptr();
+        unsafe { self.dtype.ops().read_f64(ptr, byte_offset).unwrap_or(0.0) }
+    }
+
+    /// Compute byte offset for given indices (relative to data_ptr, not buffer start).
+    pub fn byte_offset_for(&self, indices: &[usize]) -> isize {
+        let mut byte_offset: isize = 0;
+        for (i, &idx) in indices.iter().enumerate() {
             byte_offset += (idx as isize) * self.strides[i];
         }
-
-        let ptr = self.buffer.as_ptr();
-        unsafe { self.dtype.ops().read_element(ptr, byte_offset) }
+        byte_offset
     }
 
     /// Select elements where mask is true. Returns a 1D array.
@@ -367,8 +373,11 @@ impl RumpyArray {
         // First pass: count true elements
         let mut count = 0usize;
         let mut mask_indices = vec![0usize; mask.ndim()];
+        let mask_ptr = mask.data_ptr();
+        let mask_ops = mask.dtype.ops();
         for _ in 0..size {
-            if mask.get_element(&mask_indices) != 0.0 {
+            let offset = mask.byte_offset_for(&mask_indices);
+            if unsafe { mask_ops.is_truthy(mask_ptr, offset) } {
                 count += 1;
             }
             increment_indices(&mut mask_indices, mask.shape());
@@ -384,13 +393,15 @@ impl RumpyArray {
         let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
         let result_ptr = buffer.as_mut_ptr();
         let ops = result.dtype.ops();
+        let src_ptr = self.data_ptr();
 
         let mut src_indices = vec![0usize; self.ndim()];
         let mut dst_idx = 0usize;
         for _ in 0..size {
-            if mask.get_element(&src_indices) != 0.0 {
-                let val = self.get_element(&src_indices);
-                unsafe { ops.write_element(result_ptr, dst_idx, val); }
+            let mask_offset = mask.byte_offset_for(&src_indices);
+            if unsafe { mask_ops.is_truthy(mask_ptr, mask_offset) } {
+                let src_offset = self.byte_offset_for(&src_indices);
+                unsafe { ops.copy_element(src_ptr, src_offset, result_ptr, dst_idx); }
                 dst_idx += 1;
             }
             increment_indices(&mut src_indices, self.shape());
@@ -424,6 +435,7 @@ impl RumpyArray {
         let result_ptr = buffer.as_mut_ptr();
         let ops = result.dtype.ops();
 
+        let src_ptr = self.data_ptr();
         let mut idx_indices = vec![0usize; indices.ndim()];
         for i in 0..num_indices {
             let idx_val = indices.get_element(&idx_indices) as isize;
@@ -442,8 +454,8 @@ impl RumpyArray {
             src_indices[0] = idx;
 
             for j in 0..slice_size {
-                let val = self.get_element(&src_indices);
-                unsafe { ops.write_element(result_ptr, i * slice_size + j, val); }
+                let src_offset = self.byte_offset_for(&src_indices);
+                unsafe { ops.copy_element(src_ptr, src_offset, result_ptr, i * slice_size + j); }
 
                 // Increment indices for dimensions 1..
                 for d in (1..self.ndim()).rev() {
@@ -535,7 +547,7 @@ impl RumpyArray {
 
     /// Convert array to a new dtype.
     pub fn astype(&self, new_dtype: DType) -> Self {
-        let mut result = Self::zeros(self.shape().to_vec(), new_dtype);
+        let mut result = Self::zeros(self.shape().to_vec(), new_dtype.clone());
         let size = self.size();
         if size == 0 {
             return result;
@@ -543,13 +555,25 @@ impl RumpyArray {
 
         let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
         let result_ptr = buffer.as_mut_ptr();
-        let ops = result.dtype.ops();
+        let dst_ops = result.dtype.ops();
+        let src_ptr = self.data_ptr();
 
-        let mut indices = vec![0usize; self.ndim()];
-        for i in 0..size {
-            let val = self.get_element(&indices);
-            unsafe { ops.write_element(result_ptr, i, val); }
-            increment_indices(&mut indices, self.shape());
+        // If same dtype, just copy elements
+        if self.dtype == new_dtype {
+            let mut indices = vec![0usize; self.ndim()];
+            for i in 0..size {
+                let src_offset = self.byte_offset_for(&indices);
+                unsafe { dst_ops.copy_element(src_ptr, src_offset, result_ptr, i); }
+                increment_indices(&mut indices, self.shape());
+            }
+        } else {
+            // Cross-dtype conversion via f64 (lossy for complex)
+            let mut indices = vec![0usize; self.ndim()];
+            for i in 0..size {
+                let val = self.get_element(&indices);
+                unsafe { dst_ops.write_f64(result_ptr, i, val); }
+                increment_indices(&mut indices, self.shape());
+            }
         }
         result
     }
@@ -651,14 +675,15 @@ impl RumpyArray {
     ) {
         let depth = prefix.len();
         let (indices, _) = self.display_indices(self.shape[depth], truncate, edgeitems);
+        let ptr = self.data_ptr();
 
         for i in indices {
             let mut new_prefix = prefix.to_vec();
             new_prefix.push(i);
 
             if new_prefix.len() == self.ndim() {
-                let val = self.get_element(&new_prefix);
-                result.push(self.dtype.ops().format_element(val));
+                let offset = self.byte_offset_for(&new_prefix);
+                result.push(unsafe { self.dtype.ops().format_element(ptr, offset) });
             } else {
                 self.collect_elements_recursive(result, &new_prefix, truncate, edgeitems);
             }
@@ -678,8 +703,9 @@ impl RumpyArray {
         let depth = prefix.len();
 
         if depth == self.ndim() {
-            let val = self.get_element(prefix);
-            let s = self.dtype.ops().format_element(val);
+            let ptr = self.data_ptr();
+            let offset = self.byte_offset_for(prefix);
+            let s = unsafe { self.dtype.ops().format_element(ptr, offset) };
             return format!("{:>w$}", s, w = width);
         }
 
@@ -790,18 +816,6 @@ pub(crate) fn increment_indices(indices: &mut [usize], shape: &[usize]) {
     }
 }
 
-/// Write a value to buffer at linear index.
-#[inline]
-pub(crate) unsafe fn write_element(ptr: *mut u8, idx: usize, val: f64, dtype: &DType) {
-    dtype.ops().write_element(ptr, idx, val);
-}
-
-/// Read element from buffer at byte offset.
-#[inline]
-pub(crate) unsafe fn read_element(ptr: *const u8, offset: isize, dtype: &DType) -> f64 {
-    dtype.ops().read_element(ptr, offset)
-}
-
 /// Concatenate arrays along an axis.
 /// All arrays must have same shape except in the concatenation axis.
 pub fn concatenate(arrays: &[RumpyArray], axis: usize) -> Option<RumpyArray> {
@@ -848,6 +862,7 @@ pub fn concatenate(arrays: &[RumpyArray], axis: usize) -> Option<RumpyArray> {
     let mut axis_offset = 0usize;
     for arr in arrays {
         let size = arr.size();
+        let src_ptr = arr.data_ptr();
         let mut src_indices = vec![0usize; ndim];
         for _ in 0..size {
             // Compute destination indices
@@ -862,8 +877,8 @@ pub fn concatenate(arrays: &[RumpyArray], axis: usize) -> Option<RumpyArray> {
                 stride *= result.shape()[i];
             }
 
-            let val = arr.get_element(&src_indices);
-            unsafe { ops.write_element(result_ptr, dst_idx, val); }
+            let src_offset = arr.byte_offset_for(&src_indices);
+            unsafe { ops.copy_element(src_ptr, src_offset, result_ptr, dst_idx); }
 
             increment_indices(&mut src_indices, arr.shape());
         }

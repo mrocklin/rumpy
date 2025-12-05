@@ -13,9 +13,11 @@ Enable adding new dtypes with minimal code changes, including parametric types l
 **`DTypeOps` trait**: Encapsulates all dtype-specific behavior:
 - `kind()` - returns `DTypeKind` for equality/hashing
 - `itemsize()`, `typestr()`, `format_char()`, `name()` - metadata
-- `read_element()`, `write_element()` - pointer casting
-- `zero_value()`, `one_value()` - value creation
+- Buffer-based ops (`add`, `mul`, `neg`, etc.) - each dtype uses its native type internally
+- `to_pyobject()`, `from_pyobject()` - Python interop (the only universal interface)
 - `promotion_priority()` - type promotion
+
+**No universal Rust value type**: Operations work directly on buffers. Float64 casts to f64 internally, Complex128 works with (f64, f64) pairs, Decimal would use rust_decimal. Python interop (PyObject) is the only place all types converge.
 
 **`DTypeKind` enum**: Used for equality, hashing, and pattern matching. Parametric types include their parameters in the enum variant.
 
