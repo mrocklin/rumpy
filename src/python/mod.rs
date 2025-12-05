@@ -1,3 +1,4 @@
+pub mod fft;
 pub mod pyarray;
 pub mod random;
 
@@ -623,8 +624,9 @@ pub fn where_fn(
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
-    // Register random submodule
+    // Register submodules
     random::register_submodule(m)?;
+    fft::register_submodule(m)?;
     // Constructors
     m.add_function(wrap_pyfunction!(zeros, m)?)?;
     m.add_function(wrap_pyfunction!(ones, m)?)?;

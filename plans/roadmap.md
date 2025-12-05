@@ -8,10 +8,12 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 
 **Done:**
 - Core ndarray (shape, strides, views, Arc-based memory)
-- 9 dtypes (float32/64, int32/64, uint8/32/64, bool, datetime64)
+- 14 dtypes (float16/32/64, int16/32/64, uint8/16/32/64, bool, datetime64, complex128)
 - Broadcasting for binary ops
 - Integer/slice indexing
-- Basic ufuncs (arithmetic, trig, exp/log)
+- Ufunc registry with NumPy-compatible type promotion
+- Strided inner loops with contiguous fast path
+- Basic ufuncs (arithmetic, trig, exp/log, floor/ceil, inverse trig)
 - Basic reductions (sum, prod, min, max, mean)
 - Comparison ops (>, <, ==, !=, >=, <=)
 - Boolean indexing (arr[mask])
@@ -38,23 +40,25 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 - [x] `sort()`, `argsort()` - sorting
 - [x] `unique()` - deduplicated values
 
-## Phase D: Linear Algebra
+## Phase D: Linear Algebra ✓
 
-- [ ] `matmul()`, `@` operator, `dot()`
-- [ ] `linalg.inv()`, `linalg.solve()`
-- [ ] `linalg.eig()`, `linalg.svd()`
-- [ ] `linalg.norm()`
+- [x] `matmul()`, `@` operator, `dot()`, `inner()`, `outer()`
+- [x] `linalg.inv()`, `linalg.solve()`
+- [x] `linalg.qr()`, `linalg.svd()`, `linalg.eigh()`
+- [x] `linalg.norm()`, `linalg.det()`, `linalg.trace()`, `linalg.diag()`
 
-## Phase E: Extended Dtypes
+## Phase E: Extended Dtypes (Partial)
 
-- [ ] `complex64`, `complex128`
+- [x] `complex128`
+- [x] `float16`, `int16`, `uint16`
+- [ ] `complex64`
 - [ ] String/unicode arrays
 - [ ] Structured arrays (named fields)
 
-## Phase F: Specialized Submodules
+## Phase F: Specialized Submodules (Partial)
 
-- [ ] `random` - random number generation
-- [ ] `fft` - Fourier transforms
+- [x] `random` - Generator with random, integers, uniform, normal, exponential
+- [x] `fft` - fft, ifft, fft2, ifft2, rfft, irfft, fftshift, ifftshift, fftfreq, rfftfreq
 - [ ] I/O - `save()`, `load()`, `loadtxt()`, `savetxt()`
 
 ## Guiding Principles
