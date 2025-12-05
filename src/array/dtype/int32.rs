@@ -66,6 +66,9 @@ impl DTypeOps for Int32Ops {
             BinaryOp::Sub => av.wrapping_sub(bv),
             BinaryOp::Mul => av.wrapping_mul(bv),
             BinaryOp::Div => if bv != 0 { av / bv } else { 0 },
+            BinaryOp::Pow => if bv >= 0 { av.wrapping_pow(bv as u32) } else { 0 },
+            BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
+            BinaryOp::FloorDiv => if bv != 0 { av.div_euclid(bv) } else { 0 },
         };
         Self::write(out, idx, result);
     }

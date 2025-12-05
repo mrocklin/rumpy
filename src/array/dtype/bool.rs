@@ -56,6 +56,9 @@ impl DTypeOps for BoolOps {
             BinaryOp::Sub => av && !bv,  // AND NOT
             BinaryOp::Mul => av && bv,  // AND
             BinaryOp::Div => av,  // division not meaningful
+            BinaryOp::Pow => av,  // not meaningful
+            BinaryOp::Mod => av,  // not meaningful
+            BinaryOp::FloorDiv => av,  // not meaningful
         };
         Self::write(out, idx, result);
     }

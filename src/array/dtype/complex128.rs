@@ -133,6 +133,7 @@ impl DTypeOps for Complex128Ops {
                 let denom = br * br + bi * bi;
                 ((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom)
             }
+            BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
         };
         Self::write(out, idx, out_r, out_i);
     }

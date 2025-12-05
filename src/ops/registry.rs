@@ -211,6 +211,15 @@ fn init_default_loops() -> UFuncRegistry {
             register_strided_binary!($reg, BinaryOp::Sub, $kind, $T, |a, b| a - b);
             register_strided_binary!($reg, BinaryOp::Mul, $kind, $T, |a, b| a * b);
             register_strided_binary!($reg, BinaryOp::Div, $kind, $T, |a: $T, b: $T| a / b);
+            register_strided_binary!($reg, BinaryOp::Mod, $kind, $T, |a: $T, b: $T| a % b);
+        };
+    }
+
+    // Float-specific ops (pow, floordiv)
+    macro_rules! register_float_binary {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            register_strided_binary!($reg, BinaryOp::Pow, $kind, $T, |a: $T, b: $T| a.powf(b));
+            register_strided_binary!($reg, BinaryOp::FloorDiv, $kind, $T, |a: $T, b: $T| (a / b).floor());
         };
     }
 
@@ -222,6 +231,10 @@ fn init_default_loops() -> UFuncRegistry {
     register_arithmetic!(reg, DTypeKind::Uint64, u64);
     register_arithmetic!(reg, DTypeKind::Uint32, u32);
     register_arithmetic!(reg, DTypeKind::Uint8, u8);
+
+    // Float-specific binary ops (pow, floordiv)
+    register_float_binary!(reg, DTypeKind::Float64, f64);
+    register_float_binary!(reg, DTypeKind::Float32, f32);
 
     // Bool binary loops (Add=or, Mul=and)
     reg.register_binary(
@@ -389,7 +402,7 @@ fn init_default_loops() -> UFuncRegistry {
         };
     }
 
-    // Common float unary ops (both f32 and f64)
+    // All float unary ops (both f32 and f64)
     macro_rules! register_float_unary {
         ($reg:expr, $kind:expr, $T:ty) => {
             register_strided_unary!($reg, UnaryOp::Neg, $kind, $T, |v: $T| -v);
@@ -397,6 +410,11 @@ fn init_default_loops() -> UFuncRegistry {
             register_strided_unary!($reg, UnaryOp::Sqrt, $kind, $T, |v: $T| v.sqrt());
             register_strided_unary!($reg, UnaryOp::Floor, $kind, $T, |v: $T| v.floor());
             register_strided_unary!($reg, UnaryOp::Ceil, $kind, $T, |v: $T| v.ceil());
+            register_strided_unary!($reg, UnaryOp::Exp, $kind, $T, |v: $T| v.exp());
+            register_strided_unary!($reg, UnaryOp::Log, $kind, $T, |v: $T| v.ln());
+            register_strided_unary!($reg, UnaryOp::Sin, $kind, $T, |v: $T| v.sin());
+            register_strided_unary!($reg, UnaryOp::Cos, $kind, $T, |v: $T| v.cos());
+            register_strided_unary!($reg, UnaryOp::Tan, $kind, $T, |v: $T| v.tan());
             register_strided_unary!($reg, UnaryOp::Arcsin, $kind, $T, |v: $T| v.asin());
             register_strided_unary!($reg, UnaryOp::Arccos, $kind, $T, |v: $T| v.acos());
             register_strided_unary!($reg, UnaryOp::Arctan, $kind, $T, |v: $T| v.atan());
@@ -404,13 +422,6 @@ fn init_default_loops() -> UFuncRegistry {
     }
     register_float_unary!(reg, DTypeKind::Float64, f64);
     register_float_unary!(reg, DTypeKind::Float32, f32);
-
-    // f64-only transcendental ops
-    register_strided_unary!(reg, UnaryOp::Exp, DTypeKind::Float64, f64, |v: f64| v.exp());
-    register_strided_unary!(reg, UnaryOp::Log, DTypeKind::Float64, f64, |v: f64| v.ln());
-    register_strided_unary!(reg, UnaryOp::Sin, DTypeKind::Float64, f64, |v: f64| v.sin());
-    register_strided_unary!(reg, UnaryOp::Cos, DTypeKind::Float64, f64, |v: f64| v.cos());
-    register_strided_unary!(reg, UnaryOp::Tan, DTypeKind::Float64, f64, |v: f64| v.tan());
 
     // Signed integer unary ops
     macro_rules! register_signed_int_unary {

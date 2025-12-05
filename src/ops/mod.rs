@@ -153,7 +153,7 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
         // datetime * anything and datetime / anything are also invalid
         match op {
             BinaryOp::Add if a_is_datetime && b_is_datetime => return Err(BinaryOpError::UnsupportedDtype),
-            BinaryOp::Mul | BinaryOp::Div => return Err(BinaryOpError::UnsupportedDtype),
+            BinaryOp::Mul | BinaryOp::Div | BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => return Err(BinaryOpError::UnsupportedDtype),
             _ => {}
         }
     }
@@ -273,6 +273,7 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                             (f64::NAN, f64::NAN)
                         }
                     }
+                    BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => (f64::NAN, f64::NAN),
                 };
 
                 unsafe { result_ops.write_complex(result_ptr, i, result_val.0, result_val.1); }
@@ -292,6 +293,9 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                     BinaryOp::Sub => av - bv,
                     BinaryOp::Mul => av * bv,
                     BinaryOp::Div => if bv != 0.0 { av / bv } else { f64::NAN },
+                    BinaryOp::Pow => av.powf(bv),
+                    BinaryOp::Mod => av % bv,
+                    BinaryOp::FloorDiv => (av / bv).floor(),
                 };
 
                 unsafe { result_ops.write_f64(result_ptr, i, result_val); }

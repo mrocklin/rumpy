@@ -72,6 +72,9 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Pow,
+    Mod,
+    FloorDiv,
 }
 
 /// Reduce operations.

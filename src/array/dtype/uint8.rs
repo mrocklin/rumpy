@@ -66,6 +66,9 @@ impl DTypeOps for Uint8Ops {
             BinaryOp::Sub => av.wrapping_sub(bv),
             BinaryOp::Mul => av.wrapping_mul(bv),
             BinaryOp::Div => if bv != 0 { av / bv } else { 0 },
+            BinaryOp::Pow => av.wrapping_pow(bv as u32),
+            BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
+            BinaryOp::FloorDiv => if bv != 0 { av / bv } else { 0 },
         };
         Self::write(out, idx, result);
     }

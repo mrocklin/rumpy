@@ -307,6 +307,30 @@ impl PyRumpyArray {
         rbinary_op_dispatch(&self.inner, other, BinaryOp::Div)
     }
 
+    fn __pow__(&self, other: &Bound<'_, PyAny>, _modulo: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Pow)
+    }
+
+    fn __rpow__(&self, other: &Bound<'_, PyAny>, _modulo: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbinary_op_dispatch(&self.inner, other, BinaryOp::Pow)
+    }
+
+    fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::Mod)
+    }
+
+    fn __rmod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbinary_op_dispatch(&self.inner, other, BinaryOp::Mod)
+    }
+
+    fn __floordiv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch(&self.inner, other, BinaryOp::FloorDiv)
+    }
+
+    fn __rfloordiv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbinary_op_dispatch(&self.inner, other, BinaryOp::FloorDiv)
+    }
+
     fn __matmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
             matmul(&self.inner, &other_arr.inner)

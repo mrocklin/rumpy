@@ -66,6 +66,9 @@ impl DTypeOps for Float32Ops {
             BinaryOp::Sub => av - bv,
             BinaryOp::Mul => av * bv,
             BinaryOp::Div => av / bv,
+            BinaryOp::Pow => av.powf(bv),
+            BinaryOp::Mod => av % bv,
+            BinaryOp::FloorDiv => (av / bv).floor(),
         };
         Self::write(out, idx, result);
     }
