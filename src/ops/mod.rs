@@ -17,6 +17,15 @@ use std::sync::Arc;
 // Re-export BinaryOp from dtype module
 pub use crate::array::dtype::BinaryOp;
 
+/// Error type for binary operations.
+#[derive(Debug, Clone)]
+pub enum BinaryOpError {
+    /// Shapes cannot be broadcast together
+    ShapeMismatch,
+    /// Operation not supported for these dtypes
+    UnsupportedDtype,
+}
+
 /// Comparison operation types.
 #[derive(Clone, Copy)]
 pub enum ComparisonOp {
@@ -73,16 +82,31 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> RumpyArray {
 }
 
 /// Apply a binary operation element-wise with broadcasting.
-fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
-    let out_shape = broadcast_shapes(a.shape(), b.shape())?;
-    let a_bc = a.broadcast_to(&out_shape)?;
-    let b_bc = b.broadcast_to(&out_shape)?;
+fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyArray, BinaryOpError> {
+    use crate::array::dtype::DTypeKind;
+
+    let out_shape = broadcast_shapes(a.shape(), b.shape()).ok_or(BinaryOpError::ShapeMismatch)?;
+    let a_bc = a.broadcast_to(&out_shape).ok_or(BinaryOpError::ShapeMismatch)?;
+    let b_bc = b.broadcast_to(&out_shape).ok_or(BinaryOpError::ShapeMismatch)?;
+
+    // Validate datetime operations
+    let a_is_datetime = matches!(a_bc.dtype().kind(), DTypeKind::DateTime64(_));
+    let b_is_datetime = matches!(b_bc.dtype().kind(), DTypeKind::DateTime64(_));
+    if a_is_datetime || b_is_datetime {
+        // datetime + datetime is invalid (only sub is valid between datetimes)
+        // datetime * anything and datetime / anything are also invalid
+        match op {
+            BinaryOp::Add if a_is_datetime && b_is_datetime => return Err(BinaryOpError::UnsupportedDtype),
+            BinaryOp::Mul | BinaryOp::Div => return Err(BinaryOpError::UnsupportedDtype),
+            _ => {}
+        }
+    }
 
     let result_dtype = promote_dtype(&a_bc.dtype(), &b_bc.dtype());
     let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype.clone());
     let size = result.size();
     if size == 0 {
-        return Some(result);
+        return Ok(result);
     }
 
     let buffer = result.buffer_mut();
@@ -109,7 +133,7 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Option<RumpyAr
                 unsafe { loop_fn(a_ptr, a_offset, b_ptr, b_offset, result_ptr, i); }
                 increment_indices(&mut indices, &out_shape);
             }
-            return Some(result);
+            return Ok(result);
         }
     }
 
@@ -178,7 +202,7 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Option<RumpyAr
             }
         }
     }
-    Some(result)
+    Ok(result)
 }
 
 /// Apply a comparison function element-wise, returning bool array.
@@ -375,7 +399,7 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
 
 impl RumpyArray {
     /// Element-wise binary operation with broadcasting.
-    pub fn binary_op(&self, other: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
+    pub fn binary_op(&self, other: &RumpyArray, op: BinaryOp) -> Result<RumpyArray, BinaryOpError> {
         map_binary_op(self, other, op)
     }
 

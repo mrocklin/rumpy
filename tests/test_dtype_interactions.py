@@ -191,7 +191,6 @@ class TestComplexPromotion:
 class TestDatetimeOperations:
     """Test datetime operations - many should error like NumPy."""
 
-    @pytest.mark.xfail(reason="TODO: Add datetime operation validation")
     def test_datetime_add_datetime_should_error(self):
         """datetime64 + datetime64 -> error in NumPy."""
         n1 = np.array(['2024-01-01'], dtype='datetime64[ns]')

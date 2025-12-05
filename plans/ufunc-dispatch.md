@@ -135,12 +135,19 @@ Registered loops for all remaining dtypes:
 - [x] bool reduce ops (Sum=any, Prod=all)
 - [x] complex128 reduce ops (Sum, Prod - no Max/Min)
 
+## Datetime Validation
+
+- [x] datetime + datetime returns TypeError
+- [x] datetime * anything returns TypeError
+- [x] datetime / anything returns TypeError
+- [x] Proper error types: ShapeMismatch -> ValueError, UnsupportedDtype -> TypeError
+- [x] All 353 tests pass (former xfail test now passes)
+
 ## What's Next
 
 Potential next steps (in rough priority order):
-1. **Datetime validation** - Error on invalid ops like datetime+datetime (1 xfail test)
-2. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
-3. **Performance** - Consider SIMD loops for hot paths
+1. **New operations** - Bitwise ops, floor/ceil, more trig (asin, acos, atan)
+2. **Performance** - Consider SIMD loops for hot paths
 
 ## Why Hybrid?
 

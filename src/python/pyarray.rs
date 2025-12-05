@@ -511,10 +511,16 @@ fn binary_op_dispatch(
 ) -> PyResult<PyRumpyArray> {
     // Try array first
     if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+        use crate::ops::BinaryOpError;
         arr.binary_op(&other_arr.inner, op)
             .map(PyRumpyArray::new)
-            .ok_or_else(|| {
-                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            .map_err(|e| match e {
+                BinaryOpError::ShapeMismatch => {
+                    pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+                }
+                BinaryOpError::UnsupportedDtype => {
+                    pyo3::exceptions::PyTypeError::new_err("operation not supported for these dtypes")
+                }
             })
     } else if let Ok(scalar) = other.extract::<f64>() {
         Ok(PyRumpyArray::new(arr.scalar_op(scalar, op)))
