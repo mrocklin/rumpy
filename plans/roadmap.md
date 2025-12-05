@@ -8,7 +8,7 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 
 **Done:**
 - Core ndarray (shape, strides, views, Arc-based memory)
-- 14 dtypes (float16/32/64, int16/32/64, uint8/16/32/64, bool, datetime64, complex128)
+- 15 dtypes (float16/32/64, int16/32/64, uint8/16/32/64, bool, datetime64, complex64/128)
 - Broadcasting for binary ops
 - Integer/slice indexing
 - Ufunc registry with NumPy-compatible type promotion
@@ -49,9 +49,8 @@ Goal: Full NumPy API compatibility, building foundational pieces first.
 
 ## Phase E: Extended Dtypes (Partial)
 
-- [x] `complex128`
+- [x] `complex128`, `complex64`
 - [x] `float16`, `int16`, `uint16`
-- [ ] `complex64`
 - [ ] String/unicode arrays
 - [ ] Structured arrays (named fields)
 

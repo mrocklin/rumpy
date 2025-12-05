@@ -122,7 +122,7 @@ class TestTranscendentalPromotion:
             "int64", "int32", "int16",
             "uint64", "uint32", "uint16", "uint8",
             "float64", "float32", "float16",
-            "complex128",
+            "complex128", "complex64",
         ],
     )
     @pytest.mark.parametrize("op", ["exp", "log", "sqrt", "sin", "cos", "tan"])
@@ -147,7 +147,7 @@ ALL_DTYPES = [
     "int64", "int32", "int16",
     "uint64", "uint32", "uint16", "uint8",
     "float64", "float32", "float16",
-    "complex128",
+    "complex128", "complex64",
 ]
 
 

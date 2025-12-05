@@ -264,6 +264,7 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
         ('u', 4) => Ok(DType::uint32()),
         ('u', 1) => Ok(DType::uint8()),
         ('b', 1) => Ok(DType::bool()),
+        ('c', 8) => Ok(DType::complex64()),
         ('c', 16) => Ok(DType::complex128()),
         _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Unsupported dtype: {}",

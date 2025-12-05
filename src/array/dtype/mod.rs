@@ -6,6 +6,7 @@
 //! There is no universal Rust value type; Python interop (PyObject) is handled separately.
 
 mod bool;
+mod complex64;
 mod complex128;
 mod datetime64;
 mod float16;
@@ -20,6 +21,7 @@ mod uint32;
 mod uint64;
 
 use self::bool::BoolOps;
+use complex64::Complex64Ops;
 use complex128::Complex128Ops;
 use datetime64::DateTime64Ops;
 pub use datetime64::TimeUnit;
@@ -53,6 +55,7 @@ pub enum DTypeKind {
     Uint64,
     Bool,
     DateTime64(TimeUnit),
+    Complex64,
     Complex128,
 }
 
@@ -275,6 +278,7 @@ impl DType {
     pub fn datetime64_us() -> Self { Self::datetime64(TimeUnit::Microseconds) }
     pub fn datetime64_ms() -> Self { Self::datetime64(TimeUnit::Milliseconds) }
     pub fn datetime64_s() -> Self { Self::datetime64(TimeUnit::Seconds) }
+    pub fn complex64() -> Self { DType(Arc::new(Complex64Ops)) }
     pub fn complex128() -> Self { DType(Arc::new(Complex128Ops)) }
 
     // === Delegated methods ===
@@ -306,6 +310,7 @@ impl DType {
             "datetime64[us]" | "<M8[us]" => Some(Self::datetime64_us()),
             "datetime64[ms]" | "<M8[ms]" => Some(Self::datetime64_ms()),
             "datetime64[s]" | "<M8[s]" => Some(Self::datetime64_s()),
+            "complex64" | "c8" | "<c8" => Some(Self::complex64()),
             "complex128" | "c16" | "<c16" => Some(Self::complex128()),
             _ => None,
         }
@@ -352,9 +357,22 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
         return a.clone();
     }
 
-    // Complex always wins
-    if matches!(ak, Complex128) || matches!(bk, Complex128) {
-        return DType::complex128();
+    // Complex types promote to higher-precision complex
+    let is_complex = |k: &DTypeKind| matches!(k, Complex64 | Complex128);
+    if is_complex(&ak) || is_complex(&bk) {
+        // If either is complex128, result is complex128
+        if matches!(ak, Complex128) || matches!(bk, Complex128) {
+            return DType::complex128();
+        }
+        // Both are complex64 or one is complex64 + real type
+        // complex64 + float64 -> complex128, complex64 + anything else -> complex64
+        if matches!(ak, Float64) || matches!(bk, Float64) {
+            return DType::complex128();
+        }
+        if matches!(ak, Int64 | Uint64 | Int32 | Uint32) || matches!(bk, Int64 | Uint64 | Int32 | Uint32) {
+            return DType::complex128();
+        }
+        return DType::complex64();
     }
 
     // Datetime doesn't promote with other types

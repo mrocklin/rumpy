@@ -71,7 +71,7 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
 
     // Transcendentals on non-float types: promote based on itemsize (like NumPy)
     // 1 byte -> float16, 2 bytes -> float32, 4+ bytes -> float64
-    if is_transcendental(op) && !matches!(kind, DTypeKind::Float16 | DTypeKind::Float64 | DTypeKind::Float32 | DTypeKind::Complex128) {
+    if is_transcendental(op) && !matches!(kind, DTypeKind::Float16 | DTypeKind::Float64 | DTypeKind::Float32 | DTypeKind::Complex64 | DTypeKind::Complex128) {
         let itemsize = arr.dtype().itemsize();
         let target_dtype = if itemsize <= 1 {
             DType::float16()
@@ -87,7 +87,7 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
     let dtype = arr.dtype();
 
     // Validate unsupported operations
-    if matches!(kind, DTypeKind::Complex128) {
+    if matches!(kind, DTypeKind::Complex64 | DTypeKind::Complex128) {
         match op {
             UnaryOp::Floor | UnaryOp::Ceil => return Err(UnaryOpError::UnsupportedDtype),
             _ => {}
@@ -311,7 +311,8 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
         let a_ops = a_dtype.ops();
         let b_dtype = b_bc.dtype();
         let b_ops = b_dtype.ops();
-        let result_is_complex = result.dtype().kind() == crate::array::dtype::DTypeKind::Complex128;
+        let result_kind = result.dtype().kind();
+        let result_is_complex = matches!(result_kind, crate::array::dtype::DTypeKind::Complex64 | crate::array::dtype::DTypeKind::Complex128);
 
         if result_is_complex {
             // Complex result: read as complex, operate, write as complex

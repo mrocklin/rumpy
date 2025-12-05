@@ -1,0 +1,237 @@
+//! Complex64 dtype implementation.
+
+use super::{BinaryOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
+use std::cmp::Ordering;
+
+/// Complex64 dtype operations (two f32: real, imag).
+pub(super) struct Complex64Ops;
+
+impl Complex64Ops {
+    #[inline]
+    unsafe fn read(ptr: *const u8, byte_offset: isize) -> (f32, f32) {
+        let p = ptr.offset(byte_offset) as *const f32;
+        (*p, *p.add(1))
+    }
+
+    #[inline]
+    unsafe fn write(ptr: *mut u8, idx: usize, real: f32, imag: f32) {
+        let p = (ptr as *mut f32).add(idx * 2);
+        *p = real;
+        *p.add(1) = imag;
+    }
+
+    /// Complex power: z^w = exp(w * ln(z))
+    #[inline]
+    fn pow(ar: f32, ai: f32, br: f32, bi: f32) -> (f32, f32) {
+        // Handle special case: 0^w
+        if ar == 0.0 && ai == 0.0 {
+            return if br > 0.0 { (0.0, 0.0) } else { (f32::NAN, f32::NAN) };
+        }
+        // ln(a) = (ln(|a|), arg(a))
+        let mag_a = (ar * ar + ai * ai).sqrt();
+        let ln_r = mag_a.ln();
+        let ln_i = ai.atan2(ar);
+        // w * ln(a) - complex multiplication
+        let prod_r = br * ln_r - bi * ln_i;
+        let prod_i = br * ln_i + bi * ln_r;
+        // exp(prod) = exp(prod_r) * (cos(prod_i) + i*sin(prod_i))
+        let exp_r = prod_r.exp();
+        (exp_r * prod_i.cos(), exp_r * prod_i.sin())
+    }
+
+    /// Complex arcsin: arcsin(z) = -i * log(iz + sqrt(1 - z^2))
+    #[inline]
+    fn arcsin(r: f32, i: f32) -> (f32, f32) {
+        let iz = (-i, r);
+        let one_minus_z2 = (1.0 - r * r + i * i, -2.0 * r * i);
+        let mag = (one_minus_z2.0 * one_minus_z2.0 + one_minus_z2.1 * one_minus_z2.1).sqrt();
+        let sqrt_r = ((mag + one_minus_z2.0) / 2.0).sqrt();
+        let sqrt_i = one_minus_z2.1.signum() * ((mag - one_minus_z2.0) / 2.0).sqrt();
+        let sum = (iz.0 + sqrt_r, iz.1 + sqrt_i);
+        let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
+        let log_r = log_mag.ln();
+        let log_i = sum.1.atan2(sum.0);
+        (log_i, -log_r)
+    }
+}
+
+impl DTypeOps for Complex64Ops {
+    fn kind(&self) -> DTypeKind { DTypeKind::Complex64 }
+    fn itemsize(&self) -> usize { 8 }
+    fn typestr(&self) -> &'static str { "<c8" }
+    fn format_char(&self) -> &'static str { "Zf" }
+    fn name(&self) -> &'static str { "complex64" }
+    fn promotion_priority(&self) -> u8 { 105 } // Higher than float32, lower than complex128
+
+    unsafe fn write_zero(&self, ptr: *mut u8, idx: usize) {
+        Self::write(ptr, idx, 0.0, 0.0);
+    }
+
+    unsafe fn write_one(&self, ptr: *mut u8, idx: usize) {
+        Self::write(ptr, idx, 1.0, 0.0);
+    }
+
+    unsafe fn copy_element(&self, src: *const u8, byte_offset: isize, dst: *mut u8, idx: usize) {
+        let (r, i) = Self::read(src, byte_offset);
+        Self::write(dst, idx, r, i);
+    }
+
+    unsafe fn unary_op(&self, op: UnaryOp, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize) {
+        let (r, i) = Self::read(src, byte_offset);
+        let (out_r, out_i) = match op {
+            UnaryOp::Neg => (-r, -i),
+            UnaryOp::Abs => ((r * r + i * i).sqrt(), 0.0), // |z| is real
+            UnaryOp::Sqrt => {
+                // sqrt(a+bi) = sqrt((|z|+a)/2) + i*sign(b)*sqrt((|z|-a)/2)
+                let mag = (r * r + i * i).sqrt();
+                let real = ((mag + r) / 2.0).sqrt();
+                let imag = i.signum() * ((mag - r) / 2.0).sqrt();
+                (real, imag)
+            }
+            UnaryOp::Exp => {
+                // exp(a+bi) = exp(a) * (cos(b) + i*sin(b))
+                let exp_r = r.exp();
+                (exp_r * i.cos(), exp_r * i.sin())
+            }
+            UnaryOp::Log => {
+                // log(a+bi) = log(|z|) + i*arg(z)
+                let mag = (r * r + i * i).sqrt();
+                (mag.ln(), i.atan2(r))
+            }
+            UnaryOp::Sin => {
+                // sin(a+bi) = sin(a)*cosh(b) + i*cos(a)*sinh(b)
+                (r.sin() * i.cosh(), r.cos() * i.sinh())
+            }
+            UnaryOp::Cos => {
+                // cos(a+bi) = cos(a)*cosh(b) - i*sin(a)*sinh(b)
+                (r.cos() * i.cosh(), -r.sin() * i.sinh())
+            }
+            UnaryOp::Tan => {
+                // tan(z) = sin(z) / cos(z)
+                let sin_r = r.sin() * i.cosh();
+                let sin_i = r.cos() * i.sinh();
+                let cos_r = r.cos() * i.cosh();
+                let cos_i = -r.sin() * i.sinh();
+                // (sin_r + i*sin_i) / (cos_r + i*cos_i)
+                let denom = cos_r * cos_r + cos_i * cos_i;
+                ((sin_r * cos_r + sin_i * cos_i) / denom,
+                 (sin_i * cos_r - sin_r * cos_i) / denom)
+            }
+            UnaryOp::Floor => (r.floor(), i.floor()),
+            UnaryOp::Ceil => (r.ceil(), i.ceil()),
+            UnaryOp::Arcsin => Self::arcsin(r, i),
+            UnaryOp::Arccos => {
+                // arccos(z) = pi/2 - arcsin(z)
+                let asin = Self::arcsin(r, i);
+                (std::f32::consts::FRAC_PI_2 - asin.0, -asin.1)
+            }
+            UnaryOp::Arctan => {
+                // arctan(z) = (i/2) * log((1-iz)/(1+iz))
+                let num = (1.0 + i, -r);  // 1 - iz
+                let den = (1.0 - i, r);   // 1 + iz
+                let den_mag2 = den.0 * den.0 + den.1 * den.1;
+                let div_r = (num.0 * den.0 + num.1 * den.1) / den_mag2;
+                let div_i = (num.1 * den.0 - num.0 * den.1) / den_mag2;
+                let log_mag = (div_r * div_r + div_i * div_i).sqrt();
+                let log_r = log_mag.ln();
+                let log_i = div_i.atan2(div_r);
+                (-log_i / 2.0, log_r / 2.0)
+            }
+        };
+        Self::write(out, idx, out_r, out_i);
+    }
+
+    unsafe fn binary_op(&self, op: BinaryOp, a: *const u8, a_offset: isize, b: *const u8, b_offset: isize, out: *mut u8, idx: usize) {
+        let (ar, ai) = Self::read(a, a_offset);
+        let (br, bi) = Self::read(b, b_offset);
+        let (out_r, out_i) = match op {
+            BinaryOp::Add => (ar + br, ai + bi),
+            BinaryOp::Sub => (ar - br, ai - bi),
+            BinaryOp::Mul => (ar * br - ai * bi, ar * bi + ai * br),
+            BinaryOp::Div => {
+                let denom = br * br + bi * bi;
+                ((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom)
+            }
+            BinaryOp::Pow => Self::pow(ar, ai, br, bi),
+            BinaryOp::Mod | BinaryOp::FloorDiv => (f32::NAN, f32::NAN),
+        };
+        Self::write(out, idx, out_r, out_i);
+    }
+
+    unsafe fn reduce_init(&self, op: ReduceOp, out: *mut u8, idx: usize) {
+        let (r, i) = match op {
+            ReduceOp::Sum => (0.0, 0.0),
+            ReduceOp::Prod => (1.0, 0.0),
+            ReduceOp::Max | ReduceOp::Min => {
+                // Max/Min not well-defined for complex; use -inf/inf magnitude placeholder
+                (f32::NEG_INFINITY, 0.0)
+            }
+        };
+        Self::write(out, idx, r, i);
+    }
+
+    unsafe fn reduce_acc(&self, op: ReduceOp, acc: *mut u8, idx: usize, val: *const u8, byte_offset: isize) {
+        let (ar, ai) = Self::read(acc as *const u8, (idx * 8) as isize);
+        let (vr, vi) = Self::read(val, byte_offset);
+        let (out_r, out_i) = match op {
+            ReduceOp::Sum => (ar + vr, ai + vi),
+            ReduceOp::Prod => (ar * vr - ai * vi, ar * vi + ai * vr),
+            ReduceOp::Max | ReduceOp::Min => {
+                // Compare by magnitude
+                let mag_a = ar * ar + ai * ai;
+                let mag_v = vr * vr + vi * vi;
+                if (op as u8 == ReduceOp::Max as u8 && mag_v > mag_a) ||
+                   (op as u8 == ReduceOp::Min as u8 && mag_v < mag_a) {
+                    (vr, vi)
+                } else {
+                    (ar, ai)
+                }
+            }
+        };
+        Self::write(acc, idx, out_r, out_i);
+    }
+
+    unsafe fn format_element(&self, ptr: *const u8, byte_offset: isize) -> String {
+        let (r, i) = Self::read(ptr, byte_offset);
+        // NumPy style: "(1+2j)" or "(1-2j)"
+        if i >= 0.0 {
+            format!("({:.6}+{:.6}j)", r, i).replace(".000000", ".").replace("0j", "j")
+        } else {
+            format!("({:.6}{:.6}j)", r, i).replace(".000000", ".").replace("0j", "j")
+        }
+    }
+
+    unsafe fn compare_elements(&self, a: *const u8, a_offset: isize, b: *const u8, b_offset: isize) -> Ordering {
+        // Compare by magnitude (not ideal but allows sorting)
+        let (ar, ai) = Self::read(a, a_offset);
+        let (br, bi) = Self::read(b, b_offset);
+        let mag_a = ar * ar + ai * ai;
+        let mag_b = br * br + bi * bi;
+        mag_a.partial_cmp(&mag_b).unwrap_or(Ordering::Equal)
+    }
+
+    unsafe fn is_truthy(&self, ptr: *const u8, byte_offset: isize) -> bool {
+        let (r, i) = Self::read(ptr, byte_offset);
+        r != 0.0 || i != 0.0
+    }
+
+    unsafe fn write_f64(&self, ptr: *mut u8, idx: usize, val: f64) -> bool {
+        Self::write(ptr, idx, val as f32, 0.0);
+        true
+    }
+
+    unsafe fn read_f64(&self, _ptr: *const u8, _byte_offset: isize) -> Option<f64> {
+        // Complex can't be represented as single f64
+        None
+    }
+
+    unsafe fn write_complex(&self, ptr: *mut u8, idx: usize, real: f64, imag: f64) -> bool {
+        Self::write(ptr, idx, real as f32, imag as f32);
+        true
+    }
+
+    unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
+        let (r, i) = Self::read(ptr, byte_offset);
+        Some((r as f64, i as f64))
+    }
+}

@@ -308,97 +308,124 @@ fn init_default_loops() -> UFuncRegistry {
         },
     );
 
-    // Complex128 binary loops
-    reg.register_binary(
-        BinaryOp::Add,
-        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
-        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
-            let (sa, sb, so) = strides;
-            let mut ap = a_ptr;
-            let mut bp = b_ptr;
-            let mut op = out_ptr;
-            for _ in 0..n {
-                let a = ap as *const f64;
-                let b = bp as *const f64;
-                let out = op as *mut f64;
-                *out = *a + *b;
-                *out.add(1) = *a.add(1) + *b.add(1);
-                ap = ap.offset(sa);
-                bp = bp.offset(sb);
-                op = op.offset(so);
-            }
-        },
-    );
-    reg.register_binary(
-        BinaryOp::Sub,
-        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
-        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
-            let (sa, sb, so) = strides;
-            let mut ap = a_ptr;
-            let mut bp = b_ptr;
-            let mut op = out_ptr;
-            for _ in 0..n {
-                let a = ap as *const f64;
-                let b = bp as *const f64;
-                let out = op as *mut f64;
-                *out = *a - *b;
-                *out.add(1) = *a.add(1) - *b.add(1);
-                ap = ap.offset(sa);
-                bp = bp.offset(sb);
-                op = op.offset(so);
-            }
-        },
-    );
-    reg.register_binary(
-        BinaryOp::Mul,
-        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
-        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
-            let (sa, sb, so) = strides;
-            let mut ap = a_ptr;
-            let mut bp = b_ptr;
-            let mut op = out_ptr;
-            for _ in 0..n {
-                let a = ap as *const f64;
-                let b = bp as *const f64;
-                let ar = *a; let ai = *a.add(1);
-                let br = *b; let bi = *b.add(1);
-                let out = op as *mut f64;
-                *out = ar * br - ai * bi;
-                *out.add(1) = ar * bi + ai * br;
-                ap = ap.offset(sa);
-                bp = bp.offset(sb);
-                op = op.offset(so);
-            }
-        },
-    );
-    reg.register_binary(
-        BinaryOp::Div,
-        TypeSignature::binary(DTypeKind::Complex128, DTypeKind::Complex128, DTypeKind::Complex128),
-        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
-            let (sa, sb, so) = strides;
-            let mut ap = a_ptr;
-            let mut bp = b_ptr;
-            let mut op = out_ptr;
-            for _ in 0..n {
-                let a = ap as *const f64;
-                let b = bp as *const f64;
-                let ar = *a; let ai = *a.add(1);
-                let br = *b; let bi = *b.add(1);
-                let denom = br * br + bi * bi;
-                let out = op as *mut f64;
-                if denom != 0.0 {
-                    *out = (ar * br + ai * bi) / denom;
-                    *out.add(1) = (ai * br - ar * bi) / denom;
-                } else {
-                    *out = f64::NAN;
-                    *out.add(1) = f64::NAN;
-                }
-                ap = ap.offset(sa);
-                bp = bp.offset(sb);
-                op = op.offset(so);
-            }
-        },
-    );
+    // Complex binary/unary/reduce loops - macro to reduce duplication
+    macro_rules! register_complex_loops {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            // Binary ops
+            $reg.register_binary(
+                BinaryOp::Add,
+                TypeSignature::binary($kind.clone(), $kind.clone(), $kind.clone()),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let (sa, sb, so) = strides;
+                    let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                    for _ in 0..n {
+                        let (a, b, out) = (ap as *const $T, bp as *const $T, op as *mut $T);
+                        *out = *a + *b;
+                        *out.add(1) = *a.add(1) + *b.add(1);
+                        ap = ap.offset(sa); bp = bp.offset(sb); op = op.offset(so);
+                    }
+                },
+            );
+            $reg.register_binary(
+                BinaryOp::Sub,
+                TypeSignature::binary($kind.clone(), $kind.clone(), $kind.clone()),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let (sa, sb, so) = strides;
+                    let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                    for _ in 0..n {
+                        let (a, b, out) = (ap as *const $T, bp as *const $T, op as *mut $T);
+                        *out = *a - *b;
+                        *out.add(1) = *a.add(1) - *b.add(1);
+                        ap = ap.offset(sa); bp = bp.offset(sb); op = op.offset(so);
+                    }
+                },
+            );
+            $reg.register_binary(
+                BinaryOp::Mul,
+                TypeSignature::binary($kind.clone(), $kind.clone(), $kind.clone()),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let (sa, sb, so) = strides;
+                    let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                    for _ in 0..n {
+                        let (a, b) = (ap as *const $T, bp as *const $T);
+                        let (ar, ai, br, bi) = (*a, *a.add(1), *b, *b.add(1));
+                        let out = op as *mut $T;
+                        *out = ar * br - ai * bi;
+                        *out.add(1) = ar * bi + ai * br;
+                        ap = ap.offset(sa); bp = bp.offset(sb); op = op.offset(so);
+                    }
+                },
+            );
+            $reg.register_binary(
+                BinaryOp::Div,
+                TypeSignature::binary($kind.clone(), $kind.clone(), $kind.clone()),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let (sa, sb, so) = strides;
+                    let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                    for _ in 0..n {
+                        let (a, b) = (ap as *const $T, bp as *const $T);
+                        let (ar, ai, br, bi) = (*a, *a.add(1), *b, *b.add(1));
+                        let denom = br * br + bi * bi;
+                        let out = op as *mut $T;
+                        if denom != 0.0 {
+                            *out = (ar * br + ai * bi) / denom;
+                            *out.add(1) = (ai * br - ar * bi) / denom;
+                        } else {
+                            *out = <$T>::NAN;
+                            *out.add(1) = <$T>::NAN;
+                        }
+                        ap = ap.offset(sa); bp = bp.offset(sb); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary neg
+            $reg.register_unary(
+                UnaryOp::Neg,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let (src, out) = (sp as *const $T, op as *mut $T);
+                        *out = -(*src);
+                        *out.add(1) = -(*src.add(1));
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Reduce ops
+            $reg.register_reduce(
+                ReduceOp::Sum,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, idx| unsafe {
+                    let out = (out_ptr as *mut $T).add(idx * 2);
+                    *out = 0.0; *out.add(1) = 0.0;
+                },
+                |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+                    let acc = (acc_ptr as *mut $T).add(idx * 2);
+                    let v = val_ptr.offset(byte_offset) as *const $T;
+                    *acc += *v; *acc.add(1) += *v.add(1);
+                },
+            );
+            $reg.register_reduce(
+                ReduceOp::Prod,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, idx| unsafe {
+                    let out = (out_ptr as *mut $T).add(idx * 2);
+                    *out = 1.0; *out.add(1) = 0.0;
+                },
+                |acc_ptr, idx, val_ptr, byte_offset| unsafe {
+                    let acc = (acc_ptr as *mut $T).add(idx * 2);
+                    let v = val_ptr.offset(byte_offset) as *const $T;
+                    let (ar, ai, vr, vi) = (*acc, *acc.add(1), *v, *v.add(1));
+                    *acc = ar * vr - ai * vi;
+                    *acc.add(1) = ar * vi + ai * vr;
+                },
+            );
+        };
+    }
+    register_complex_loops!(reg, DTypeKind::Complex128, f64);
+    register_complex_loops!(reg, DTypeKind::Complex64, f32);
 
     // ========================================================================
     // Unary loops
@@ -507,25 +534,6 @@ fn init_default_loops() -> UFuncRegistry {
     register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint32, u32, |v: u32| v);
     register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint16, u16, |v: u16| v);
     register_strided_unary!(reg, UnaryOp::Abs, DTypeKind::Uint8, u8, |v: u8| v);
-
-    // complex128 unary loops (no contiguous fast path - needs special handling)
-    reg.register_unary(
-        UnaryOp::Neg,
-        TypeSignature::unary(DTypeKind::Complex128, DTypeKind::Complex128),
-        |src_ptr, out_ptr, n, strides| unsafe {
-            let (ss, so) = strides;
-            let mut sp = src_ptr;
-            let mut op = out_ptr;
-            for _ in 0..n {
-                let src = sp as *const f64;
-                let out = op as *mut f64;
-                *out = -(*src);
-                *out.add(1) = -(*src.add(1));
-                sp = sp.offset(ss);
-                op = op.offset(so);
-            }
-        },
-    );
 
     // ========================================================================
     // Reduce loops
@@ -679,40 +687,6 @@ fn init_default_loops() -> UFuncRegistry {
             let acc = (acc_ptr as *mut u8).add(idx);
             let v = *(val_ptr.offset(byte_offset) as *const u8);
             if v == 0 { *acc = 0; }
-        },
-    );
-
-    // complex128 reduce loops (Sum, Prod only - Max/Min not well-defined)
-    reg.register_reduce(
-        ReduceOp::Sum,
-        TypeSignature::reduce(DTypeKind::Complex128, DTypeKind::Complex128),
-        |out_ptr, idx| unsafe {
-            let out = (out_ptr as *mut f64).add(idx * 2);
-            *out = 0.0;
-            *out.add(1) = 0.0;
-        },
-        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut f64).add(idx * 2);
-            let v = val_ptr.offset(byte_offset) as *const f64;
-            *acc += *v;
-            *acc.add(1) += *v.add(1);
-        },
-    );
-    reg.register_reduce(
-        ReduceOp::Prod,
-        TypeSignature::reduce(DTypeKind::Complex128, DTypeKind::Complex128),
-        |out_ptr, idx| unsafe {
-            let out = (out_ptr as *mut f64).add(idx * 2);
-            *out = 1.0;
-            *out.add(1) = 0.0;
-        },
-        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut f64).add(idx * 2);
-            let v = val_ptr.offset(byte_offset) as *const f64;
-            let ar = *acc; let ai = *acc.add(1);
-            let vr = *v; let vi = *v.add(1);
-            *acc = ar * vr - ai * vi;
-            *acc.add(1) = ar * vi + ai * vr;
         },
     );
 

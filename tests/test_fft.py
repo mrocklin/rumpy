@@ -12,6 +12,7 @@ FFT_DTYPES = [
     np.float64,
     np.int32,
     np.int64,
+    np.complex64,
     np.complex128,
 ]
 
