@@ -17,129 +17,75 @@ Benchmark suite in `benchmarks/` with 5 modules, 35 benchmarks total:
 
 Run: `python benchmarks/run.py --sizes 10000`
 
-### Passing Benchmarks (15/35)
+### Passing Benchmarks (29/35)
 
-| Benchmark | Speedup | Notes |
-|-----------|---------|-------|
-| softmax | 0.02x | |
-| sigmoid | 0.07x | |
-| normalize | 0.01x | |
-| relu + scale + bias | 0.01x | |
-| swish | 0.07x | |
-| z-score 2D | 0.01x | |
-| weighted mean | 0.01x | |
-| covariance | 0.01x | |
-| variance axis | 0.00x | |
-| cumsum | 0.06x | |
-| diff + cumsum | 0.01x | |
-| FFT roundtrip | 0.01x | |
-| FFT2 roundtrip | 0.01x | |
-| power spectrum | 0.01x | |
-| gradient (diff) | 0.00x | |
-| second derivative | 0.00x | |
-| Kalman predict | 0.00x | |
-| matrix power | 0.00x | |
-| Monte Carlo pi | 0.03x | |
-| vector field magnitude | 0.01x | |
-| finite difference laplacian | 0.03x | |
+All linalg, most ufuncs, most statistics, most signal, and most simulation benchmarks pass.
 
-### Failing Benchmarks (20/35)
+| Module | Passing | Failing |
+|--------|---------|---------|
+| bench_linalg | 9/9 | 0 |
+| bench_ufuncs | 7/8 | GELU (numpy.float64 * array) |
+| bench_statistics | 6/8 | bincount, percentile |
+| bench_signal | 5/7 | lowpass (__setitem__), convolve |
+| bench_simulation | 7/8 | heat eq (concatenate), random walk (choice) |
 
-#### Module-level ufuncs need scalar support
-- **log-softmax**: `rp.log(scalar)` fails - ufuncs don't accept Python floats
-- **layer norm**: `rp.sqrt(scalar)` fails - same issue
-- **GELU**: `scalar * array` returns numpy array (no `__rmul__`)
-- **Black-Scholes**: `scalar * array` returns numpy array
+### Failing Benchmarks (6/35)
 
-#### Missing `rp.linalg` submodule
-- **Kalman update**: needs `rp.linalg.solve`
-- **least squares (SVD)**: needs `rp.linalg.svd`
-- **QR solve**: needs `rp.linalg.qr`, `rp.linalg.solve`
-- **Gram-Schmidt**: needs `rp.linalg.qr`
-- **eigendecomposition**: needs `rp.linalg.eigh`
-- **Cholesky solve**: needs `rp.linalg.cholesky`
-- **matrix norm**: needs `rp.linalg.norm`
-
-#### Missing `rp.newaxis`
-- **pairwise distances**: `points[:, xp.newaxis, :]`
-- **N-body acceleration**: `pos[xp.newaxis, :, :]`
+#### numpy.float64 * array returns numpy array
+- **GELU**: `np.sqrt(2/pi) * x` - numpy.float64 takes precedence
+- **Black-Scholes**: same issue (numpy scalar * rumpy array)
+- Fix: Implement `__array_ufunc__` to tell numpy to defer to us
 
 #### Missing slice assignment (`__setitem__`)
 - **FFT lowpass filter**: `f[cutoff:-cutoff] = 0`
 
-#### Missing `rp.convolve`
-- **convolve 1D**: needs `xp.convolve(x, kernel, mode='same')`
+#### Missing functions
+- **convolve 1D**: `rp.convolve` not implemented
+- **histogram**: `rp.bincount` not implemented
+- **percentile**: `rp.percentile` not implemented
+- **random walk**: `Generator.choice` not implemented
+- **heat equation**: `rp.concatenate` with Python lists not supported
 
-#### Missing `rp.concatenate` with mixed types
-- **heat equation step**: `xp.concatenate([[u[0]], u_interior, [u[-1]]])`
+## Recently Completed
 
-#### Missing `Generator.choice`
-- **random walk**: needs `rng.choice([-1, 1], size=size)`
+1. ✅ **`rp.linalg` submodule** - solve, qr, svd, eigh, cholesky, inv, det, norm
+2. ✅ **`rp.newaxis`** - added as None constant
+3. ✅ **`rp.linalg.cholesky`** - Cholesky decomposition
+4. ✅ **Scalar ufuncs** - rp.log(3.14), rp.sqrt(scalar), etc. now work
+5. ✅ **None/newaxis in indexing** - `arr[:, None, :]` now works
+6. ✅ **Scalar support in maximum/minimum** - `rp.maximum(arr, 1e-10)` now works
 
-#### Missing `rp.bincount`, `rp.percentile`
-- **histogram**: needs `xp.bincount(x)`
-- **percentile**: needs `xp.percentile(x, [25, 50, 75])`
-
-## API Gaps (Prioritized)
+## Remaining API Gaps (Prioritized)
 
 ### Priority 1: Core Operations
-These affect many benchmarks and are fundamental to numpy compatibility.
 
-1. **Scalar support in module-level ufuncs**
-   - `rp.log(3.14)` should return `float`
-   - `rp.sqrt(x.var())` should work when var() returns scalar
-   - Affects: log-softmax, layer norm, others
-
-2. **`rp.linalg` submodule**
-   - Functions exist (`rp.solve`, `rp.qr`, etc.) but not under `linalg` namespace
-   - Fix: Create `rp.linalg` submodule that re-exports existing functions
-   - Affects: 7 linalg benchmarks
-
-3. **`rp.newaxis`**
-   - Should be `None` (same as numpy)
-   - Used for broadcasting: `arr[:, np.newaxis]`
-   - Affects: pairwise distances, N-body
-
-4. **Scalar-first arithmetic (`__rmul__`, `__radd__`, etc.)**
-   - `0.5 * rp_array` returns numpy array instead of rumpy array
-   - Fix: Implement `__rmul__`, `__radd__`, `__rsub__`, `__rtruediv__`
-   - Affects: GELU, Black-Scholes, any `scalar * array`
+1. **`__array_ufunc__` on PyRumpyArray**
+   - Makes numpy defer arithmetic to rumpy when mixed
+   - `np.sqrt(2/pi) * rp_array` should return rumpy array
+   - Affects: GELU, Black-Scholes
 
 ### Priority 2: Array Operations
 
-5. **Slice assignment (`__setitem__`)**
+2. **Slice assignment (`__setitem__`)**
    - `arr[5:10] = 0` not supported
-   - Affects: FFT filtering, in-place updates
+   - Affects: FFT filtering
 
-6. **`rp.concatenate` with Python lists**
-   - Currently requires all rumpy arrays
+3. **`rp.concatenate` with Python lists**
    - Should accept `[[scalar], array, [scalar]]`
    - Affects: heat equation
 
 ### Priority 3: Missing Functions
 
-7. **`Generator.choice(values, size=n)`**
-   - Random selection from array of values
-   - Affects: random walk
-
-8. **`rp.convolve(x, kernel, mode='same')`**
-   - 1D convolution
-   - Affects: signal processing
-
-9. **`rp.bincount(x)`**
-   - Count occurrences of integers
-   - Affects: histogram
-
-10. **`rp.percentile(x, [25, 50, 75])`**
-    - Compute percentiles
-    - Affects: statistics
+4. `Generator.choice(values, size=n)`
+5. `rp.convolve(x, kernel, mode='same')`
+6. `rp.bincount(x)`
+7. `rp.percentile(x, [25, 50, 75])`
 
 ## Next Steps
 
-1. Fix Priority 1 items (scalar ufuncs, linalg namespace, newaxis, __rmul__)
-2. Run benchmarks again to get more passing
-3. Address Priority 2 and 3 as needed
-4. Once API complete, focus on performance optimization
+1. Implement `__array_ufunc__` for numpy interop
+2. Implement `__setitem__` for slice assignment
+3. Address remaining missing functions
 
 ## Running Benchmarks
 

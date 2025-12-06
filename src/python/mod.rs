@@ -1,4 +1,5 @@
 pub mod fft;
+pub mod linalg;
 pub mod pyarray;
 pub mod random;
 
@@ -339,132 +340,204 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
 }
 
 // Math ufuncs (module-level functions like np.sqrt, np.exp, etc.)
+// These accept either array or scalar, returning the same type.
 
-fn unary_result_to_py(result: Result<RumpyArray, crate::ops::UnaryOpError>) -> PyResult<PyRumpyArray> {
-    result
+/// Result type for ufuncs that can return scalar or array.
+pub enum UnaryResult {
+    Scalar(f64),
+    Array(PyRumpyArray),
+}
+
+impl<'py> IntoPyObject<'py> for UnaryResult {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self {
+            UnaryResult::Scalar(v) => Ok(v.into_pyobject(py)?.into_any()),
+            UnaryResult::Array(arr) => Ok(arr.into_pyobject(py)?.into_any()),
+        }
+    }
+}
+
+/// Apply a unary ufunc to either scalar or array input.
+fn apply_unary<F, G>(x: &Bound<'_, PyAny>, scalar_op: F, array_op: G) -> PyResult<UnaryResult>
+where
+    F: FnOnce(f64) -> f64,
+    G: FnOnce(&RumpyArray) -> Result<RumpyArray, crate::ops::UnaryOpError>,
+{
+    // Try array first
+    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
+        return array_op(&arr.inner)
+            .map(|a| UnaryResult::Array(PyRumpyArray::new(a)))
+            .map_err(|_| pyo3::exceptions::PyTypeError::new_err("ufunc not supported for this dtype"));
+    }
+    // Try scalar
+    if let Ok(scalar) = x.extract::<f64>() {
+        return Ok(UnaryResult::Scalar(scalar_op(scalar)));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "input must be ndarray or number",
+    ))
+}
+
+#[pyfunction]
+pub fn sqrt(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.sqrt(), |a| a.sqrt())
+}
+
+#[pyfunction]
+pub fn exp(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.exp(), |a| a.exp())
+}
+
+#[pyfunction]
+pub fn log(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.ln(), |a| a.log())
+}
+
+#[pyfunction]
+pub fn sin(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.sin(), |a| a.sin())
+}
+
+#[pyfunction]
+pub fn cos(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.cos(), |a| a.cos())
+}
+
+#[pyfunction]
+pub fn tan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.tan(), |a| a.tan())
+}
+
+#[pyfunction]
+pub fn floor(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.floor(), |a| a.floor())
+}
+
+#[pyfunction]
+pub fn ceil(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.ceil(), |a| a.ceil())
+}
+
+#[pyfunction]
+pub fn arcsin(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.asin(), |a| a.arcsin())
+}
+
+#[pyfunction]
+pub fn arccos(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.acos(), |a| a.arccos())
+}
+
+#[pyfunction]
+pub fn arctan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.atan(), |a| a.arctan())
+}
+
+#[pyfunction]
+pub fn log10(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.log10(), |a| a.log10())
+}
+
+#[pyfunction]
+pub fn log2(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.log2(), |a| a.log2())
+}
+
+#[pyfunction]
+pub fn sinh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.sinh(), |a| a.sinh())
+}
+
+#[pyfunction]
+pub fn cosh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.cosh(), |a| a.cosh())
+}
+
+#[pyfunction]
+pub fn tanh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.tanh(), |a| a.tanh())
+}
+
+#[pyfunction]
+pub fn sign(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v > 0.0 { 1.0 } else if v < 0.0 { -1.0 } else { 0.0 }, |a| a.sign())
+}
+
+#[pyfunction]
+pub fn isnan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v.is_nan() { 1.0 } else { 0.0 }, |a| a.isnan())
+}
+
+#[pyfunction]
+pub fn isinf(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v.is_infinite() { 1.0 } else { 0.0 }, |a| a.isinf())
+}
+
+#[pyfunction]
+pub fn isfinite(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v.is_finite() { 1.0 } else { 0.0 }, |a| a.isfinite())
+}
+
+#[pyfunction]
+pub fn abs(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.abs(), |a| a.abs())
+}
+
+// Element-wise binary functions that accept array or scalar
+
+/// Apply a binary ufunc to either array or scalar inputs.
+fn apply_binary_ufunc(
+    x1: &Bound<'_, PyAny>,
+    x2: &Bound<'_, PyAny>,
+    op: crate::array::dtype::BinaryOp,
+) -> PyResult<PyRumpyArray> {
+    use crate::ops::BinaryOpError;
+
+    // Try array-array first
+    let arr1 = if let Ok(arr) = x1.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = x1.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, DType::float64())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray or number",
+        ));
+    };
+
+    let arr2 = if let Ok(arr) = x2.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = x2.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, DType::float64())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray or number",
+        ));
+    };
+
+    arr1.binary_op(&arr2, op)
         .map(PyRumpyArray::new)
-        .map_err(|_| pyo3::exceptions::PyTypeError::new_err("ufunc not supported for this dtype"))
+        .map_err(|e| match e {
+            BinaryOpError::ShapeMismatch => {
+                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            }
+            BinaryOpError::UnsupportedDtype => {
+                pyo3::exceptions::PyTypeError::new_err("operation not supported for these dtypes")
+            }
+        })
 }
 
 #[pyfunction]
-pub fn sqrt(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.sqrt())
+pub fn maximum(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Maximum)
 }
 
 #[pyfunction]
-pub fn exp(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.exp())
-}
-
-#[pyfunction]
-pub fn log(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.log())
-}
-
-#[pyfunction]
-pub fn sin(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.sin())
-}
-
-#[pyfunction]
-pub fn cos(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.cos())
-}
-
-#[pyfunction]
-pub fn tan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.tan())
-}
-
-#[pyfunction]
-pub fn floor(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.floor())
-}
-
-#[pyfunction]
-pub fn ceil(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.ceil())
-}
-
-#[pyfunction]
-pub fn arcsin(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.arcsin())
-}
-
-#[pyfunction]
-pub fn arccos(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.arccos())
-}
-
-#[pyfunction]
-pub fn arctan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.arctan())
-}
-
-#[pyfunction]
-pub fn log10(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.log10())
-}
-
-#[pyfunction]
-pub fn log2(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.log2())
-}
-
-#[pyfunction]
-pub fn sinh(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.sinh())
-}
-
-#[pyfunction]
-pub fn cosh(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.cosh())
-}
-
-#[pyfunction]
-pub fn tanh(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.tanh())
-}
-
-#[pyfunction]
-pub fn sign(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.sign())
-}
-
-#[pyfunction]
-pub fn isnan(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.isnan())
-}
-
-#[pyfunction]
-pub fn isinf(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.isinf())
-}
-
-#[pyfunction]
-pub fn isfinite(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.isfinite())
-}
-
-#[pyfunction]
-pub fn abs(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    unary_result_to_py(x.inner.abs())
-}
-
-// Element-wise binary functions
-
-#[pyfunction]
-pub fn maximum(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    x1.inner.binary_op(&x2.inner, crate::array::dtype::BinaryOp::Maximum)
-        .map(PyRumpyArray::new)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{:?}", e)))
-}
-
-#[pyfunction]
-pub fn minimum(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    x1.inner.binary_op(&x2.inner, crate::array::dtype::BinaryOp::Minimum)
-        .map(PyRumpyArray::new)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{:?}", e)))
+pub fn minimum(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Minimum)
 }
 
 // Complex accessors
@@ -1071,6 +1144,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register submodules
     random::register_submodule(m)?;
     fft::register_submodule(m)?;
+    linalg::register_submodule(m)?;
     // Constructors
     m.add_function(wrap_pyfunction!(zeros, m)?)?;
     m.add_function(wrap_pyfunction!(ones, m)?)?;
@@ -1180,5 +1254,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("bool_", "bool")?;  // bool_ to avoid Python keyword conflict
     m.add("complex64", "complex64")?;
     m.add("complex128", "complex128")?;
+    // newaxis is None in numpy (used for broadcasting)
+    m.add("newaxis", m.py().None())?;
     Ok(())
 }

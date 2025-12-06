@@ -669,3 +669,61 @@ class TestComplexAccessors:
         n = np.array([1+2j, 3+4j])
         r = rp.asarray(n)
         assert_eq(r.conj(), n.conj())
+
+
+class TestScalarUfuncs:
+    """Test that ufuncs accept scalar (Python float) inputs."""
+
+    def test_sqrt_scalar(self):
+        """rp.sqrt(4.0) should return 2.0."""
+        assert abs(rp.sqrt(4.0) - np.sqrt(4.0)) < 1e-10
+
+    def test_exp_scalar(self):
+        """rp.exp(1.0) should return e."""
+        assert abs(rp.exp(1.0) - np.exp(1.0)) < 1e-10
+
+    def test_log_scalar(self):
+        """rp.log(e) should return 1.0."""
+        import math
+        assert abs(rp.log(math.e) - np.log(math.e)) < 1e-10
+
+    def test_sin_scalar(self):
+        assert abs(rp.sin(0.5) - np.sin(0.5)) < 1e-10
+
+    def test_cos_scalar(self):
+        assert abs(rp.cos(0.5) - np.cos(0.5)) < 1e-10
+
+    def test_tan_scalar(self):
+        assert abs(rp.tan(0.5) - np.tan(0.5)) < 1e-10
+
+    def test_tanh_scalar(self):
+        assert abs(rp.tanh(0.5) - np.tanh(0.5)) < 1e-10
+
+    def test_abs_scalar(self):
+        assert abs(rp.abs(-3.14) - np.abs(-3.14)) < 1e-10
+
+    def test_floor_scalar(self):
+        assert abs(rp.floor(3.7) - np.floor(3.7)) < 1e-10
+
+    def test_ceil_scalar(self):
+        assert abs(rp.ceil(3.2) - np.ceil(3.2)) < 1e-10
+
+    def test_log10_scalar(self):
+        assert abs(rp.log10(100.0) - np.log10(100.0)) < 1e-10
+
+    def test_log2_scalar(self):
+        assert abs(rp.log2(8.0) - np.log2(8.0)) < 1e-10
+
+    def test_arcsin_scalar(self):
+        assert abs(rp.arcsin(0.5) - np.arcsin(0.5)) < 1e-10
+
+    def test_arccos_scalar(self):
+        assert abs(rp.arccos(0.5) - np.arccos(0.5)) < 1e-10
+
+    def test_arctan_scalar(self):
+        assert abs(rp.arctan(1.0) - np.arctan(1.0)) < 1e-10
+
+    def test_sign_scalar(self):
+        assert rp.sign(-5.0) == np.sign(-5.0)
+        assert rp.sign(5.0) == np.sign(5.0)
+        assert rp.sign(0.0) == np.sign(0.0)

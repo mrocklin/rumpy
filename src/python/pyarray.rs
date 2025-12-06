@@ -267,8 +267,11 @@ impl PyRumpyArray {
 
         // Handle tuple for multi-dimensional indexing
         if let Ok(tuple) = key.downcast::<PyTuple>() {
-            // Check if all indices are integers (scalar access)
-            let all_ints = tuple.iter().all(|item| item.extract::<isize>().is_ok());
+            // Check for None (newaxis) in tuple - if present, we can't do scalar access
+            let has_none = tuple.iter().any(|item| item.is_none());
+
+            // Check if all indices are integers (scalar access) - only if no None
+            let all_ints = !has_none && tuple.iter().all(|item| item.extract::<isize>().is_ok());
 
             if all_ints && tuple.len() == self.inner.ndim() {
                 let indices: Vec<usize> = tuple
@@ -283,9 +286,20 @@ impl PyRumpyArray {
                 return Ok(val.into_pyobject(py)?.into_any().unbind());
             }
 
-            // Otherwise, handle slices
+            // Otherwise, handle slices and None (newaxis)
             let mut result = self.inner.clone();
-            for (axis, item) in tuple.iter().enumerate() {
+            let mut axis = 0usize;  // Track current axis in result array
+
+            for item in tuple.iter() {
+                // Handle None (newaxis) - insert new axis
+                if item.is_none() {
+                    result = result.expand_dims(axis).ok_or_else(|| {
+                        pyo3::exceptions::PyIndexError::new_err("cannot expand dims")
+                    })?;
+                    axis += 1;  // Move past the newly inserted axis
+                    continue;
+                }
+
                 if axis >= result.ndim() {
                     return Err(pyo3::exceptions::PyIndexError::new_err(
                         "too many indices for array",
@@ -295,12 +309,14 @@ impl PyRumpyArray {
                     // Integer index: slice to single element, then squeeze later
                     let idx = normalize_index(idx, result.shape()[axis]);
                     result = result.slice_axis(axis, idx as isize, idx as isize + 1, 1);
+                    axis += 1;
                 } else if let Ok(slice) = item.downcast::<PySlice>() {
                     let (start, stop, step) = extract_slice_indices(&slice, result.shape()[axis])?;
                     result = result.slice_axis(axis, start, stop, step);
+                    axis += 1;
                 } else {
                     return Err(pyo3::exceptions::PyTypeError::new_err(
-                        "indices must be integers or slices",
+                        "indices must be integers, slices, or None",
                     ));
                 }
             }

@@ -184,6 +184,26 @@ pub fn eigh(a: &RumpyArray) -> Option<(RumpyArray, RumpyArray)> {
     Some((w, v))
 }
 
+/// Cholesky decomposition: A = L @ L.T for symmetric positive-definite matrix.
+///
+/// Returns lower triangular matrix L.
+pub fn cholesky(a: &RumpyArray) -> Option<RumpyArray> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let n = a.shape()[0];
+    if a.shape()[1] != n {
+        return None; // Must be square
+    }
+    if n == 0 {
+        return Some(RumpyArray::zeros(vec![0, 0], DType::float64()));
+    }
+
+    let fa = faer::Mat::<f64>::from_fn(n, n, |i, j| a.get_element(&[i, j]));
+    let chol = fa.cholesky(Side::Lower).ok()?;
+    Some(faer_to_rumpy(chol.compute_l().as_ref()))
+}
+
 /// Extract diagonal or construct diagonal matrix.
 ///
 /// - 1D input: returns 2D diagonal matrix with input on diagonal

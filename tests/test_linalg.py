@@ -1,8 +1,141 @@
-"""Tests for linear algebra functions: trace, det, norm."""
+"""Tests for linear algebra functions: trace, det, norm.
+
+Also tests rp.linalg submodule and rp.newaxis.
+"""
 
 import numpy as np
 import rumpy as rp
 from helpers import assert_eq
+
+
+class TestLinalgSubmodule:
+    """Tests for rp.linalg submodule (numpy.linalg compatibility)."""
+
+    def test_linalg_exists(self):
+        """The linalg submodule exists."""
+        assert hasattr(rp, 'linalg')
+
+    def test_solve_via_linalg(self):
+        """rp.linalg.solve works like np.linalg.solve."""
+        A = rp.asarray([[3.0, 1.0], [1.0, 2.0]])
+        b = rp.asarray([9.0, 8.0])
+        x = rp.linalg.solve(A, b)
+
+        nA = np.array([[3.0, 1.0], [1.0, 2.0]])
+        nb = np.array([9.0, 8.0])
+        nx = np.linalg.solve(nA, nb)
+        assert_eq(x, nx)
+
+    def test_qr_via_linalg(self):
+        """rp.linalg.qr works like np.linalg.qr."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        Q, R = rp.linalg.qr(A)
+        assert_eq(Q @ R, A)
+
+    def test_svd_via_linalg(self):
+        """rp.linalg.svd works like np.linalg.svd."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        U, S, Vt = rp.linalg.svd(A, full_matrices=False)
+        # Reconstruct
+        S_diag = rp.asarray([[S[0], 0.0], [0.0, S[1]]])
+        reconstructed = U @ S_diag @ Vt
+        assert_eq(reconstructed, A)
+
+    def test_eigh_via_linalg(self):
+        """rp.linalg.eigh works like np.linalg.eigh."""
+        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
+        w, V = rp.linalg.eigh(A)
+        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
+        nw, nV = np.linalg.eigh(nA)
+        assert_eq(w, rp.asarray(nw))
+
+    def test_inv_via_linalg(self):
+        """rp.linalg.inv works like np.linalg.inv."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        A_inv = rp.linalg.inv(A)
+        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
+        nA_inv = np.linalg.inv(nA)
+        assert_eq(A_inv, nA_inv)
+
+    def test_det_via_linalg(self):
+        """rp.linalg.det works like np.linalg.det."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        d = rp.linalg.det(A)
+        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
+        nd = np.linalg.det(nA)
+        assert abs(d - nd) < 1e-10
+
+    def test_norm_via_linalg(self):
+        """rp.linalg.norm works like np.linalg.norm."""
+        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        n = rp.linalg.norm(A, 'fro')
+        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
+        nn = np.linalg.norm(nA, 'fro')
+        assert abs(n - nn) < 1e-10
+
+    def test_cholesky(self):
+        """rp.linalg.cholesky works like np.linalg.cholesky."""
+        # SPD matrix
+        A_np = np.array([[4.0, 2.0], [2.0, 3.0]])
+        A = rp.asarray(A_np)
+
+        L = rp.linalg.cholesky(A)
+        nL = np.linalg.cholesky(A_np)
+        assert_eq(L, nL)
+
+        # L @ L.T should reconstruct A
+        reconstructed = L @ L.T
+        assert_eq(reconstructed, A)
+
+
+class TestNewaxis:
+    """Tests for rp.newaxis constant."""
+
+    def test_newaxis_is_none(self):
+        """newaxis should be None (like numpy)."""
+        assert rp.newaxis is None
+        assert np.newaxis is None
+
+    def test_newaxis_expand_1d_start(self):
+        """Use newaxis to add dimension at start."""
+        a = rp.asarray([1.0, 2.0, 3.0])
+        na = np.array([1.0, 2.0, 3.0])
+
+        r = a[rp.newaxis, :]
+        nr = na[np.newaxis, :]
+        assert r.shape == nr.shape
+        assert r.shape == (1, 3)
+
+    def test_newaxis_expand_1d_end(self):
+        """Use newaxis to add dimension at end."""
+        a = rp.asarray([1.0, 2.0, 3.0])
+        na = np.array([1.0, 2.0, 3.0])
+
+        r = a[:, rp.newaxis]
+        nr = na[:, np.newaxis]
+        assert r.shape == nr.shape
+        assert r.shape == (3, 1)
+
+    def test_newaxis_expand_2d_middle(self):
+        """Use newaxis to add dimension in middle of 2D array."""
+        a = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
+        na = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+        r = a[:, rp.newaxis, :]
+        nr = na[:, np.newaxis, :]
+        assert r.shape == nr.shape
+        assert r.shape == (2, 1, 2)
+
+    def test_expand_dims_equivalent(self):
+        """expand_dims can also be used for same effect."""
+        a = rp.asarray([1.0, 2.0, 3.0])
+        na = np.array([1.0, 2.0, 3.0])
+
+        # Add dimension at start using expand_dims
+        r = rp.expand_dims(a, 0)
+        nr = np.expand_dims(na, 0)
+        assert r.shape == nr.shape
+        assert r.shape == (1, 3)
 
 
 class TestTrace:
