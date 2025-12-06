@@ -1,13 +1,13 @@
 # Performance Plan
 
-## Current State (Release Build, Post-P0 Fixes)
+## Current State (Release Build)
 
 Benchmarks at size=1M with release build:
 
 | Category | Best | Worst | Typical |
 |----------|------|-------|---------|
 | Ufuncs (chained) | 0.95x (swish) | 0.41x (relu) | 0.5-0.9x |
-| Statistics | 1.15x (diff+cumsum) | 0.18x (variance) | 0.3-1.0x |
+| Statistics | 1.15x (diff+cumsum) | 0.16x (var_axis) | 0.3-1.0x |
 | Signal/FFT | 1.16x (second deriv) | 0.42x (FFT) | 0.4-1.0x |
 | Linalg | 0.63x (eigh) | 0.03x (norm) | 0.2-0.5x |
 | Simulation | 1.34x (laplacian) | 0.13x (vector mag) | 0.3-0.6x |
@@ -18,6 +18,8 @@ Benchmarks at size=1M with release build:
 
 - [x] **diff**: Rewrote to use registry Sub loop (0.03x → 1.0x)
 - [x] **tanh/sinh/cosh**: Added to registry for f32, f64, f16
+- [x] **var (full array)**: Contiguous f64 fast path with two-pass algorithm (0.23x → 0.86x)
+- [x] **moment/skew/kurtosis**: Added higher-order statistics functions
 
 ## Analysis
 
@@ -26,6 +28,7 @@ Benchmarks at size=1M with release build:
 1. **Simple ufunc chains** (sigmoid, swish): Registry loops enable LLVM auto-vectorization
 2. **cumsum, diff**: Single-pass operations with registry loops
 3. **Finite difference**: Slicing creates views, minimal overhead
+4. **Full array variance**: Contiguous fast path with vectorized loops
 
 ### Where rumpy is slow (0.1x-0.5x)
 
@@ -34,9 +37,9 @@ Benchmarks at size=1M with release build:
    - No fusion of elementwise operations
    - Example: `(x - mean) / std` = 4 allocations + 4 passes
 
-2. **Axis reductions** (var, std):
-   - Two passes: mean then variance
-   - Per-element indexing overhead
+2. **Axis reductions** (var_axis, std_axis):
+   - Per-element indexing via `get_element` overhead
+   - No strided access optimization along reduction axis
 
 3. **Matrix operations** (matmul at scale):
    - Copying between rumpy and faer formats
@@ -47,11 +50,11 @@ Benchmarks at size=1M with release build:
 
 ## Remaining P0 Work
 
-- [ ] Welford's algorithm for `var`/`std` (single-pass)
 - [ ] Fast path in `scalar_op` to avoid allocation
 
 ## P1 Improvements (Moderate Effort)
 
+- [ ] Strided contiguous access for axis reductions
 - [ ] Fused multiply-add for common patterns (`a * b + c`)
 - [ ] Optimize broadcast binary ops (contiguous + broadcast fast path)
 - [ ] Cache-aware blocking for reductions

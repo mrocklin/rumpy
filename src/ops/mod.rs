@@ -55,6 +55,27 @@ fn linear_offset(indices: &[usize], strides: &[isize]) -> isize {
     indices.iter().zip(strides).map(|(&i, &s)| i as isize * s).sum()
 }
 
+/// Two-pass variance for contiguous f64 data - vectorizable.
+/// Pass 1: compute mean, Pass 2: compute sum of squared deviations.
+#[inline]
+fn variance_f64_contiguous(ptr: *const f64, size: usize) -> f64 {
+    // Pass 1: mean (sum / n) - vectorizable
+    let mut sum = 0.0;
+    for i in 0..size {
+        sum += unsafe { *ptr.add(i) };
+    }
+    let mean = sum / size as f64;
+
+    // Pass 2: sum of squared deviations - vectorizable
+    let mut sum_sq = 0.0;
+    for i in 0..size {
+        let x = unsafe { *ptr.add(i) };
+        let diff = x - mean;
+        sum_sq += diff * diff;
+    }
+    sum_sq / size as f64
+}
+
 /// Check if a unary op is transcendental (always returns float).
 fn is_transcendental(op: UnaryOp) -> bool {
     matches!(op, UnaryOp::Exp | UnaryOp::Log | UnaryOp::Log10 | UnaryOp::Log2 | UnaryOp::Sqrt |
@@ -467,7 +488,12 @@ fn reduce_all_f64(arr: &RumpyArray, op: ReduceOp) -> f64 {
 }
 
 /// Reduce array along a specific axis.
+///
+/// Uses axis_offsets() iterator with strided pointer arithmetic for efficiency.
+/// See designs/backstride-iteration.md for design rationale.
 fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
+    use crate::array::dtype::DTypeKind;
+
     // Output shape: remove the reduction axis
     let mut out_shape: Vec<usize> = arr.shape().to_vec();
     let axis_len = out_shape.remove(axis);
@@ -477,14 +503,40 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
         out_shape = vec![1]; // Scalar result wrapped in 1D array
     }
 
+    let dtype = arr.dtype();
+    let kind = dtype.kind();
+    let itemsize = dtype.itemsize() as isize;
+
+    // Get axis stride for pointer arithmetic
+    let axis_stride = arr.strides()[axis];
+    let src_ptr = arr.data_ptr();
+    let axis_contiguous = axis_stride == itemsize;
+
+    // Fast path: contiguous f64 axis with Sum/Prod/Max/Min
+    // These can be vectorized when the axis is contiguous in memory
+    if axis_contiguous && kind == DTypeKind::Float64 {
+        match op {
+            ReduceOp::Sum => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
+                slice.iter().sum()
+            }),
+            ReduceOp::Prod => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
+                slice.iter().product()
+            }),
+            ReduceOp::Max => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
+                slice.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+            }),
+            ReduceOp::Min => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
+                slice.iter().cloned().fold(f64::INFINITY, f64::min)
+            }),
+        }
+    }
+
     let mut result = RumpyArray::zeros(out_shape.clone(), arr.dtype());
     let out_size = result.size();
 
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
-    let dtype = arr.dtype();
-    let kind = dtype.kind();
 
     // Try registry first
     {
@@ -499,26 +551,13 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
                 return result;
             }
 
-            let src_ptr = arr.data_ptr();
-
-            // Iterate over output positions
-            let mut out_indices = vec![0usize; out_shape.len()];
-            for i in 0..out_size {
-                // Build input indices by inserting axis position
-                let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
-                in_indices.push(0); // placeholder for axis
-                if axis < arr.ndim() - 1 {
-                    in_indices.extend_from_slice(&out_indices[axis..]);
+            // Iterate using axis_offsets (strided pointer arithmetic)
+            for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+                let mut ptr = unsafe { src_ptr.offset(base_offset) };
+                for _ in 0..axis_len {
+                    unsafe { acc_fn(result_ptr, i, ptr, 0); }
+                    ptr = unsafe { ptr.offset(axis_stride) };
                 }
-
-                // Reduce along axis
-                for j in 0..axis_len {
-                    in_indices[axis] = j;
-                    let src_offset = arr.byte_offset_for(&in_indices);
-                    unsafe { acc_fn(result_ptr, i, src_ptr, src_offset); }
-                }
-
-                increment_indices(&mut out_indices, &out_shape);
             }
 
             return result;
@@ -537,26 +576,49 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
         return result;
     }
 
-    let src_ptr = arr.data_ptr();
-
-    // Iterate over output positions
-    let mut out_indices = vec![0usize; out_shape.len()];
-    for i in 0..out_size {
-        // Build input indices by inserting axis position
-        let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
-        in_indices.push(0); // placeholder for axis
-        if axis < arr.ndim() - 1 {
-            in_indices.extend_from_slice(&out_indices[axis..]);
+    // Iterate using axis_offsets (strided pointer arithmetic)
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        let mut ptr = unsafe { src_ptr.offset(base_offset) };
+        for _ in 0..axis_len {
+            unsafe { ops.reduce_acc(op, result_ptr, i, ptr, 0); }
+            ptr = unsafe { ptr.offset(axis_stride) };
         }
+    }
 
-        // Reduce along axis
-        for j in 0..axis_len {
-            in_indices[axis] = j;
-            let src_offset = arr.byte_offset_for(&in_indices);
-            unsafe { ops.reduce_acc(op, result_ptr, i, src_ptr, src_offset); }
-        }
+    result
+}
 
-        increment_indices(&mut out_indices, &out_shape);
+/// Fast path for contiguous f64 axis reductions.
+/// Converts each axis slice to a Rust slice for SIMD-friendly iteration.
+#[inline]
+fn reduce_axis_f64_contiguous<F>(
+    arr: &RumpyArray,
+    axis: usize,
+    axis_len: usize,
+    out_shape: &[usize],
+    reduce_fn: F,
+) -> RumpyArray
+where
+    F: Fn(&[f64]) -> f64,
+{
+    let mut result = RumpyArray::zeros(out_shape.to_vec(), DType::float64());
+    let out_size = result.size();
+
+    if out_size == 0 || axis_len == 0 {
+        return result;
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+    let src_ptr = arr.data_ptr() as *const f64;
+
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        // base_offset is in bytes, convert to f64 index
+        let base_idx = base_offset / 8;
+        let slice = unsafe { std::slice::from_raw_parts(src_ptr.offset(base_idx), axis_len) };
+        let value = reduce_fn(slice);
+        unsafe { *result_ptr.add(i) = value; }
     }
 
     result
@@ -737,39 +799,74 @@ impl RumpyArray {
     }
 
     /// Variance of all elements.
+    /// Uses two-pass algorithm (mean then sum of squared deviations) for vectorization.
     pub fn var(&self) -> f64 {
         let size = self.size();
         if size == 0 {
             return f64::NAN;
         }
+
+        // Fast path for contiguous f64
+        use crate::array::dtype::DTypeKind;
+        if self.is_c_contiguous() && self.dtype().kind() == DTypeKind::Float64 {
+            let ptr = self.data_ptr() as *const f64;
+            return variance_f64_contiguous(ptr, size);
+        }
+
+        // General strided path: two-pass for numerical stability
         let mean = self.mean();
         let ptr = self.data_ptr();
         let dtype = self.dtype();
         let ops = dtype.ops();
+
         let mut sum_sq = 0.0;
         for offset in self.iter_offsets() {
-            let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
-            let diff = val - mean;
+            let x = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+            let diff = x - mean;
             sum_sq += diff * diff;
         }
         sum_sq / size as f64
     }
 
-    /// Variance along axis.
+    /// Variance along axis (second central moment).
     pub fn var_axis(&self, axis: usize) -> RumpyArray {
+        self.moment_axis(2, axis)
+    }
+
+    /// Central moment of order k for all elements.
+    /// moment(k=2) == variance, moment(k=3)/std^3 == skewness, etc.
+    pub fn moment(&self, k: usize) -> f64 {
+        let size = self.size();
+        if size == 0 {
+            return f64::NAN;
+        }
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
+
+        // Two-pass: compute mean, then sum of (x - mean)^k
+        let mean = self.mean();
+        let mut sum_mk = 0.0;
+        for offset in self.iter_offsets() {
+            let x = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+            sum_mk += (x - mean).powi(k as i32);
+        }
+        sum_mk / size as f64
+    }
+
+    /// Central moment along axis.
+    pub fn moment_axis(&self, k: usize, axis: usize) -> RumpyArray {
         let mean = self.mean_axis(axis);
-        // Expand mean to add back the reduced axis for broadcasting
         let mean_expanded = mean.expand_dims(axis).expect("expand_dims succeeds");
         let mean_broadcast = mean_expanded.broadcast_to(self.shape()).expect("broadcast succeeds");
 
-        // Sum of squared differences
         let mut out_shape: Vec<usize> = self.shape().to_vec();
         let axis_len = out_shape.remove(axis);
         if out_shape.is_empty() {
             out_shape = vec![1];
         }
 
-        let mut result = RumpyArray::zeros(out_shape.clone(), self.dtype());
+        let mut result = RumpyArray::zeros(out_shape.clone(), DType::float64());
         let out_size = result.size();
         if out_size == 0 || axis_len == 0 {
             return result;
@@ -778,8 +875,8 @@ impl RumpyArray {
         let buffer = result.buffer_mut();
         let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
         let result_ptr = result_buffer.as_mut_ptr();
-        let dtype = self.dtype();
-        let ops = dtype.ops();
+        let result_dtype = DType::float64();
+        let result_ops = result_dtype.ops();
 
         let mut out_indices = vec![0usize; out_shape.len()];
         for i in 0..out_size {
@@ -789,18 +886,59 @@ impl RumpyArray {
                 in_indices.extend_from_slice(&out_indices[axis..]);
             }
 
-            let mut sum_sq = 0.0;
+            let mut sum_mk = 0.0;
             for j in 0..axis_len {
                 in_indices[axis] = j;
                 let diff = self.get_element(&in_indices) - mean_broadcast.get_element(&in_indices);
-                sum_sq += diff * diff;
+                sum_mk += diff.powi(k as i32);
             }
 
-            unsafe { ops.write_f64(result_ptr, i, sum_sq / axis_len as f64); }
+            unsafe { result_ops.write_f64(result_ptr, i, sum_mk / axis_len as f64); }
             increment_indices(&mut out_indices, &out_shape);
         }
 
         result
+    }
+
+    /// Skewness of all elements (Fisher's definition: m3 / m2^1.5).
+    pub fn skew(&self) -> f64 {
+        let m2 = self.moment(2);
+        let m3 = self.moment(3);
+        if m2 == 0.0 {
+            return 0.0;
+        }
+        m3 / m2.powf(1.5)
+    }
+
+    /// Skewness along axis.
+    pub fn skew_axis(&self, axis: usize) -> RumpyArray {
+        let m2 = self.moment_axis(2, axis);
+        let m3 = self.moment_axis(3, axis);
+        // m3 / m2^1.5
+        let m2_pow = map_unary_op(&m2, UnaryOp::Sqrt).expect("sqrt works");
+        let m2_pow = m2.binary_op(&m2_pow, BinaryOp::Mul).expect("broadcast works");
+        m3.binary_op(&m2_pow, BinaryOp::Div).expect("broadcast works")
+    }
+
+    /// Kurtosis of all elements (Fisher's definition: m4 / m2^2 - 3).
+    pub fn kurtosis(&self) -> f64 {
+        let m2 = self.moment(2);
+        let m4 = self.moment(4);
+        if m2 == 0.0 {
+            return 0.0;
+        }
+        m4 / (m2 * m2) - 3.0
+    }
+
+    /// Kurtosis along axis.
+    pub fn kurtosis_axis(&self, axis: usize) -> RumpyArray {
+        let m2 = self.moment_axis(2, axis);
+        let m4 = self.moment_axis(4, axis);
+        // m4 / m2^2 - 3
+        let m2_sq = m2.binary_op(&m2, BinaryOp::Mul).expect("broadcast works");
+        let ratio = m4.binary_op(&m2_sq, BinaryOp::Div).expect("broadcast works");
+        let three = RumpyArray::full(vec![1], 3.0, ratio.dtype());
+        ratio.binary_op(&three, BinaryOp::Sub).expect("broadcast works")
     }
 
     /// Standard deviation of all elements.

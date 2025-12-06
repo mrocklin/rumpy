@@ -776,6 +776,42 @@ impl PyRumpyArray {
         }
     }
 
+    /// Central moment of order k.
+    #[pyo3(signature = (k, axis=None, keepdims=false))]
+    fn moment(&self, k: usize, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.moment(k), keepdims, self.inner.dtype())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(axis_reduction_with_keepdims(self.inner.moment_axis(k, ax), ax, keepdims))
+            }
+        }
+    }
+
+    /// Skewness (Fisher's definition).
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn skew(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.skew(), keepdims, self.inner.dtype())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(axis_reduction_with_keepdims(self.inner.skew_axis(ax), ax, keepdims))
+            }
+        }
+    }
+
+    /// Kurtosis (Fisher's definition: excess kurtosis, normal = 0).
+    #[pyo3(signature = (axis=None, keepdims=false))]
+    fn kurtosis(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(scalar_reduction_with_keepdims(&self.inner, self.inner.kurtosis(), keepdims, self.inner.dtype())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(axis_reduction_with_keepdims(self.inner.kurtosis_axis(ax), ax, keepdims))
+            }
+        }
+    }
+
     #[pyo3(signature = (axis=None))]
     fn argmax(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
         match axis {
