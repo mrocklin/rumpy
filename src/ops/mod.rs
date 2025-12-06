@@ -565,6 +565,93 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
 // Type promotion uses crate::array::promote_dtype
 
 // ============================================================================
+// diff helper functions
+// ============================================================================
+
+/// Fast 1D contiguous diff using registry's Sub loop.
+/// result[i] = src[i+1] - src[i]
+#[inline]
+fn diff_1d_contiguous(src_ptr: *const u8, result_ptr: *mut u8, n: usize, dtype: &DType) {
+    let reg = registry().read().unwrap();
+    let itemsize = dtype.itemsize() as isize;
+
+    // Try to use registry's optimized Sub loop
+    if let Some((loop_fn, _)) = reg.lookup_binary(BinaryOp::Sub, dtype.kind(), dtype.kind()) {
+        // src[i+1] is at src_ptr + itemsize, src[i] is at src_ptr
+        // We want: out[i] = src[i+1] - src[i]
+        unsafe {
+            loop_fn(
+                src_ptr.offset(itemsize),  // a = src[i+1]
+                src_ptr,                    // b = src[i]
+                result_ptr,                 // out
+                n,
+                (itemsize, itemsize, itemsize),
+            );
+        }
+    } else {
+        // Fallback via DTypeOps
+        let ops = dtype.ops();
+        for i in 0..n {
+            unsafe {
+                let v1 = ops.read_f64(src_ptr, (i * dtype.itemsize()) as isize).unwrap_or(0.0);
+                let v2 = ops.read_f64(src_ptr, ((i + 1) * dtype.itemsize()) as isize).unwrap_or(0.0);
+                ops.write_f64(result_ptr, i, v2 - v1);
+            }
+        }
+    }
+}
+
+/// Strided diff for N-D arrays along arbitrary axis.
+/// Uses registry's Sub loop with strided access.
+fn diff_strided(
+    src: &RumpyArray,
+    result: &mut RumpyArray,
+    _axis: usize,
+    axis_stride: isize,
+    src_ptr: *const u8,
+    result_ptr: *mut u8,
+    _itemsize: usize,
+    dtype: &DType,
+) {
+    let out_shape = result.shape();
+    let out_size: usize = out_shape.iter().product();
+    let itemsize = dtype.itemsize() as isize;
+
+    let reg = registry().read().unwrap();
+    if let Some((loop_fn, _)) = reg.lookup_binary(BinaryOp::Sub, dtype.kind(), dtype.kind()) {
+        // For each position, call the loop for 1 element with appropriate strides
+        let mut out_indices = vec![0usize; src.ndim()];
+        for i in 0..out_size {
+            let offset1 = src.byte_offset_for(&out_indices);
+            unsafe {
+                loop_fn(
+                    src_ptr.offset(offset1 + axis_stride),  // a = src[idx+1]
+                    src_ptr.offset(offset1),                 // b = src[idx]
+                    result_ptr.offset(i as isize * itemsize), // out
+                    1,
+                    (0, 0, 0),  // strides don't matter for n=1
+                );
+            }
+            increment_indices(&mut out_indices, out_shape);
+        }
+    } else {
+        // Fallback via DTypeOps
+        let ops = dtype.ops();
+        let mut out_indices = vec![0usize; src.ndim()];
+        for i in 0..out_size {
+            let offset1 = src.byte_offset_for(&out_indices);
+            let offset2 = offset1 + axis_stride;
+            unsafe {
+                let v1 = ops.read_f64(src_ptr, offset1).unwrap_or(0.0);
+                let v2 = ops.read_f64(src_ptr, offset2).unwrap_or(0.0);
+                ops.write_f64(result_ptr, i, v2 - v1);
+            }
+            increment_indices(&mut out_indices, out_shape);
+        }
+    }
+}
+
+// ============================================================================
 // Public API using ufunc machinery
 // ============================================================================
 
@@ -1355,32 +1442,24 @@ impl RumpyArray {
         let dtype = self.dtype().clone();
         let mut result = RumpyArray::zeros(new_shape.clone(), dtype.clone());
 
-        // Iterate over all positions in output
         let out_size: usize = new_shape.iter().product();
         if out_size == 0 {
             return result;
         }
 
-        let ops = dtype.ops();
         let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
         let result_ptr = result_buffer.as_mut_ptr();
+        let src_ptr = self.data_ptr();
+        let axis_stride = self.strides()[axis];
+        let itemsize = dtype.itemsize();
 
-        let mut out_indices = vec![0usize; self.ndim()];
-        for _ in 0..out_size {
-            // Get value at out_indices and at out_indices with axis+1
-            let val1 = self.get_element(&out_indices);
-
-            let mut next_indices = out_indices.clone();
-            next_indices[axis] += 1;
-            let val2 = self.get_element(&next_indices);
-
-            let diff_val = val2 - val1;
-
-            let byte_offset = result.byte_offset_for(&out_indices);
-            let linear_idx = byte_offset as usize / dtype.itemsize();
-            unsafe { ops.write_f64(result_ptr, linear_idx, diff_val); }
-
-            increment_indices(&mut out_indices, &new_shape);
+        // Fast path for 1D contiguous case
+        if self.ndim() == 1 && self.is_c_contiguous() {
+            diff_1d_contiguous(src_ptr, result_ptr, out_size, &dtype);
+        } else {
+            // General strided case: iterate over output positions
+            // For each output position, compute src[i+1] - src[i] along axis
+            diff_strided(self, &mut result, axis, axis_stride, src_ptr, result_ptr, itemsize, &dtype);
         }
 
         // Apply recursively for n > 1

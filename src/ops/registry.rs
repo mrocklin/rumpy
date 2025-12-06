@@ -476,6 +476,9 @@ fn init_default_loops() -> UFuncRegistry {
             register_strided_unary!($reg, UnaryOp::Sin, $kind, $T, |v: $T| v.sin());
             register_strided_unary!($reg, UnaryOp::Cos, $kind, $T, |v: $T| v.cos());
             register_strided_unary!($reg, UnaryOp::Tan, $kind, $T, |v: $T| v.tan());
+            register_strided_unary!($reg, UnaryOp::Sinh, $kind, $T, |v: $T| v.sinh());
+            register_strided_unary!($reg, UnaryOp::Cosh, $kind, $T, |v: $T| v.cosh());
+            register_strided_unary!($reg, UnaryOp::Tanh, $kind, $T, |v: $T| v.tanh());
             register_strided_unary!($reg, UnaryOp::Arcsin, $kind, $T, |v: $T| v.asin());
             register_strided_unary!($reg, UnaryOp::Arccos, $kind, $T, |v: $T| v.acos());
             register_strided_unary!($reg, UnaryOp::Arctan, $kind, $T, |v: $T| v.atan());
@@ -514,6 +517,9 @@ fn init_default_loops() -> UFuncRegistry {
     register_f16_unary!(reg, UnaryOp::Sin, |v: f32| v.sin());
     register_f16_unary!(reg, UnaryOp::Cos, |v: f32| v.cos());
     register_f16_unary!(reg, UnaryOp::Tan, |v: f32| v.tan());
+    register_f16_unary!(reg, UnaryOp::Sinh, |v: f32| v.sinh());
+    register_f16_unary!(reg, UnaryOp::Cosh, |v: f32| v.cosh());
+    register_f16_unary!(reg, UnaryOp::Tanh, |v: f32| v.tanh());
     register_f16_unary!(reg, UnaryOp::Arcsin, |v: f32| v.asin());
     register_f16_unary!(reg, UnaryOp::Arccos, |v: f32| v.acos());
     register_f16_unary!(reg, UnaryOp::Arctan, |v: f32| v.atan());

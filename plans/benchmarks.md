@@ -51,12 +51,22 @@ python run.py --filter kalman              # Filter by name
 
 ## Performance Notes
 
-Current speedups are ~0.01-0.07x (rumpy is 10-100x slower). Contributing factors:
-1. Debug build (`maturin develop` without `--release`)
-2. No SIMD vectorization
-3. Python object allocation for intermediates
+**Release build results** (size=1M):
 
-For realistic performance comparison:
+| Category | Speedup Range | Highlights |
+|----------|---------------|------------|
+| Ufuncs | 0.4-1.0x | sigmoid 1.04x, swish 0.87x |
+| Statistics | 0.1-1.2x | cumsum 1.18x, diff 0.03x |
+| Signal | 0.03-0.6x | FFT ~0.5x, diff needs work |
+| Linalg | 0.2-0.9x | SVD 0.85x, norm 0.03x |
+| Simulation | 0.1-1.4x | laplacian 1.35x |
+
+**Wins** (>1x): cumsum, sigmoid, finite difference laplacian
+**Needs work**: diff (0.03x), norm (0.03x), gradient (0.03x)
+
+See `plans/performance.md` for detailed analysis and improvement plan.
+
+Build with release:
 ```bash
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop --release
 ```
