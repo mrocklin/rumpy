@@ -69,6 +69,24 @@ impl RumpyArray {
         arr.reshape(shape).unwrap_or(arr)
     }
 
+    /// Create array from slice of i64 values (1D, as Int64 dtype).
+    pub fn from_slice_i64(data: &[i64]) -> Self {
+        let n = data.len();
+        let mut arr = Self::zeros(vec![n], DType::int64());
+        if n == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+        let ops = arr.dtype.ops();
+
+        for (i, &v) in data.iter().enumerate() {
+            unsafe { ops.write_f64(ptr, i, v as f64); }
+        }
+        arr
+    }
+
     /// Create a new array filled with ones.
     pub fn ones(shape: Vec<usize>, dtype: DType) -> Self {
         let mut arr = Self::zeros(shape, dtype);
@@ -587,6 +605,27 @@ impl RumpyArray {
         new_strides.insert(axis, self.itemsize() as isize);
 
         Some(self.view_with(0, new_shape, new_strides))
+    }
+
+    /// Remove a single-dimensional axis at the given position.
+    /// Returns a view. If the axis doesn't have size 1, returns self unchanged.
+    pub fn squeeze_axis(&self, axis: usize) -> Self {
+        if axis >= self.ndim() || self.shape()[axis] != 1 {
+            return self.clone();
+        }
+
+        let mut new_shape = self.shape().to_vec();
+        let mut new_strides = self.strides().to_vec();
+
+        new_shape.remove(axis);
+        new_strides.remove(axis);
+
+        // Handle scalar case
+        if new_shape.is_empty() {
+            return self.view_with(0, vec![], vec![]);
+        }
+
+        self.view_with(0, new_shape, new_strides)
     }
 
     /// Extract core sub-array at loop_indices for gufunc operations.

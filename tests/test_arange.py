@@ -52,13 +52,13 @@ class TestIntegerIndexing:
     def test_1d_single_index(self):
         r = rp.arange(10)
         n = np.arange(10)
-        # Integer index returns array with shape [1]
-        assert_eq(r[5], n[5:6])
+        # Integer index reduces dimension (returns scalar or 0-d array)
+        assert_eq(r[5], n[5])
 
     def test_1d_negative_index(self):
         r = rp.arange(10)
         n = np.arange(10)
-        assert_eq(r[-1], n[-1:])
+        assert_eq(r[-1], n[-1])
 
     def test_2d_full_index(self):
         r = rp.arange(12).reshape(3, 4)
@@ -76,7 +76,7 @@ class TestIntegerIndexing:
         n = np.arange(12).reshape(3, 4)
         # Mixed: integer reduces dim, slice keeps it
         r_row = r[1, :]
-        n_row = n[1:2, :]
+        n_row = n[1, :]
         assert_eq(r_row, n_row)
 
 
