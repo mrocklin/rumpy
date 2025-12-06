@@ -274,6 +274,14 @@ impl DTypeOps for Complex128Ops {
         None
     }
 
+    unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
+        // Write real part only, zero imaginary
+        let complex_ptr = ptr.offset(byte_offset) as *mut [f64; 2];
+        (*complex_ptr)[0] = val;
+        (*complex_ptr)[1] = 0.0;
+        true
+    }
+
     unsafe fn write_complex(&self, ptr: *mut u8, idx: usize, real: f64, imag: f64) -> bool {
         Self::write(ptr, idx, real, imag);
         true

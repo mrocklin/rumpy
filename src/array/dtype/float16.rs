@@ -133,6 +133,11 @@ impl DTypeOps for Float16Ops {
         Some(Self::read(ptr, byte_offset).to_f64())
     }
 
+    unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
+        *(ptr.offset(byte_offset) as *mut f16) = f16::from_f64(val);
+        true
+    }
+
     unsafe fn write_complex(&self, ptr: *mut u8, idx: usize, real: f64, _imag: f64) -> bool {
         Self::write(ptr, idx, f16::from_f64(real));
         true

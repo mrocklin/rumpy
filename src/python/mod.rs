@@ -540,6 +540,41 @@ pub fn minimum(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpy
     apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Minimum)
 }
 
+#[pyfunction]
+pub fn add(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Add)
+}
+
+#[pyfunction]
+pub fn subtract(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Sub)
+}
+
+#[pyfunction]
+pub fn multiply(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Mul)
+}
+
+#[pyfunction]
+pub fn divide(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Div)
+}
+
+#[pyfunction]
+pub fn power(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Pow)
+}
+
+#[pyfunction]
+pub fn floor_divide(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::FloorDiv)
+}
+
+#[pyfunction]
+pub fn remainder(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Mod)
+}
+
 // Complex accessors
 
 #[pyfunction]
@@ -1193,6 +1228,13 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(abs, m)?)?;
     m.add_function(wrap_pyfunction!(maximum, m)?)?;
     m.add_function(wrap_pyfunction!(minimum, m)?)?;
+    m.add_function(wrap_pyfunction!(add, m)?)?;
+    m.add_function(wrap_pyfunction!(subtract, m)?)?;
+    m.add_function(wrap_pyfunction!(multiply, m)?)?;
+    m.add_function(wrap_pyfunction!(divide, m)?)?;
+    m.add_function(wrap_pyfunction!(power, m)?)?;
+    m.add_function(wrap_pyfunction!(floor_divide, m)?)?;
+    m.add_function(wrap_pyfunction!(remainder, m)?)?;
     m.add_function(wrap_pyfunction!(real, m)?)?;
     m.add_function(wrap_pyfunction!(imag, m)?)?;
     m.add_function(wrap_pyfunction!(conj, m)?)?;

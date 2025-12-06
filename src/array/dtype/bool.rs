@@ -110,6 +110,11 @@ impl DTypeOps for BoolOps {
         Some(if Self::read(ptr, byte_offset) { 1.0 } else { 0.0 })
     }
 
+    unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
+        *(ptr.offset(byte_offset)) = if val != 0.0 { 1 } else { 0 };
+        true
+    }
+
     unsafe fn write_complex(&self, ptr: *mut u8, idx: usize, real: f64, imag: f64) -> bool {
         Self::write(ptr, idx, real != 0.0 || imag != 0.0);
         true

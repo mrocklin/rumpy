@@ -149,3 +149,79 @@ class TestViewProperties:
         # Both point to same underlying data (can't test directly,
         # but strides should be recomputed for contiguous layout)
         assert r2.strides == (32, 8)
+
+
+class TestSetitem:
+    """Test slice assignment (__setitem__)."""
+
+    def test_setitem_scalar_to_slice(self):
+        """arr[2:5] = 0 should set elements to 0."""
+        r = rp.ones(10)
+        n = np.ones(10)
+        r[2:5] = 0
+        n[2:5] = 0
+        assert_eq(r, n)
+
+    def test_setitem_scalar_to_negative_slice(self):
+        """arr[2:-2] = 0 should set middle elements."""
+        r = rp.ones(10)
+        n = np.ones(10)
+        r[2:-2] = 0
+        n[2:-2] = 0
+        assert_eq(r, n)
+
+    def test_setitem_scalar_to_stepped_slice(self):
+        """arr[::2] = 0 should set every other element."""
+        r = rp.ones(10)
+        n = np.ones(10)
+        r[::2] = 0
+        n[::2] = 0
+        assert_eq(r, n)
+
+    def test_setitem_array_to_slice(self):
+        """arr[2:5] = [7, 8, 9] should work."""
+        r = rp.ones(10)
+        n = np.ones(10)
+        r[2:5] = rp.array([7.0, 8.0, 9.0])
+        n[2:5] = np.array([7.0, 8.0, 9.0])
+        assert_eq(r, n)
+
+    def test_setitem_2d_row(self):
+        """arr[1, :] = 0 should set an entire row."""
+        r = rp.ones((3, 4))
+        n = np.ones((3, 4))
+        r[1, :] = 0
+        n[1, :] = 0
+        assert_eq(r, n)
+
+    def test_setitem_2d_col(self):
+        """arr[:, 2] = 0 should set an entire column."""
+        r = rp.ones((3, 4))
+        n = np.ones((3, 4))
+        r[:, 2] = 0
+        n[:, 2] = 0
+        assert_eq(r, n)
+
+    def test_setitem_2d_subarray(self):
+        """arr[1:3, 1:3] = 0 should set a 2x2 block."""
+        r = rp.ones((4, 4))
+        n = np.ones((4, 4))
+        r[1:3, 1:3] = 0
+        n[1:3, 1:3] = 0
+        assert_eq(r, n)
+
+    def test_setitem_single_element(self):
+        """arr[3] = 99 should set single element."""
+        r = rp.ones(10)
+        n = np.ones(10)
+        r[3] = 99.0
+        n[3] = 99.0
+        assert_eq(r, n)
+
+    def test_setitem_single_element_2d(self):
+        """arr[1, 2] = 99 should set single element in 2D array."""
+        r = rp.ones((3, 4))
+        n = np.ones((3, 4))
+        r[1, 2] = 99.0
+        n[1, 2] = 99.0
+        assert_eq(r, n)

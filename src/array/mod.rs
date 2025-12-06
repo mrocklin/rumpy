@@ -382,6 +382,20 @@ impl RumpyArray {
         unsafe { self.dtype.ops().read_complex(ptr, byte_offset).unwrap_or((0.0, 0.0)) }
     }
 
+    /// Set single element by indices.
+    pub fn set_element(&mut self, indices: &[usize], value: f64) {
+        assert_eq!(indices.len(), self.ndim(), "wrong number of indices");
+        for (i, &idx) in indices.iter().enumerate() {
+            assert!(idx < self.shape[i], "index out of bounds");
+        }
+        let byte_offset = self.byte_offset_for(indices);
+        let ptr = self.data_ptr() as *mut u8;
+        unsafe {
+            // Write directly using byte offset (handles strided arrays)
+            self.dtype.ops().write_f64_at_byte_offset(ptr, byte_offset, value);
+        }
+    }
+
     /// Compute byte offset for given indices (relative to data_ptr, not buffer start).
     pub fn byte_offset_for(&self, indices: &[usize]) -> isize {
         let mut byte_offset: isize = 0;

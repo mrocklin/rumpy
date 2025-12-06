@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PySlice, PyTuple};
+use pyo3::types::{PyDict, PyList, PySlice, PyString, PyTuple};
 
 use crate::array::{DType, RumpyArray};
 use crate::ops::matmul::matmul;
@@ -232,6 +232,54 @@ impl PyRumpyArray {
         Ok(dict)
     }
 
+    /// NumPy ufunc protocol - tells numpy to defer operations to us.
+    /// This makes `np.float64(2.0) * rp.array([1,2,3])` return a rumpy array.
+    #[pyo3(signature = (ufunc, method, *inputs, **kwargs))]
+    fn __array_ufunc__<'py>(
+        &self,
+        py: Python<'py>,
+        ufunc: &Bound<'py, PyAny>,
+        method: &Bound<'py, PyString>,
+        inputs: &Bound<'py, PyTuple>,
+        kwargs: Option<&Bound<'py, PyDict>>,
+    ) -> PyResult<PyObject> {
+        // Only handle __call__ method
+        let method_str: String = method.extract()?;
+        if method_str != "__call__" {
+            return Ok(py.NotImplemented().into());
+        }
+
+        // Check for 'out' kwarg - we don't support it yet
+        if let Some(kw) = kwargs {
+            if kw.contains("out")? {
+                return Ok(py.NotImplemented().into());
+            }
+        }
+
+        // Get ufunc name and look up corresponding function in rumpy module
+        let ufunc_name: String = ufunc.getattr("__name__")?.extract()?;
+
+        // Map numpy names to rumpy names where they differ
+        let rumpy_name = match ufunc_name.as_str() {
+            "true_divide" => "divide",
+            "absolute" => "abs",
+            "negative" => "negative",
+            name => name,
+        };
+
+        let rumpy_module = py.import("rumpy")?;
+        let our_func = match rumpy_module.getattr(rumpy_name) {
+            Ok(f) => f,
+            Err(_) => return Ok(py.NotImplemented().into()),
+        };
+
+        // Call our function with the inputs
+        match kwargs {
+            Some(kw) => our_func.call(inputs, Some(kw)),
+            None => our_func.call1(inputs),
+        }.map(|r| r.unbind())
+    }
+
     fn __repr__(&self) -> String {
         self.inner.format_repr()
     }
@@ -335,6 +383,99 @@ impl PyRumpyArray {
             let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
             let result = self.inner.slice_axis(0, start, stop, step);
             return Ok(Self::new(result).into_pyobject(py)?.into_any().unbind());
+        }
+
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "indices must be integers or slices",
+        ))
+    }
+
+    /// Item assignment (slice or element).
+    fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        // Extract value as scalar or array
+        let value_scalar = value.extract::<f64>().ok();
+        let value_array = value.extract::<PyRef<'_, PyRumpyArray>>().ok();
+
+        // Handle tuple for multi-dimensional indexing
+        if let Ok(tuple) = key.downcast::<PyTuple>() {
+            // Check if all indices are integers (single element assignment)
+            let all_ints = tuple.iter().all(|item| item.extract::<isize>().is_ok());
+
+            if all_ints && tuple.len() == self.inner.ndim() {
+                // Single element assignment
+                let indices: Vec<usize> = tuple
+                    .iter()
+                    .enumerate()
+                    .map(|(axis, item)| {
+                        let idx: isize = item.extract().unwrap();
+                        normalize_index(idx, self.inner.shape()[axis])
+                    })
+                    .collect();
+
+                if let Some(scalar) = value_scalar {
+                    self.inner.set_element(&indices, scalar);
+                    return Ok(());
+                } else {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "can only assign scalar to single element",
+                    ));
+                }
+            }
+
+            // Slice assignment - get view and fill
+            let mut view = self.inner.clone();
+            let mut axis = 0usize;
+
+            for item in tuple.iter() {
+                if axis >= view.ndim() {
+                    return Err(pyo3::exceptions::PyIndexError::new_err(
+                        "too many indices for array",
+                    ));
+                }
+                if let Ok(idx) = item.extract::<isize>() {
+                    let idx = normalize_index(idx, view.shape()[axis]);
+                    view = view.slice_axis(axis, idx as isize, idx as isize + 1, 1);
+                    axis += 1;
+                } else if let Ok(slice) = item.downcast::<PySlice>() {
+                    let (start, stop, step) = extract_slice_indices(&slice, view.shape()[axis])?;
+                    view = view.slice_axis(axis, start, stop, step);
+                    axis += 1;
+                } else {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "indices must be integers or slices",
+                    ));
+                }
+            }
+
+            return fill_view(&mut view, value_scalar, value_array.as_deref());
+        }
+
+        // Handle single integer index (row assignment for 2D+, or single element for 1D)
+        if let Ok(idx) = key.extract::<isize>() {
+            let idx = normalize_index(idx, self.inner.shape()[0]);
+
+            if self.inner.ndim() == 1 {
+                // Single element in 1D array
+                if let Some(scalar) = value_scalar {
+                    self.inner.set_element(&[idx], scalar);
+                    return Ok(());
+                } else {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "can only assign scalar to single element",
+                    ));
+                }
+            } else {
+                // Row/slice assignment
+                let mut view = self.inner.slice_axis(0, idx as isize, idx as isize + 1, 1);
+                return fill_view(&mut view, value_scalar, value_array.as_deref());
+            }
+        }
+
+        // Handle single slice
+        if let Ok(slice) = key.downcast::<PySlice>() {
+            let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
+            let mut view = self.inner.slice_axis(0, start, stop, step);
+            return fill_view(&mut view, value_scalar, value_array.as_deref());
         }
 
         Err(pyo3::exceptions::PyTypeError::new_err(
@@ -794,6 +935,45 @@ fn normalize_index(idx: isize, len: usize) -> usize {
         (len as isize + idx) as usize
     } else {
         idx as usize
+    }
+}
+
+/// Fill a view with a scalar or array value.
+fn fill_view(
+    view: &mut RumpyArray,
+    scalar: Option<f64>,
+    array: Option<&PyRumpyArray>,
+) -> PyResult<()> {
+    use crate::array::increment_indices;
+
+    if let Some(val) = scalar {
+        // Fill with scalar
+        let mut indices = vec![0usize; view.ndim()];
+        let shape = view.shape().to_vec();
+        for _ in 0..view.size() {
+            view.set_element(&indices, val);
+            increment_indices(&mut indices, &shape);
+        }
+        Ok(())
+    } else if let Some(src) = array {
+        // Copy from array (shapes must match)
+        if view.shape() != src.inner.shape() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "could not broadcast input array to shape",
+            ));
+        }
+        let mut indices = vec![0usize; view.ndim()];
+        let shape = view.shape().to_vec();
+        for _ in 0..view.size() {
+            let val = src.inner.get_element(&indices);
+            view.set_element(&indices, val);
+            increment_indices(&mut indices, &shape);
+        }
+        Ok(())
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "value must be a number or array",
+        ))
     }
 }
 

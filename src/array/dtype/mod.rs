@@ -214,6 +214,16 @@ pub trait DTypeOps: Send + Sync + 'static {
         None
     }
 
+    /// Write f64 at a given byte offset (for strided array access).
+    /// Returns false if this dtype doesn't support f64 conversion.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
+        let _ = (ptr, byte_offset, val);
+        false
+    }
+
     /// Write a complex value (real, imag) at element index.
     /// Returns false if this dtype doesn't support complex conversion.
     ///

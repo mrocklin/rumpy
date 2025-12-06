@@ -727,3 +727,40 @@ class TestScalarUfuncs:
         assert rp.sign(-5.0) == np.sign(-5.0)
         assert rp.sign(5.0) == np.sign(5.0)
         assert rp.sign(0.0) == np.sign(0.0)
+
+
+class TestArrayUfunc:
+    """Test __array_ufunc__ - numpy should defer to rumpy."""
+
+    def test_numpy_float64_times_rumpy_array(self):
+        """np.float64 * rp.array should return rumpy array."""
+        x = rp.array([1.0, 2.0, 3.0])
+        scalar = np.float64(2.0)
+        result = scalar * x
+        assert isinstance(result, rp.ndarray), f"Expected rp.ndarray, got {type(result)}"
+        assert_eq(result, np.array([2.0, 4.0, 6.0]))
+
+    def test_numpy_sqrt_times_rumpy_array(self):
+        """np.sqrt(2) * rp.array should return rumpy array."""
+        x = rp.array([1.0, 2.0, 3.0])
+        scalar = np.sqrt(2.0)  # Returns numpy.float64
+        result = scalar * x
+        assert isinstance(result, rp.ndarray), f"Expected rp.ndarray, got {type(result)}"
+        expected = np.sqrt(2.0) * np.array([1.0, 2.0, 3.0])
+        assert_eq(result, expected)
+
+    def test_gelu_pattern(self):
+        """GELU-like pattern with numpy.float64 * rumpy array."""
+        x = rp.array([0.0, 1.0, 2.0])
+        sqrt_2_pi = np.sqrt(2.0 / np.pi)  # numpy.float64
+        result = sqrt_2_pi * x
+        assert isinstance(result, rp.ndarray), f"Expected rp.ndarray, got {type(result)}"
+        expected = sqrt_2_pi * np.array([0.0, 1.0, 2.0])
+        assert_eq(result, expected)
+
+    def test_numpy_add_defers(self):
+        """np.add(np.float64, rp.array) should return rumpy array."""
+        x = rp.array([1.0, 2.0, 3.0])
+        result = np.add(np.float64(10.0), x)
+        assert isinstance(result, rp.ndarray), f"Expected rp.ndarray, got {type(result)}"
+        assert_eq(result, np.array([11.0, 12.0, 13.0]))
