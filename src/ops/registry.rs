@@ -4,6 +4,7 @@
 //! then fallback to DTypeOps trait methods.
 
 use crate::array::dtype::{BinaryOp, DTypeKind, ReduceOp, UnaryOp};
+use crate::ops::ComparisonOp;
 use half::f16;
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
@@ -93,6 +94,18 @@ pub type ReduceLoopFn = unsafe fn(
     stride: isize,         // Byte stride between elements
 );
 
+/// Comparison loop function - compares two arrays, outputs bool.
+///
+/// # Safety
+/// Caller must ensure pointers are valid for `n` elements with given strides.
+pub type CompareLoopFn = unsafe fn(
+    a_ptr: *const u8,
+    b_ptr: *const u8,
+    out_ptr: *mut u8,
+    n: usize,
+    strides: (isize, isize, isize),  // (a_stride, b_stride, out_stride)
+);
+
 /// Registry for ufunc inner loops.
 pub struct UFuncRegistry {
     binary_loops: HashMap<(BinaryOp, TypeSignature), BinaryLoopFn>,
@@ -100,6 +113,8 @@ pub struct UFuncRegistry {
     reduce_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceAccFn)>,
     /// Strided reduction loops for axis reductions (fast path)
     reduce_strided_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceLoopFn)>,
+    /// Comparison loops (output is always bool)
+    compare_loops: HashMap<(ComparisonOp, DTypeKind), CompareLoopFn>,
 }
 
 impl UFuncRegistry {
@@ -109,6 +124,7 @@ impl UFuncRegistry {
             unary_loops: HashMap::new(),
             reduce_loops: HashMap::new(),
             reduce_strided_loops: HashMap::new(),
+            compare_loops: HashMap::new(),
         }
     }
 
@@ -188,6 +204,16 @@ impl UFuncRegistry {
     ) -> Option<(ReduceInitFn, ReduceLoopFn, DTypeKind)> {
         let sig = TypeSignature::reduce(input.clone(), input.clone());
         self.reduce_strided_loops.get(&(op, sig)).map(|&(init, loop_fn)| (init, loop_fn, input))
+    }
+
+    /// Register a comparison loop for a specific operation and input dtype.
+    pub fn register_compare(&mut self, op: ComparisonOp, input: DTypeKind, f: CompareLoopFn) {
+        self.compare_loops.insert((op, input), f);
+    }
+
+    /// Look up a comparison loop. Returns None if no registered loop exists.
+    pub fn lookup_compare(&self, op: ComparisonOp, input: DTypeKind) -> Option<CompareLoopFn> {
+        self.compare_loops.get(&(op, input)).copied()
     }
 }
 
@@ -969,6 +995,66 @@ fn init_default_loops() -> UFuncRegistry {
     register_strided_reduce_int!(reg, DTypeKind::Uint32, u32);
     register_strided_reduce_int!(reg, DTypeKind::Uint16, u16);
     register_strided_reduce_int!(reg, DTypeKind::Uint8, u8);
+
+    // ========================================================================
+    // Comparison loops
+    // ========================================================================
+
+    macro_rules! register_compare {
+        ($reg:expr, $op:expr, $kind:expr, $T:ty, $cmp:tt) => {
+            $reg.register_compare(
+                $op,
+                $kind.clone(),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    let (sa, sb, so) = strides;
+                    if sa == itemsize && sb == itemsize && so == 1 {
+                        // Contiguous fast path
+                        let a = std::slice::from_raw_parts(a_ptr as *const $T, n);
+                        let b = std::slice::from_raw_parts(b_ptr as *const $T, n);
+                        let out = std::slice::from_raw_parts_mut(out_ptr, n);
+                        for i in 0..n {
+                            out[i] = if a[i] $cmp b[i] { 1 } else { 0 };
+                        }
+                    } else {
+                        // Strided path
+                        let mut ap = a_ptr;
+                        let mut bp = b_ptr;
+                        let mut op = out_ptr;
+                        for _ in 0..n {
+                            let a = *(ap as *const $T);
+                            let b = *(bp as *const $T);
+                            *op = if a $cmp b { 1 } else { 0 };
+                            ap = ap.offset(sa);
+                            bp = bp.offset(sb);
+                            op = op.offset(so);
+                        }
+                    }
+                },
+            );
+        };
+    }
+
+    macro_rules! register_all_compare {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            register_compare!($reg, ComparisonOp::Gt, $kind, $T, >);
+            register_compare!($reg, ComparisonOp::Lt, $kind, $T, <);
+            register_compare!($reg, ComparisonOp::Ge, $kind, $T, >=);
+            register_compare!($reg, ComparisonOp::Le, $kind, $T, <=);
+            register_compare!($reg, ComparisonOp::Eq, $kind, $T, ==);
+            register_compare!($reg, ComparisonOp::Ne, $kind, $T, !=);
+        };
+    }
+
+    register_all_compare!(reg, DTypeKind::Float64, f64);
+    register_all_compare!(reg, DTypeKind::Float32, f32);
+    register_all_compare!(reg, DTypeKind::Int64, i64);
+    register_all_compare!(reg, DTypeKind::Int32, i32);
+    register_all_compare!(reg, DTypeKind::Int16, i16);
+    register_all_compare!(reg, DTypeKind::Uint64, u64);
+    register_all_compare!(reg, DTypeKind::Uint32, u32);
+    register_all_compare!(reg, DTypeKind::Uint16, u16);
+    register_all_compare!(reg, DTypeKind::Uint8, u8);
 
     reg
 }

@@ -37,7 +37,7 @@ pub enum UnaryOpError {
 }
 
 /// Comparison operation types.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComparisonOp {
     Gt,  // >
     Lt,  // <
@@ -427,13 +427,18 @@ pub fn map_binary_op_inplace(
 
 /// Apply a comparison function element-wise, returning bool array.
 /// Note: comparison still uses f64 for now, since ordering on complex is tricky.
-fn map_compare<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
-where
-    F: Fn(f64, f64) -> bool,
-{
+fn map_compare_op(a: &RumpyArray, b: &RumpyArray, op: ComparisonOp) -> Option<RumpyArray> {
+    use crate::array::promote_dtype;
+
     let out_shape = broadcast_shapes(a.shape(), b.shape())?;
-    let a = a.broadcast_to(&out_shape)?;
-    let b = b.broadcast_to(&out_shape)?;
+
+    // Promote to common dtype for comparison (like binary ops)
+    let common_dtype = promote_dtype(&a.dtype(), &b.dtype());
+    let a_promoted = if a.dtype() != common_dtype { a.astype(common_dtype.clone()) } else { a.clone() };
+    let b_promoted = if b.dtype() != common_dtype { b.astype(common_dtype.clone()) } else { b.clone() };
+
+    let a_bc = a_promoted.broadcast_to(&out_shape)?;
+    let b_bc = b_promoted.broadcast_to(&out_shape)?;
 
     let mut result = RumpyArray::zeros(out_shape.clone(), DType::bool());
     let size = result.size();
@@ -444,13 +449,46 @@ where
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
-    let dtype = result.dtype();
-    let ops = dtype.ops();
+    let a_ptr = a_bc.data_ptr();
+    let b_ptr = b_bc.data_ptr();
+    let common_kind = common_dtype.kind();
+
+    // Try registry for typed comparison loops (fast path for contiguous arrays)
+    {
+        let reg = registry().read().unwrap();
+        if let Some(loop_fn) = reg.lookup_compare(op, common_kind) {
+            let itemsize = common_dtype.itemsize() as isize;
+            let a_contig = a_bc.is_c_contiguous();
+            let b_contig = b_bc.is_c_contiguous();
+            let a_same_shape = a_promoted.shape() == out_shape.as_slice();
+            let b_same_shape = b_promoted.shape() == out_shape.as_slice();
+            let b_is_scalar = b_promoted.size() == 1;
+
+            // Fast path: contiguous a, and b is either contiguous same-shape or scalar
+            let b_ok = (b_same_shape && b_contig) || b_is_scalar;
+            if a_contig && a_same_shape && b_ok {
+                let b_stride = if b_is_scalar { 0 } else { itemsize };
+                unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, (itemsize, b_stride, 1)); }
+                return Some(result);
+            }
+            // Non-contiguous falls through to generic path below
+        }
+    }
+
+    // Generic path: works for any dtype/stride combination via get_element
+    let f: fn(f64, f64) -> bool = match op {
+        ComparisonOp::Gt => |a, b| a > b,
+        ComparisonOp::Lt => |a, b| a < b,
+        ComparisonOp::Ge => |a, b| a >= b,
+        ComparisonOp::Le => |a, b| a <= b,
+        ComparisonOp::Eq => |a, b| a == b,
+        ComparisonOp::Ne => |a, b| a != b,
+    };
 
     let mut indices = vec![0usize; out_shape.len()];
     for i in 0..size {
-        let val = if f(a.get_element(&indices), b.get_element(&indices)) { 1.0 } else { 0.0 };
-        unsafe { ops.write_f64(result_ptr, i, val); }
+        let cmp_result = f(a_bc.get_element(&indices), b_bc.get_element(&indices));
+        unsafe { *result_ptr.add(i) = if cmp_result { 1 } else { 0 }; }
         increment_indices(&mut indices, &out_shape);
     }
     Some(result)
@@ -466,10 +504,23 @@ fn reduce_all_op(arr: &RumpyArray, op: ReduceOp) -> RumpyArray {
     let result_ptr = result_buffer.as_mut_ptr();
     let dtype = arr.dtype();
     let kind = dtype.kind();
+    let itemsize = dtype.itemsize() as isize;
 
-    // Try registry first
+    // Try strided loops first (SIMD-optimized for contiguous arrays)
     {
         let reg = registry().read().unwrap();
+        if arr.is_c_contiguous() {
+            if let Some((init_fn, loop_fn, _)) = reg.lookup_reduce_strided(op, kind.clone()) {
+                unsafe { init_fn(result_ptr, 0); }
+                if size == 0 {
+                    return result;
+                }
+                unsafe { loop_fn(result_ptr, arr.data_ptr(), size, itemsize); }
+                return result;
+            }
+        }
+
+        // Per-element path (for non-contiguous or missing strided loop)
         if let Some((init_fn, acc_fn, _)) = reg.lookup_reduce(op, kind.clone()) {
             unsafe { init_fn(result_ptr, 0); }
             if size == 0 {
@@ -672,15 +723,7 @@ impl RumpyArray {
 
     /// Element-wise comparison with broadcasting.
     pub fn compare(&self, other: &RumpyArray, op: ComparisonOp) -> Option<RumpyArray> {
-        let f: fn(f64, f64) -> bool = match op {
-            ComparisonOp::Gt => |a, b| a > b,
-            ComparisonOp::Lt => |a, b| a < b,
-            ComparisonOp::Ge => |a, b| a >= b,
-            ComparisonOp::Le => |a, b| a <= b,
-            ComparisonOp::Eq => |a, b| a == b,
-            ComparisonOp::Ne => |a, b| a != b,
-        };
-        map_compare(self, other, f)
+        map_compare_op(self, other, op)
     }
 
     /// Scalar comparison (arr op scalar).
