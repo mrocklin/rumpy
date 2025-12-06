@@ -91,7 +91,7 @@ fn resolve_reshape_shape(shape: Vec<isize>, size: usize) -> PyResult<Vec<usize>>
                 "cannot reshape with zero-sized known dimensions and -1",
             ));
         }
-        if size % known_product != 0 {
+        if !size.is_multiple_of(known_product) {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "cannot reshape array: size not divisible",
             ));
@@ -258,13 +258,13 @@ impl PyRumpyArray {
         // Only handle __call__ method
         let method_str: String = method.extract()?;
         if method_str != "__call__" {
-            return Ok(py.NotImplemented().into());
+            return Ok(py.NotImplemented());
         }
 
         // Check for 'out' kwarg - we don't support it yet
         if let Some(kw) = kwargs {
             if kw.contains("out")? {
-                return Ok(py.NotImplemented().into());
+                return Ok(py.NotImplemented());
             }
         }
 
@@ -282,7 +282,7 @@ impl PyRumpyArray {
         let rumpy_module = py.import("rumpy")?;
         let our_func = match rumpy_module.getattr(rumpy_name) {
             Ok(f) => f,
-            Err(_) => return Ok(py.NotImplemented().into()),
+            Err(_) => return Ok(py.NotImplemented()),
         };
 
         // Call our function with the inputs
@@ -371,7 +371,7 @@ impl PyRumpyArray {
                     result = result.slice_axis(axis, idx as isize, idx as isize + 1, 1);
                     axis += 1;
                 } else if let Ok(slice) = item.downcast::<PySlice>() {
-                    let (start, stop, step) = extract_slice_indices(&slice, result.shape()[axis])?;
+                    let (start, stop, step) = extract_slice_indices(slice, result.shape()[axis])?;
                     result = result.slice_axis(axis, start, stop, step);
                     axis += 1;
                 } else {
@@ -392,7 +392,7 @@ impl PyRumpyArray {
 
         // Handle single slice
         if let Ok(slice) = key.downcast::<PySlice>() {
-            let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
+            let (start, stop, step) = extract_slice_indices(slice, self.inner.shape()[0])?;
             let result = self.inner.slice_axis(0, start, stop, step);
             return Ok(Self::new(result).into_pyobject(py)?.into_any().unbind());
         }
@@ -449,7 +449,7 @@ impl PyRumpyArray {
                     view = view.slice_axis(axis, idx as isize, idx as isize + 1, 1);
                     axis += 1;
                 } else if let Ok(slice) = item.downcast::<PySlice>() {
-                    let (start, stop, step) = extract_slice_indices(&slice, view.shape()[axis])?;
+                    let (start, stop, step) = extract_slice_indices(slice, view.shape()[axis])?;
                     view = view.slice_axis(axis, start, stop, step);
                     axis += 1;
                 } else {
@@ -485,7 +485,7 @@ impl PyRumpyArray {
 
         // Handle single slice
         if let Ok(slice) = key.downcast::<PySlice>() {
-            let (start, stop, step) = extract_slice_indices(&slice, self.inner.shape()[0])?;
+            let (start, stop, step) = extract_slice_indices(slice, self.inner.shape()[0])?;
             let mut view = self.inner.slice_axis(0, start, stop, step);
             return fill_view(&mut view, value_scalar, value_array.as_deref());
         }
@@ -965,7 +965,7 @@ impl PyRumpyArray {
 
 /// Parse dtype string to DType enum.
 pub fn parse_dtype(s: &str) -> PyResult<DType> {
-    DType::from_str(s).ok_or_else(|| {
+    DType::parse(s).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err(format!("Unknown dtype: {}", s))
     })
 }
@@ -976,7 +976,7 @@ fn extract_slice_indices(
     length: usize,
 ) -> PyResult<(isize, isize, isize)> {
     let indices = slice.indices(length as isize)?;
-    Ok((indices.start as isize, indices.stop as isize, indices.step as isize))
+    Ok((indices.start, indices.stop, indices.step))
 }
 
 /// Normalize a negative index to positive.

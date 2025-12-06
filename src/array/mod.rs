@@ -205,9 +205,7 @@ impl RumpyArray {
         // Compute new length
         let new_len = if step > 0 {
             if stop > start { (stop - start + step - 1) / step } else { 0 }
-        } else {
-            if start > stop { (start - stop - step - 1) / (-step) } else { 0 }
-        };
+        } else if start > stop { (start - stop - step - 1) / (-step) } else { 0 };
         let new_len = new_len.max(0) as usize;
 
         // Compute offset delta (bytes to skip to reach start element)
@@ -666,10 +664,7 @@ impl RumpyArray {
         let data = self.format_data(", ", truncate, edgeitems, 7); // 7 = len("array([")
 
         // Determine if dtype suffix is needed
-        let needs_dtype = match self.dtype.kind() {
-            DTypeKind::Int64 | DTypeKind::Float64 | DTypeKind::Bool => false,
-            _ => true,
-        };
+        let needs_dtype = !matches!(self.dtype.kind(), DTypeKind::Int64 | DTypeKind::Float64 | DTypeKind::Bool);
 
         // Show shape for truncated arrays (numpy shows shape for any truncated array)
         let show_shape = truncate;
@@ -1005,7 +1000,7 @@ pub fn split(arr: &RumpyArray, num_sections: usize, axis: usize) -> Option<Vec<R
     }
 
     let axis_len = arr.shape()[axis];
-    if axis_len % num_sections != 0 {
+    if !axis_len.is_multiple_of(num_sections) {
         return None; // Must divide evenly
     }
 

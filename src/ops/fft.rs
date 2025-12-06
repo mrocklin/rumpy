@@ -271,7 +271,7 @@ pub fn ifftshift(arr: &RumpyArray) -> Option<RumpyArray> {
     if ndim == 0 || ndim > 2 {
         return None;
     }
-    let shifts: Vec<usize> = arr.shape().iter().map(|&n| (n + 1) / 2).collect();
+    let shifts: Vec<usize> = arr.shape().iter().map(|&n| n.div_ceil(2)).collect();
     Some(shift_array(arr, &shifts))
 }
 
@@ -283,7 +283,7 @@ pub fn fftfreq(n: usize, d: f64) -> RumpyArray {
     let ptr = data.as_mut_ptr() as *mut f64;
 
     let val = 1.0 / (n as f64 * d);
-    let mid = (n + 1) / 2;
+    let mid = n.div_ceil(2);
 
     for i in 0..mid {
         unsafe { *ptr.add(i) = i as f64 * val; }

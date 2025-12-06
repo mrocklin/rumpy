@@ -1,5 +1,7 @@
 //! Element-wise operations (ufunc-style).
 
+#![allow(clippy::new_without_default)]
+
 pub mod dot;
 pub mod fft;
 pub mod gufunc;

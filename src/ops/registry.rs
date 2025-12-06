@@ -320,9 +320,9 @@ fn init_default_loops() -> UFuncRegistry {
             let mut bp = b_ptr;
             let mut op = out_ptr;
             for _ in 0..n {
-                let a = *(ap as *const u8) != 0;
-                let b = *(bp as *const u8) != 0;
-                *(op as *mut u8) = (a || b) as u8;
+                let a = *ap != 0;
+                let b = *bp != 0;
+                *op = (a || b) as u8;
                 ap = ap.offset(sa);
                 bp = bp.offset(sb);
                 op = op.offset(so);
@@ -338,9 +338,9 @@ fn init_default_loops() -> UFuncRegistry {
             let mut bp = b_ptr;
             let mut op = out_ptr;
             for _ in 0..n {
-                let a = *(ap as *const u8) != 0;
-                let b = *(bp as *const u8) != 0;
-                *(op as *mut u8) = (a && b) as u8;
+                let a = *ap != 0;
+                let b = *bp != 0;
+                *op = (a && b) as u8;
                 ap = ap.offset(sa);
                 bp = bp.offset(sb);
                 op = op.offset(so);
@@ -718,20 +718,20 @@ fn init_default_loops() -> UFuncRegistry {
     reg.register_reduce(
         ReduceOp::Sum,
         TypeSignature::reduce(DTypeKind::Bool, DTypeKind::Bool),
-        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = 0; },
+        |out_ptr, idx| unsafe { *out_ptr.add(idx) = 0; },
         |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut u8).add(idx);
-            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            let acc = acc_ptr.add(idx);
+            let v = *val_ptr.offset(byte_offset);
             if v != 0 { *acc = 1; }
         },
     );
     reg.register_reduce(
         ReduceOp::Prod,
         TypeSignature::reduce(DTypeKind::Bool, DTypeKind::Bool),
-        |out_ptr, idx| unsafe { *(out_ptr as *mut u8).add(idx) = 1; },
+        |out_ptr, idx| unsafe { *out_ptr.add(idx) = 1; },
         |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut u8).add(idx);
-            let v = *(val_ptr.offset(byte_offset) as *const u8);
+            let acc = acc_ptr.add(idx);
+            let v = *val_ptr.offset(byte_offset);
             if v == 0 { *acc = 0; }
         },
     );

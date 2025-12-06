@@ -93,7 +93,7 @@ pub fn det(a: &RumpyArray) -> Option<f64> {
     }
 
     // Sign from permutation
-    let sign = if plu.transposition_count() % 2 == 0 {
+    let sign = if plu.transposition_count().is_multiple_of(2) {
         1.0
     } else {
         -1.0

@@ -288,7 +288,7 @@ fn flatten_nested_list(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<f6
 
     for item in list.iter() {
         if let Ok(sublist) = item.downcast::<PyList>() {
-            let (sub_shape, sub_data) = flatten_nested_list(&sublist)?;
+            let (sub_shape, sub_data) = flatten_nested_list(sublist)?;
             if shape.len() == 1 {
                 shape.extend(sub_shape);
             }

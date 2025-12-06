@@ -5,6 +5,8 @@
 //! Operations work directly on buffers - each dtype uses its native type internally.
 //! There is no universal Rust value type; Python interop (PyObject) is handled separately.
 
+#![allow(clippy::too_many_arguments)]
+
 mod macros;
 mod floats;
 mod integers;
@@ -25,6 +27,7 @@ use integers::{Int16Ops, Int32Ops, Int64Ops, Uint8Ops, Uint16Ops, Uint32Ops, Uin
 
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
 /// Identifies the kind of dtype for equality/hashing.
 /// Parametric types include their parameters.
@@ -301,26 +304,34 @@ impl DType {
     pub fn format_char(&self) -> &'static str { self.0.format_char() }
 
     /// Parse dtype from string (numpy-style).
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
+        s.parse().ok()
+    }
+}
+
+impl FromStr for DType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "float16" | "f2" | "<f2" => Some(Self::float16()),
-            "float32" | "f4" | "<f4" => Some(Self::float32()),
-            "float64" | "f8" | "<f8" | "float" => Some(Self::float64()),
-            "int16" | "i2" | "<i2" => Some(Self::int16()),
-            "int32" | "i4" | "<i4" => Some(Self::int32()),
-            "int64" | "i8" | "<i8" | "int" => Some(Self::int64()),
-            "uint8" | "u1" | "|u1" => Some(Self::uint8()),
-            "uint16" | "u2" | "<u2" => Some(Self::uint16()),
-            "uint32" | "u4" | "<u4" => Some(Self::uint32()),
-            "uint64" | "u8" | "<u8" => Some(Self::uint64()),
-            "bool" | "?" | "|b1" => Some(Self::bool()),
-            "datetime64[ns]" | "<M8[ns]" => Some(Self::datetime64_ns()),
-            "datetime64[us]" | "<M8[us]" => Some(Self::datetime64_us()),
-            "datetime64[ms]" | "<M8[ms]" => Some(Self::datetime64_ms()),
-            "datetime64[s]" | "<M8[s]" => Some(Self::datetime64_s()),
-            "complex64" | "c8" | "<c8" => Some(Self::complex64()),
-            "complex128" | "c16" | "<c16" => Some(Self::complex128()),
-            _ => None,
+            "float16" | "f2" | "<f2" => Ok(Self::float16()),
+            "float32" | "f4" | "<f4" => Ok(Self::float32()),
+            "float64" | "f8" | "<f8" | "float" => Ok(Self::float64()),
+            "int16" | "i2" | "<i2" => Ok(Self::int16()),
+            "int32" | "i4" | "<i4" => Ok(Self::int32()),
+            "int64" | "i8" | "<i8" | "int" => Ok(Self::int64()),
+            "uint8" | "u1" | "|u1" => Ok(Self::uint8()),
+            "uint16" | "u2" | "<u2" => Ok(Self::uint16()),
+            "uint32" | "u4" | "<u4" => Ok(Self::uint32()),
+            "uint64" | "u8" | "<u8" => Ok(Self::uint64()),
+            "bool" | "?" | "|b1" => Ok(Self::bool()),
+            "datetime64[ns]" | "<M8[ns]" => Ok(Self::datetime64_ns()),
+            "datetime64[us]" | "<M8[us]" => Ok(Self::datetime64_us()),
+            "datetime64[ms]" | "<M8[ms]" => Ok(Self::datetime64_ms()),
+            "datetime64[s]" | "<M8[s]" => Ok(Self::datetime64_s()),
+            "complex64" | "c8" | "<c8" => Ok(Self::complex64()),
+            "complex128" | "c16" | "<c16" => Ok(Self::complex128()),
+            _ => Err(()),
         }
     }
 }
