@@ -837,11 +837,38 @@ pub fn cumprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<PyRumpyArray> 
     Ok(PyRumpyArray::new(x.inner.cumprod(axis)))
 }
 
+/// Convert a Python object to RumpyArray (for concatenate, etc.)
+fn to_rumpy_array(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<RumpyArray> {
+    // Try PyRumpyArray first
+    if let Ok(arr) = obj.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        return Ok(arr.inner.clone());
+    }
+
+    // Try Python list
+    if let Ok(list) = obj.downcast::<PyList>() {
+        let arr = from_list(list, None)?;
+        return Ok(arr.inner);
+    }
+
+    // Try scalar
+    if let Ok(val) = obj.extract::<f64>() {
+        return Ok(RumpyArray::from_vec(vec![val], DType::float64()));
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "cannot convert to array"
+    ))
+}
+
 /// Concatenate arrays along an axis.
 #[pyfunction]
 #[pyo3(signature = (arrays, axis=0))]
-pub fn concatenate(arrays: Vec<PyRef<'_, PyRumpyArray>>, axis: usize) -> PyResult<PyRumpyArray> {
-    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| a.inner.clone()).collect();
+pub fn concatenate(arrays: &Bound<'_, PyList>, axis: usize) -> PyResult<PyRumpyArray> {
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        inner_arrays.push(to_rumpy_array(&item)?);
+    }
+
     crate::array::concatenate(&inner_arrays, axis)
         .map(PyRumpyArray::new)
         .ok_or_else(|| {
@@ -854,8 +881,11 @@ pub fn concatenate(arrays: Vec<PyRef<'_, PyRumpyArray>>, axis: usize) -> PyResul
 /// Stack arrays along a new axis.
 #[pyfunction]
 #[pyo3(signature = (arrays, axis=0))]
-pub fn stack(arrays: Vec<PyRef<'_, PyRumpyArray>>, axis: usize) -> PyResult<PyRumpyArray> {
-    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| a.inner.clone()).collect();
+pub fn stack(arrays: &Bound<'_, PyList>, axis: usize) -> PyResult<PyRumpyArray> {
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        inner_arrays.push(to_rumpy_array(&item)?);
+    }
     crate::array::stack(&inner_arrays, axis)
         .map(PyRumpyArray::new)
         .ok_or_else(|| {
@@ -865,19 +895,21 @@ pub fn stack(arrays: Vec<PyRef<'_, PyRumpyArray>>, axis: usize) -> PyResult<PyRu
 
 /// Stack arrays vertically (row-wise).
 #[pyfunction]
-pub fn vstack(arrays: Vec<PyRef<'_, PyRumpyArray>>) -> PyResult<PyRumpyArray> {
+pub fn vstack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
     if arrays.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("need at least one array"));
     }
 
     // For 1D arrays, reshape to (1, N) first
-    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| {
-        if a.inner.ndim() == 1 {
-            a.inner.reshape(vec![1, a.inner.size()]).unwrap_or_else(|| a.inner.clone())
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        let arr = to_rumpy_array(&item)?;
+        if arr.ndim() == 1 {
+            inner_arrays.push(arr.reshape(vec![1, arr.size()]).unwrap_or_else(|| arr.clone()));
         } else {
-            a.inner.clone()
+            inner_arrays.push(arr);
         }
-    }).collect();
+    }
 
     crate::array::concatenate(&inner_arrays, 0)
         .map(PyRumpyArray::new)
@@ -888,15 +920,19 @@ pub fn vstack(arrays: Vec<PyRef<'_, PyRumpyArray>>) -> PyResult<PyRumpyArray> {
 
 /// Stack arrays horizontally (column-wise).
 #[pyfunction]
-pub fn hstack(arrays: Vec<PyRef<'_, PyRumpyArray>>) -> PyResult<PyRumpyArray> {
+pub fn hstack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
     if arrays.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("need at least one array"));
     }
 
-    let first = &arrays[0].inner;
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        inner_arrays.push(to_rumpy_array(&item)?);
+    }
+
+    let first = &inner_arrays[0];
     let axis = if first.ndim() == 1 { 0 } else { 1 };
 
-    let inner_arrays: Vec<RumpyArray> = arrays.iter().map(|a| a.inner.clone()).collect();
     crate::array::concatenate(&inner_arrays, axis)
         .map(PyRumpyArray::new)
         .ok_or_else(|| {
@@ -1021,6 +1057,85 @@ pub fn unique(arr: &PyRumpyArray) -> PyRumpyArray {
 #[pyfunction]
 pub fn nonzero(arr: &PyRumpyArray) -> Vec<PyRumpyArray> {
     arr.inner.nonzero().into_iter().map(PyRumpyArray::new).collect()
+}
+
+/// Count occurrences of each value in an array of non-negative integers.
+#[pyfunction]
+#[pyo3(signature = (x, minlength=0))]
+pub fn bincount(x: &PyRumpyArray, minlength: usize) -> PyResult<PyRumpyArray> {
+    crate::array::bincount(&x.inner, minlength)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("bincount requires 1D array of non-negative integers")
+        })
+}
+
+/// Compute the q-th percentile of the data along the specified axis.
+#[pyfunction]
+#[pyo3(signature = (a, q, axis=None))]
+pub fn percentile(a: &PyRumpyArray, q: &Bound<'_, PyAny>, axis: Option<usize>) -> PyResult<PyRumpyArray> {
+    // Parse q - can be scalar or array-like
+    let q_values: Vec<f64> = if let Ok(val) = q.extract::<f64>() {
+        vec![val]
+    } else if let Ok(list) = q.extract::<Vec<f64>>() {
+        list
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err("q must be a number or list of numbers"));
+    };
+
+    // Validate q values are in [0, 100]
+    for &qv in &q_values {
+        if !(0.0..=100.0).contains(&qv) {
+            return Err(pyo3::exceptions::PyValueError::new_err("percentiles must be in range [0, 100]"));
+        }
+    }
+
+    crate::array::percentile(&a.inner, &q_values, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("percentile computation failed")
+        })
+}
+
+/// Compute the q-th quantile of the data (q in [0, 1]).
+#[pyfunction]
+#[pyo3(signature = (a, q, axis=None))]
+pub fn quantile(a: &PyRumpyArray, q: &Bound<'_, PyAny>, axis: Option<usize>) -> PyResult<PyRumpyArray> {
+    // Parse q - can be scalar or array-like
+    let q_values: Vec<f64> = if let Ok(val) = q.extract::<f64>() {
+        vec![val]
+    } else if let Ok(list) = q.extract::<Vec<f64>>() {
+        list
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err("q must be a number or list of numbers"));
+    };
+
+    // Validate q values are in [0, 1]
+    for &qv in &q_values {
+        if !(0.0..=1.0).contains(&qv) {
+            return Err(pyo3::exceptions::PyValueError::new_err("quantiles must be in range [0, 1]"));
+        }
+    }
+
+    // Convert to percentiles
+    let pct_values: Vec<f64> = q_values.iter().map(|&q| q * 100.0).collect();
+
+    crate::array::percentile(&a.inner, &pct_values, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("quantile computation failed")
+        })
+}
+
+/// 1D discrete convolution.
+#[pyfunction]
+#[pyo3(signature = (a, v, mode="full"))]
+pub fn convolve(a: &PyRumpyArray, v: &PyRumpyArray, mode: &str) -> PyResult<PyRumpyArray> {
+    crate::array::convolve(&a.inner, &v.inner, mode)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("convolve requires 1D arrays and valid mode")
+        })
 }
 
 /// Matrix multiplication.
@@ -1269,6 +1384,12 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Sorting - sort and argsort are registered earlier with axis parameter
     m.add_function(wrap_pyfunction!(unique, m)?)?;
     m.add_function(wrap_pyfunction!(nonzero, m)?)?;
+    // Counting and statistics
+    m.add_function(wrap_pyfunction!(bincount, m)?)?;
+    m.add_function(wrap_pyfunction!(percentile, m)?)?;
+    m.add_function(wrap_pyfunction!(quantile, m)?)?;
+    // Signal processing
+    m.add_function(wrap_pyfunction!(convolve, m)?)?;
     // Linear algebra
     m.add_function(wrap_pyfunction!(matmul, m)?)?;
     m.add_function(wrap_pyfunction!(dot, m)?)?;

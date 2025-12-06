@@ -85,7 +85,7 @@ impl Generator {
     }
 
     /// Generate bounded random u64 in [0, range) using Lemire's algorithm.
-    fn bounded_uint64(&mut self, range: u64) -> u64 {
+    pub fn bounded_uint64(&mut self, range: u64) -> u64 {
         if range == 0 {
             return 0;
         }

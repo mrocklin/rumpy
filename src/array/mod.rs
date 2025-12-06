@@ -1065,3 +1065,252 @@ pub fn broadcast_shapes(a: &[usize], b: &[usize]) -> Option<Vec<usize>> {
     }
     Some(result)
 }
+
+/// Count occurrences of each value in an array of non-negative integers.
+/// Returns an array of counts where result[i] = number of times i appears in x.
+pub fn bincount(x: &RumpyArray, minlength: usize) -> Option<RumpyArray> {
+    // Must be 1D
+    if x.ndim() != 1 {
+        return None;
+    }
+
+    let size = x.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(vec![minlength.max(0)], DType::int64()));
+    }
+
+    let ptr = x.data_ptr();
+    let dtype = x.dtype();
+    let ops = dtype.ops();
+
+    // Find max value to determine output size
+    let mut max_val: i64 = 0;
+    for offset in x.iter_offsets() {
+        let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+        let ival = val as i64;
+        if ival < 0 {
+            return None; // Negative values not allowed
+        }
+        if ival > max_val {
+            max_val = ival;
+        }
+    }
+
+    let out_len = (max_val as usize + 1).max(minlength);
+    let mut counts = vec![0i64; out_len];
+
+    // Count occurrences
+    for offset in x.iter_offsets() {
+        let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+        let idx = val as usize;
+        counts[idx] += 1;
+    }
+
+    // Convert to RumpyArray
+    let mut result = RumpyArray::zeros(vec![out_len], DType::int64());
+    let buffer = result.buffer_mut();
+    let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut i64;
+    for (i, &count) in counts.iter().enumerate() {
+        unsafe { *result_ptr.add(i) = count; }
+    }
+
+    Some(result)
+}
+
+/// Compute the q-th percentile(s) of the data.
+/// q values should be in [0, 100].
+/// Uses linear interpolation (numpy default method).
+pub fn percentile(arr: &RumpyArray, q: &[f64], axis: Option<usize>) -> Option<RumpyArray> {
+    match axis {
+        None => percentile_flat(arr, q),
+        Some(ax) => percentile_axis(arr, q, ax),
+    }
+}
+
+/// Percentile over flattened array.
+fn percentile_flat(arr: &RumpyArray, q: &[f64]) -> Option<RumpyArray> {
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(vec![q.len()], DType::float64()));
+    }
+
+    // Collect and sort values
+    let ptr = arr.data_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+
+    let mut values: Vec<f64> = Vec::with_capacity(size);
+    for offset in arr.iter_offsets() {
+        values.push(unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0));
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Compute percentiles using linear interpolation
+    let mut result = RumpyArray::zeros(vec![q.len()], DType::float64());
+    let buffer = result.buffer_mut();
+    let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+    for (i, &pct) in q.iter().enumerate() {
+        let val = interpolate_percentile(&values, pct);
+        unsafe { *result_ptr.add(i) = val; }
+    }
+
+    Some(result)
+}
+
+/// Percentile along axis.
+fn percentile_axis(arr: &RumpyArray, q: &[f64], axis: usize) -> Option<RumpyArray> {
+    if axis >= arr.ndim() {
+        return None;
+    }
+
+    let shape = arr.shape();
+    let axis_len = shape[axis];
+    let axis_stride = arr.strides()[axis];
+
+    // Output shape: remove axis, prepend q.len() if multiple percentiles
+    let mut reduced_shape: Vec<usize> = shape[..axis].to_vec();
+    reduced_shape.extend_from_slice(&shape[axis + 1..]);
+    if reduced_shape.is_empty() {
+        reduced_shape = vec![1];
+    }
+
+    let out_shape = if q.len() == 1 {
+        reduced_shape.clone()
+    } else {
+        let mut s = vec![q.len()];
+        s.extend(&reduced_shape);
+        s
+    };
+
+    let reduced_size: usize = reduced_shape.iter().product();
+    if axis_len == 0 || reduced_size == 0 {
+        return Some(RumpyArray::zeros(out_shape, DType::float64()));
+    }
+
+    let mut result = RumpyArray::zeros(out_shape, DType::float64());
+    let buffer = result.buffer_mut();
+    let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+    let src_ptr = arr.data_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+
+    // Use axis_offsets iterator (same pattern as reduce_axis_op)
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        // Collect values along axis from this base offset
+        let mut values: Vec<f64> = Vec::with_capacity(axis_len);
+        let mut ptr = unsafe { src_ptr.offset(base_offset) };
+        for _ in 0..axis_len {
+            values.push(unsafe { ops.read_f64(ptr, 0) }.unwrap_or(0.0));
+            ptr = unsafe { ptr.offset(axis_stride) };
+        }
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Compute percentiles
+        if q.len() == 1 {
+            unsafe { *result_ptr.add(i) = interpolate_percentile(&values, q[0]); }
+        } else {
+            for (qi, &pct) in q.iter().enumerate() {
+                unsafe { *result_ptr.add(qi * reduced_size + i) = interpolate_percentile(&values, pct); }
+            }
+        }
+    }
+
+    Some(result)
+}
+
+/// Linear interpolation for percentile.
+fn interpolate_percentile(sorted: &[f64], pct: f64) -> f64 {
+    let n = sorted.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+    if n == 1 {
+        return sorted[0];
+    }
+
+    // Convert percentile to index (numpy's linear interpolation method)
+    let idx = (pct / 100.0) * (n - 1) as f64;
+    let lo = idx.floor() as usize;
+    let hi = idx.ceil() as usize;
+
+    if lo == hi || hi >= n {
+        sorted[lo.min(n - 1)]
+    } else {
+        let frac = idx - lo as f64;
+        sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+    }
+}
+
+/// 1D discrete convolution.
+/// mode: "full", "same", or "valid"
+pub fn convolve(a: &RumpyArray, v: &RumpyArray, mode: &str) -> Option<RumpyArray> {
+    // Both must be 1D
+    if a.ndim() != 1 || v.ndim() != 1 {
+        return None;
+    }
+
+    let n = a.size();
+    let m = v.size();
+
+    if n == 0 || m == 0 {
+        let out_len = match mode {
+            "full" => n + m - 1,
+            "same" => n,
+            "valid" => n.saturating_sub(m - 1),
+            _ => return None,
+        };
+        return Some(RumpyArray::zeros(vec![out_len.max(0)], DType::float64()));
+    }
+
+    // Collect values
+    let a_ptr = a.data_ptr();
+    let a_dtype = a.dtype();
+    let a_ops = a_dtype.ops();
+    let v_ptr = v.data_ptr();
+    let v_dtype = v.dtype();
+    let v_ops = v_dtype.ops();
+
+    let mut a_vals: Vec<f64> = Vec::with_capacity(n);
+    for offset in a.iter_offsets() {
+        a_vals.push(unsafe { a_ops.read_f64(a_ptr, offset) }.unwrap_or(0.0));
+    }
+
+    let mut v_vals: Vec<f64> = Vec::with_capacity(m);
+    for offset in v.iter_offsets() {
+        v_vals.push(unsafe { v_ops.read_f64(v_ptr, offset) }.unwrap_or(0.0));
+    }
+
+    // Output size depends on mode
+    let (out_len, offset) = match mode {
+        "full" => (n + m - 1, 0isize),
+        "same" => (n, (m as isize - 1) / 2),
+        "valid" => (n.saturating_sub(m - 1).max(1), m as isize - 1),
+        _ => return None,
+    };
+
+    let mut result = RumpyArray::zeros(vec![out_len], DType::float64());
+    let buffer = result.buffer_mut();
+    let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+    // Convolution: result[k] = sum_j a[k-j] * v[j] for valid indices
+    // For "full" mode, k ranges from 0 to n+m-2
+    for k in 0..out_len {
+        let full_k = k as isize + offset;
+        let mut sum = 0.0;
+        for j in 0..m {
+            let i = full_k - j as isize;
+            if i >= 0 && (i as usize) < n {
+                sum += a_vals[i as usize] * v_vals[j];
+            }
+        }
+        unsafe { *result_ptr.add(k) = sum; }
+    }
+
+    Some(result)
+}

@@ -213,6 +213,93 @@ impl PyGenerator {
             }
         })
     }
+
+    /// Generate random samples from a given array or range.
+    /// If `a` is an int, samples are from range(a).
+    /// If `a` is an array, samples are from the array elements.
+    #[pyo3(signature = (a, size=None, replace=true))]
+    fn choice(
+        &self,
+        a: &Bound<'_, pyo3::PyAny>,
+        size: Option<&Bound<'_, pyo3::PyAny>>,
+        replace: bool,
+    ) -> PyResult<PyObject> {
+        use crate::array::{DType, RumpyArray};
+
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+
+            // Parse `a` - either integer (range) or array-like
+            let values: Option<Vec<f64>> = if a.extract::<usize>().is_ok() {
+                None // Integer case: sample indices directly
+            } else if let Ok(arr) = a.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+                let ptr = arr.inner.data_ptr();
+                let dtype = arr.inner.dtype();
+                let ops = dtype.ops();
+                let mut vals = Vec::with_capacity(arr.inner.size());
+                for offset in arr.inner.iter_offsets() {
+                    vals.push(unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0));
+                }
+                Some(vals)
+            } else if let Ok(list) = a.extract::<Vec<f64>>() {
+                Some(list)
+            } else if let Ok(list) = a.extract::<Vec<i64>>() {
+                Some(list.into_iter().map(|x| x as f64).collect())
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "choice: 'a' must be an int or array-like"
+                ));
+            };
+
+            let n = match &values {
+                Some(v) => v.len(),
+                None => a.extract::<usize>().unwrap(),
+            };
+
+            if n == 0 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "choice: cannot sample from empty population"
+                ));
+            }
+
+            let shape = match size {
+                None => vec![1],
+                Some(s) => parse_shape(s)?,
+            };
+            let total: usize = shape.iter().product();
+
+            if !replace && total > n {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "choice: cannot take more samples than population when replace=False"
+                ));
+            }
+
+            // Generate samples
+            let result_data: Vec<f64> = if replace {
+                (0..total).map(|_| {
+                    let idx = gen.bounded_uint64(n as u64) as usize;
+                    values.as_ref().map_or(idx as f64, |v| v[idx])
+                }).collect()
+            } else {
+                let mut available: Vec<usize> = (0..n).collect();
+                (0..total).map(|i| {
+                    let j = gen.bounded_uint64((n - i) as u64) as usize;
+                    let idx = available.swap_remove(j);
+                    values.as_ref().map_or(idx as f64, |v| v[idx])
+                }).collect()
+            };
+
+            if size.is_none() {
+                return Ok(result_data[0].into_pyobject(py)?.into_any().unbind());
+            }
+
+            let arr = RumpyArray::from_vec(result_data, DType::float64())
+                .reshape(shape)
+                .unwrap_or_else(|| RumpyArray::zeros(vec![total], DType::float64()));
+
+            Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+        })
+    }
 }
 
 /// Create a new Generator with PCG64DXSM BitGenerator.
