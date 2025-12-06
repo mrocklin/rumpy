@@ -138,6 +138,22 @@ impl RumpyArray {
         &mut self.buffer
     }
 
+    /// Check if this array's buffer can be reused for in-place output.
+    ///
+    /// Returns true if:
+    /// - Shape matches the target shape
+    /// - Dtype matches the target dtype
+    /// - Array is C-contiguous
+    /// - Offset is 0 (not a view into middle of buffer)
+    /// - Arc has strong_count == 1 (no other Rust references)
+    pub fn can_reuse_for_output(&self, shape: &[usize], dtype: &DType) -> bool {
+        self.shape.as_slice() == shape
+            && &self.dtype == dtype
+            && self.is_c_contiguous()
+            && self.offset == 0
+            && Arc::strong_count(&self.buffer) == 1
+    }
+
     /// Check if array is C-contiguous.
     pub fn is_c_contiguous(&self) -> bool {
         self.flags.contains(ArrayFlags::C_CONTIGUOUS)

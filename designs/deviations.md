@@ -45,3 +45,20 @@ rp.round([1.5, 2.5, 3.5, 4.5])  # -> [2., 3., 4., 5.]
 ```
 
 This only affects values exactly at 0.5. For most use cases the difference is negligible.
+
+## Temporary Array Elision - No Stack Unwinding
+
+NumPy's temporary elision (reusing buffers for intermediates like `x + 1 + 2`) uses expensive stack unwinding (~35μs) to verify no C extension holds a raw pointer to the buffer. This makes the optimization safe even when C code retains pointers without incrementing refcounts.
+
+Rumpy skips stack unwinding and relies solely on Python refcount checking. This means:
+
+1. **Faster check** - No stack unwinding overhead
+2. **Same size threshold** - Only applies to arrays ≥256KB
+3. **Theoretical unsafety** - If a C extension holds a raw pointer without incrementing refcount, the buffer could be overwritten
+
+In practice this is safe because:
+- Well-behaved C code increments refcounts when holding references
+- Most extensions use the buffer protocol properly
+- Chained pure-Python ops (the target use case) don't involve C mid-chain
+
+For safety-critical code with C extensions that might hold raw pointers, assign intermediates to variables to prevent elision.

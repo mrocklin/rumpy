@@ -190,20 +190,35 @@ fn is_integer_kind(kind: &crate::array::dtype::DTypeKind) -> bool {
 
 /// Apply a binary operation element-wise with broadcasting.
 fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyArray, BinaryOpError> {
+    // Delegate to inplace version with no output buffer
+    map_binary_op_inplace(a, b, op, None)
+}
+
+/// Apply a binary operation with optional in-place output buffer reuse.
+///
+/// If `out` is Some and its buffer can be reused (via Arc::get_mut), writes
+/// result there. Otherwise allocates a new array.
+///
+/// This is the core of temporary elision: when the caller detects an ephemeral
+/// intermediate (Python refcount=1), it can pass ownership here for reuse.
+pub fn map_binary_op_inplace(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    op: BinaryOp,
+    out: Option<RumpyArray>,
+) -> Result<RumpyArray, BinaryOpError> {
     use crate::array::dtype::DTypeKind;
     use crate::array::DType;
 
-    // NumPy truediv (/) always returns float for integer inputs
+    // Handle division type promotion (same as map_binary_op)
     if op == BinaryOp::Div {
         let a_int = is_integer_kind(&a.dtype().kind());
         let b_int = is_integer_kind(&b.dtype().kind());
         if a_int && b_int {
-            // Both integers → always float64 (NumPy behavior)
             let a_f64 = a.astype(DType::float64());
             let b_f64 = b.astype(DType::float64());
-            return map_binary_op(&a_f64, &b_f64, op);
+            return map_binary_op_inplace(&a_f64, &b_f64, op, None); // Can't reuse int buffer for float
         } else if a_int || b_int {
-            // One integer, one float → convert int to float based on itemsize
             let int_to_float = |arr: &RumpyArray| -> RumpyArray {
                 let itemsize = arr.dtype().itemsize();
                 let target = if itemsize <= 1 {
@@ -217,7 +232,7 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
             };
             let a_float = if a_int { int_to_float(a) } else { a.clone() };
             let b_float = if b_int { int_to_float(b) } else { b.clone() };
-            return map_binary_op(&a_float, &b_float, op);
+            return map_binary_op_inplace(&a_float, &b_float, op, None);
         }
     }
 
@@ -229,8 +244,6 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
     let a_is_datetime = matches!(a_bc.dtype().kind(), DTypeKind::DateTime64(_));
     let b_is_datetime = matches!(b_bc.dtype().kind(), DTypeKind::DateTime64(_));
     if a_is_datetime || b_is_datetime {
-        // datetime + datetime is invalid (only sub is valid between datetimes)
-        // datetime * anything and datetime / anything are also invalid
         match op {
             BinaryOp::Add if a_is_datetime && b_is_datetime => return Err(BinaryOpError::UnsupportedDtype),
             BinaryOp::Mul | BinaryOp::Div | BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => return Err(BinaryOpError::UnsupportedDtype),
@@ -239,7 +252,22 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
     }
 
     let result_dtype = promote_dtype(&a_bc.dtype(), &b_bc.dtype());
-    let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype.clone());
+
+    // Try to reuse the output buffer if provided and compatible
+    let mut result = if let Some(mut out_arr) = out {
+        // Check if we can actually get mutable access to the buffer
+        let buffer = out_arr.buffer_mut();
+        if Arc::get_mut(buffer).is_some() {
+            // Buffer is uniquely owned, we can reuse it
+            out_arr
+        } else {
+            // Buffer is shared (shouldn't happen if caller checked, but be safe)
+            RumpyArray::zeros(out_shape.clone(), result_dtype.clone())
+        }
+    } else {
+        RumpyArray::zeros(out_shape.clone(), result_dtype.clone())
+    };
+
     let size = result.size();
     if size == 0 {
         return Ok(result);
@@ -257,36 +285,28 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
     let b_kind = b_bc.dtype().kind();
 
     let mut indices = vec![0usize; out_shape.len()];
-
     let itemsize = result_dtype_ref.itemsize() as isize;
 
     // Try registry first for same-type operations
     if a_kind == b_kind {
         let reg = registry().read().unwrap();
         if let Some((loop_fn, _)) = reg.lookup_binary(op, a_kind.clone(), b_kind) {
-            // Check if we can use the fast contiguous path
-            // (both inputs and output are C-contiguous with same shape)
             let a_contig = a_bc.is_c_contiguous() && a.shape() == out_shape.as_slice();
             let b_contig = b_bc.is_c_contiguous() && b.shape() == out_shape.as_slice();
 
             if a_contig && b_contig {
-                // Fast path: call loop once for entire array
                 let strides = (itemsize, itemsize, itemsize);
                 unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, strides); }
             } else {
-                // Strided path: call loop once per innermost row with actual strides
                 let ndim = out_shape.len();
                 let a_strides = a_bc.strides();
                 let b_strides = b_bc.strides();
 
                 if ndim == 0 {
-                    // Scalar
                     unsafe { loop_fn(a_ptr, b_ptr, result_ptr, 1, (itemsize, itemsize, itemsize)); }
                 } else if ndim == 1 {
-                    // 1D: single call with actual strides
                     unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, (a_strides[0], b_strides[0], itemsize)); }
                 } else {
-                    // nD: iterate over all but last dimension, call once per row
                     let inner_size = out_shape[ndim - 1];
                     let a_inner_stride = a_strides[ndim - 1];
                     let b_inner_stride = b_strides[ndim - 1];
@@ -325,7 +345,6 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
             increment_indices(&mut indices, &out_shape);
         }
     } else {
-        // Different dtypes: use complex path if result is complex, else f64
         let a_dtype = a_bc.dtype();
         let a_ops = a_dtype.ops();
         let b_dtype = b_bc.dtype();
@@ -334,11 +353,9 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
         let result_is_complex = matches!(result_kind, crate::array::dtype::DTypeKind::Complex64 | crate::array::dtype::DTypeKind::Complex128);
 
         if result_is_complex {
-            // Complex result: read as complex, operate, write as complex
             for i in 0..size {
                 let a_offset = a_bc.byte_offset_for(&indices);
                 let b_offset = b_bc.byte_offset_for(&indices);
-
                 let av = unsafe { a_ops.read_complex(a_ptr, a_offset).unwrap_or((0.0, 0.0)) };
                 let bv = unsafe { b_ops.read_complex(b_ptr, b_offset).unwrap_or((0.0, 0.0)) };
 
@@ -355,7 +372,6 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                         }
                     }
                     BinaryOp::Pow => {
-                        // z^w = exp(w * ln(z))
                         if av.0 == 0.0 && av.1 == 0.0 {
                             if bv.0 > 0.0 { (0.0, 0.0) } else { (f64::NAN, f64::NAN) }
                         } else {
@@ -381,11 +397,9 @@ fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<RumpyAr
                 increment_indices(&mut indices, &out_shape);
             }
         } else {
-            // Non-complex result: use f64 path
             for i in 0..size {
                 let a_offset = a_bc.byte_offset_for(&indices);
                 let b_offset = b_bc.byte_offset_for(&indices);
-
                 let av = unsafe { a_ops.read_f64(a_ptr, a_offset).unwrap_or(0.0) };
                 let bv = unsafe { b_ops.read_f64(b_ptr, b_offset).unwrap_or(0.0) };
 

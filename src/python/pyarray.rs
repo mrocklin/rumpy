@@ -1,9 +1,21 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PySlice, PyString, PyTuple};
 
-use crate::array::{DType, RumpyArray};
+use crate::array::{promote_dtype, DType, RumpyArray};
 use crate::ops::matmul::matmul;
-use crate::ops::{BinaryOp, ComparisonOp};
+use crate::ops::{map_binary_op_inplace, BinaryOp, ComparisonOp};
+
+/// Minimum array size (in elements) for temporary elision optimization.
+/// Arrays smaller than this won't have their buffers reused in-place.
+/// 32768 f64 elements = 256KB, matching NumPy's threshold.
+const ELISION_SIZE_THRESHOLD: usize = 32768;
+
+/// Get Python reference count for an object via raw pointer.
+/// Used to detect ephemeral intermediates that can be modified in-place.
+#[inline]
+fn py_refcount_ptr(ptr: *mut pyo3::ffi::PyObject) -> isize {
+    unsafe { pyo3::ffi::Py_REFCNT(ptr) }
+}
 
 /// Parse shape from int, tuple, or list.
 pub fn parse_shape(obj: &Bound<'_, PyAny>) -> PyResult<Vec<usize>> {
@@ -558,57 +570,59 @@ impl PyRumpyArray {
     }
 
     // Binary operations (array op array)
+    // Uses elision-aware dispatch for potential in-place buffer reuse
 
-    fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::Add)
+    fn __add__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::Add)
     }
 
     fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // Reverse ops don't benefit from elision (self is the non-ephemeral one)
         binary_op_dispatch(&self.inner, other, BinaryOp::Add)
     }
 
-    fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::Sub)
+    fn __sub__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::Sub)
     }
 
     fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         rbinary_op_dispatch(&self.inner, other, BinaryOp::Sub)
     }
 
-    fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::Mul)
+    fn __mul__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::Mul)
     }
 
     fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         binary_op_dispatch(&self.inner, other, BinaryOp::Mul)
     }
 
-    fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::Div)
+    fn __truediv__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::Div)
     }
 
     fn __rtruediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         rbinary_op_dispatch(&self.inner, other, BinaryOp::Div)
     }
 
-    fn __pow__(&self, other: &Bound<'_, PyAny>, _modulo: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::Pow)
+    fn __pow__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>, _modulo: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::Pow)
     }
 
     fn __rpow__(&self, other: &Bound<'_, PyAny>, _modulo: &Bound<'_, PyAny>) -> PyResult<Self> {
         rbinary_op_dispatch(&self.inner, other, BinaryOp::Pow)
     }
 
-    fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::Mod)
+    fn __mod__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::Mod)
     }
 
     fn __rmod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         rbinary_op_dispatch(&self.inner, other, BinaryOp::Mod)
     }
 
-    fn __floordiv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_op_dispatch(&self.inner, other, BinaryOp::FloorDiv)
+    fn __floordiv__(slf: PyRef<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        binary_op_dispatch_with_elision(slf.as_ptr(), &slf.inner, other, BinaryOp::FloorDiv)
     }
 
     fn __rfloordiv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -1009,6 +1023,81 @@ fn fill_view(
     } else {
         Err(pyo3::exceptions::PyTypeError::new_err(
             "value must be a number or array",
+        ))
+    }
+}
+
+/// Check if an array qualifies for temporary elision (in-place buffer reuse).
+///
+/// Returns the array to use as output buffer if elision is possible.
+fn try_elision_candidate(
+    self_ptr: *mut pyo3::ffi::PyObject,
+    arr: &RumpyArray,
+    result_shape: &[usize],
+    result_dtype: &DType,
+) -> Option<RumpyArray> {
+    // Check Python refcount - we need exactly 1 (this PyObject)
+    // Note: refcount may be higher due to method call overhead, so we check <= 2
+    // In practice, `x + 1 + 2` will have refcount 1 for the intermediate
+    if py_refcount_ptr(self_ptr) > 2 {
+        return None;
+    }
+
+    // Check size threshold
+    if arr.size() < ELISION_SIZE_THRESHOLD {
+        return None;
+    }
+
+    // Check buffer compatibility
+    if !arr.can_reuse_for_output(result_shape, result_dtype) {
+        return None;
+    }
+
+    // Clone the RumpyArray - this is cheap if Arc is sole owner
+    // (just increments refcount), expensive if shared (materializes buffer)
+    Some(arr.clone())
+}
+
+/// Dispatch binary operation: array op (array or scalar).
+/// Takes raw PyObject pointer for refcount checking to enable temporary elision.
+fn binary_op_dispatch_with_elision(
+    self_ptr: *mut pyo3::ffi::PyObject,
+    arr: &RumpyArray,
+    other: &Bound<'_, PyAny>,
+    op: BinaryOp,
+) -> PyResult<PyRumpyArray> {
+    use crate::array::broadcast_shapes;
+    use crate::ops::BinaryOpError;
+
+    // Try array first
+    if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+        let other_inner = &other_arr.inner;
+
+        // Compute result shape and dtype for elision check
+        let result_shape = broadcast_shapes(arr.shape(), other_inner.shape())
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes"))?;
+        let result_dtype = promote_dtype(&arr.dtype(), &other_inner.dtype());
+
+        // Try to reuse self's buffer if it's an ephemeral intermediate
+        let out = try_elision_candidate(self_ptr, arr, &result_shape, &result_dtype);
+
+        map_binary_op_inplace(arr, other_inner, op, out)
+            .map(PyRumpyArray::new)
+            .map_err(|e| match e {
+                BinaryOpError::ShapeMismatch => {
+                    pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+                }
+                BinaryOpError::UnsupportedDtype => {
+                    pyo3::exceptions::PyTypeError::new_err("operation not supported for these dtypes")
+                }
+            })
+    } else if let Ok(scalar) = other.extract::<f64>() {
+        // For scalar ops, result shape == arr shape, result dtype == arr dtype (usually)
+        // TODO: Consider elision for scalar ops too
+        Ok(PyRumpyArray::new(arr.scalar_op(scalar, op)))
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray or number",
         ))
     }
 }
