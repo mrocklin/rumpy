@@ -572,29 +572,28 @@ fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
 /// result[i] = src[i+1] - src[i]
 #[inline]
 fn diff_1d_contiguous(src_ptr: *const u8, result_ptr: *mut u8, n: usize, dtype: &DType) {
-    let reg = registry().read().unwrap();
     let itemsize = dtype.itemsize() as isize;
 
-    // Try to use registry's optimized Sub loop
-    if let Some((loop_fn, _)) = reg.lookup_binary(BinaryOp::Sub, dtype.kind(), dtype.kind()) {
-        // src[i+1] is at src_ptr + itemsize, src[i] is at src_ptr
-        // We want: out[i] = src[i+1] - src[i]
+    // Try registry's vectorized Sub loop
+    if let Some((loop_fn, _)) = registry().read().unwrap()
+        .lookup_binary(BinaryOp::Sub, dtype.kind(), dtype.kind())
+    {
         unsafe {
             loop_fn(
                 src_ptr.offset(itemsize),  // a = src[i+1]
                 src_ptr,                    // b = src[i]
-                result_ptr,                 // out
+                result_ptr,
                 n,
                 (itemsize, itemsize, itemsize),
             );
         }
     } else {
-        // Fallback via DTypeOps
+        // Fallback for unsupported dtypes
         let ops = dtype.ops();
         for i in 0..n {
             unsafe {
-                let v1 = ops.read_f64(src_ptr, (i * dtype.itemsize()) as isize).unwrap_or(0.0);
-                let v2 = ops.read_f64(src_ptr, ((i + 1) * dtype.itemsize()) as isize).unwrap_or(0.0);
+                let v1 = ops.read_f64(src_ptr, (i as isize) * itemsize).unwrap_or(0.0);
+                let v2 = ops.read_f64(src_ptr, (i as isize + 1) * itemsize).unwrap_or(0.0);
                 ops.write_f64(result_ptr, i, v2 - v1);
             }
         }
@@ -602,52 +601,28 @@ fn diff_1d_contiguous(src_ptr: *const u8, result_ptr: *mut u8, n: usize, dtype: 
 }
 
 /// Strided diff for N-D arrays along arbitrary axis.
-/// Uses registry's Sub loop with strided access.
+/// Element-by-element via DTypeOps (no vectorization benefit for strided access).
 fn diff_strided(
     src: &RumpyArray,
-    result: &mut RumpyArray,
-    _axis: usize,
+    result: &RumpyArray,
     axis_stride: isize,
     src_ptr: *const u8,
     result_ptr: *mut u8,
-    _itemsize: usize,
     dtype: &DType,
 ) {
     let out_shape = result.shape();
     let out_size: usize = out_shape.iter().product();
-    let itemsize = dtype.itemsize() as isize;
+    let ops = dtype.ops();
 
-    let reg = registry().read().unwrap();
-    if let Some((loop_fn, _)) = reg.lookup_binary(BinaryOp::Sub, dtype.kind(), dtype.kind()) {
-        // For each position, call the loop for 1 element with appropriate strides
-        let mut out_indices = vec![0usize; src.ndim()];
-        for i in 0..out_size {
-            let offset1 = src.byte_offset_for(&out_indices);
-            unsafe {
-                loop_fn(
-                    src_ptr.offset(offset1 + axis_stride),  // a = src[idx+1]
-                    src_ptr.offset(offset1),                 // b = src[idx]
-                    result_ptr.offset(i as isize * itemsize), // out
-                    1,
-                    (0, 0, 0),  // strides don't matter for n=1
-                );
-            }
-            increment_indices(&mut out_indices, out_shape);
+    let mut out_indices = vec![0usize; src.ndim()];
+    for i in 0..out_size {
+        let offset1 = src.byte_offset_for(&out_indices);
+        unsafe {
+            let v1 = ops.read_f64(src_ptr, offset1).unwrap_or(0.0);
+            let v2 = ops.read_f64(src_ptr, offset1 + axis_stride).unwrap_or(0.0);
+            ops.write_f64(result_ptr, i, v2 - v1);
         }
-    } else {
-        // Fallback via DTypeOps
-        let ops = dtype.ops();
-        let mut out_indices = vec![0usize; src.ndim()];
-        for i in 0..out_size {
-            let offset1 = src.byte_offset_for(&out_indices);
-            let offset2 = offset1 + axis_stride;
-            unsafe {
-                let v1 = ops.read_f64(src_ptr, offset1).unwrap_or(0.0);
-                let v2 = ops.read_f64(src_ptr, offset2).unwrap_or(0.0);
-                ops.write_f64(result_ptr, i, v2 - v1);
-            }
-            increment_indices(&mut out_indices, out_shape);
-        }
+        increment_indices(&mut out_indices, out_shape);
     }
 }
 
@@ -1451,15 +1426,13 @@ impl RumpyArray {
         let result_ptr = result_buffer.as_mut_ptr();
         let src_ptr = self.data_ptr();
         let axis_stride = self.strides()[axis];
-        let itemsize = dtype.itemsize();
 
         // Fast path for 1D contiguous case
         if self.ndim() == 1 && self.is_c_contiguous() {
             diff_1d_contiguous(src_ptr, result_ptr, out_size, &dtype);
         } else {
-            // General strided case: iterate over output positions
-            // For each output position, compute src[i+1] - src[i] along axis
-            diff_strided(self, &mut result, axis, axis_stride, src_ptr, result_ptr, itemsize, &dtype);
+            // General strided case
+            diff_strided(self, &result, axis_stride, src_ptr, result_ptr, &dtype);
         }
 
         // Apply recursively for n > 1
