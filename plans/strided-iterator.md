@@ -73,30 +73,26 @@ for offset in arr.iter_offsets() {
 
 ## Implementation Phases
 
-### Phase 1: Create StridedIter
-- [ ] Add `src/array/iter.rs` with `StridedIter` struct
-- [ ] Implement `Iterator` trait
-- [ ] Add `iter_offsets()` method to `RumpyArray`
-- [ ] Add contiguous fast path (just increment by itemsize)
+### Phase 1: Create StridedIter ✓
+- [x] Add `src/array/iter.rs` with `StridedIter` struct
+- [x] Implement `Iterator` trait with inner-loop optimization
+- [x] Add `iter_offsets()` method to `RumpyArray`
 
-### Phase 2: Convert simple cases in ops/mod.rs
-Start with straightforward loops:
-- [ ] `map_compare` (~line 396)
-- [ ] `all` / `any` (~line 1419)
-- [ ] `count_nonzero` (~line 1343)
-- [ ] `clip` (~line 1549)
+### Phase 2: Convert single-array operations ✓
+- [x] `all` / `any` / `count_nonzero`
+- [x] `clip` / `round`
+- [x] `var` / `argmax` / `argmin`
+- [x] `to_vec` / `real` / `imag` / `conj`
+- [x] `reduce_all_op` (both registry and fallback paths)
+- [x] `map_unary_op` fallback
+- [x] `cumulative_op` flattened case
+- [x] `astype`
 
-### Phase 3: Convert remaining ops/mod.rs
-- [ ] `variance` / `std` calculations
-- [ ] `argmax` / `argmin`
-- [ ] `sort` / `argsort`
-- [ ] Reduction axis loops
-
-### Phase 4: Convert other files
-- [ ] `src/array/mod.rs` - select_by_mask, select_by_indices, astype
-- [ ] `src/ops/fft.rs`
-- [ ] `src/ops/linalg.rs`
-- [ ] `src/python/mod.rs`
+### Remaining (~20 usages)
+Axis-specific or multi-array operations that need output indices:
+- Axis reductions, cumulative ops along axis
+- Binary ops with broadcasting (would need `StridedIterZip`)
+- `select_by_mask`, `select_by_indices`
 
 ## Testing
 

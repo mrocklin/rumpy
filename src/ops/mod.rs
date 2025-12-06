@@ -154,11 +154,8 @@ fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOpErro
 
     // Fallback: trait-based dispatch
     let ops = dtype.ops();
-    let mut indices = vec![0usize; arr.ndim()];
-    for i in 0..size {
-        let src_offset = arr.byte_offset_for(&indices);
-        unsafe { ops.unary_op(op, src_ptr, src_offset, result_ptr, i); }
-        increment_indices(&mut indices, arr.shape());
+    for (i, offset) in arr.iter_offsets().enumerate() {
+        unsafe { ops.unary_op(op, src_ptr, offset, result_ptr, i); }
     }
     Ok(result)
 }
@@ -437,19 +434,13 @@ fn reduce_all_op(arr: &RumpyArray, op: ReduceOp) -> RumpyArray {
     {
         let reg = registry().read().unwrap();
         if let Some((init_fn, acc_fn, _)) = reg.lookup_reduce(op, kind.clone()) {
-            // Initialize
             unsafe { init_fn(result_ptr, 0); }
-
             if size == 0 {
                 return result;
             }
-
             let src_ptr = arr.data_ptr();
-            let mut indices = vec![0usize; arr.ndim()];
-            for _ in 0..size {
-                let src_offset = arr.byte_offset_for(&indices);
-                unsafe { acc_fn(result_ptr, 0, src_ptr, src_offset); }
-                increment_indices(&mut indices, arr.shape());
+            for offset in arr.iter_offsets() {
+                unsafe { acc_fn(result_ptr, 0, src_ptr, offset); }
             }
             return result;
         }
@@ -457,20 +448,14 @@ fn reduce_all_op(arr: &RumpyArray, op: ReduceOp) -> RumpyArray {
 
     // Fallback: trait-based dispatch
     let ops = dtype.ops();
-
-    // Initialize accumulator
     unsafe { ops.reduce_init(op, result_ptr, 0); }
-
     if size == 0 {
         return result;
     }
 
     let src_ptr = arr.data_ptr();
-    let mut indices = vec![0usize; arr.ndim()];
-    for _ in 0..size {
-        let src_offset = arr.byte_offset_for(&indices);
-        unsafe { ops.reduce_acc(op, result_ptr, 0, src_ptr, src_offset); }
-        increment_indices(&mut indices, arr.shape());
+    for offset in arr.iter_offsets() {
+        unsafe { ops.reduce_acc(op, result_ptr, 0, src_ptr, offset); }
     }
     result
 }
@@ -696,12 +681,14 @@ impl RumpyArray {
             return f64::NAN;
         }
         let mean = self.mean();
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
         let mut sum_sq = 0.0;
-        let mut indices = vec![0usize; self.ndim()];
-        for _ in 0..size {
-            let diff = self.get_element(&indices) - mean;
+        for offset in self.iter_offsets() {
+            let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+            let diff = val - mean;
             sum_sq += diff * diff;
-            increment_indices(&mut indices, self.shape());
         }
         sum_sq / size as f64
     }
@@ -770,16 +757,17 @@ impl RumpyArray {
         if size == 0 {
             return 0;
         }
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
         let mut max_val = f64::NEG_INFINITY;
         let mut max_idx = 0;
-        let mut indices = vec![0usize; self.ndim()];
-        for i in 0..size {
-            let val = self.get_element(&indices);
+        for (i, offset) in self.iter_offsets().enumerate() {
+            let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
             if val > max_val {
                 max_val = val;
                 max_idx = i;
             }
-            increment_indices(&mut indices, self.shape());
         }
         max_idx
     }
@@ -790,16 +778,17 @@ impl RumpyArray {
         if size == 0 {
             return 0;
         }
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
         let mut min_val = f64::INFINITY;
         let mut min_idx = 0;
-        let mut indices = vec![0usize; self.ndim()];
-        for i in 0..size {
-            let val = self.get_element(&indices);
+        for (i, offset) in self.iter_offsets().enumerate() {
+            let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
             if val < min_val {
                 min_val = val;
                 min_idx = i;
             }
-            increment_indices(&mut indices, self.shape());
         }
         min_idx
     }
@@ -872,11 +861,12 @@ impl RumpyArray {
     /// Collect all elements into a Vec (flattened, row-major order).
     fn to_vec(&self) -> Vec<f64> {
         let size = self.size();
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
         let mut values = Vec::with_capacity(size);
-        let mut indices = vec![0usize; self.ndim()];
-        for _ in 0..size {
-            values.push(self.get_element(&indices));
-            increment_indices(&mut indices, self.shape());
+        for offset in self.iter_offsets() {
+            values.push(unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0));
         }
         values
     }
@@ -1026,19 +1016,18 @@ impl RumpyArray {
         use crate::array::dtype::DTypeKind;
 
         let kind = self.dtype().kind();
-        let size = self.size();
+        let src_ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
 
         match kind {
             DTypeKind::Complex128 => {
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float64());
                 let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
                 let result_ptr = result_buffer.as_mut_ptr();
-
-                let mut indices = vec![0usize; self.ndim()];
-                for i in 0..size {
-                    let (re, _im) = self.get_complex_element(&indices);
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let (re, _im) = unsafe { ops.read_complex(src_ptr, offset) }.unwrap_or((0.0, 0.0));
                     unsafe { *(result_ptr as *mut f64).add(i) = re; }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }
@@ -1046,12 +1035,9 @@ impl RumpyArray {
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float32());
                 let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
                 let result_ptr = result_buffer.as_mut_ptr();
-
-                let mut indices = vec![0usize; self.ndim()];
-                for i in 0..size {
-                    let (re, _im) = self.get_complex_element(&indices);
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let (re, _im) = unsafe { ops.read_complex(src_ptr, offset) }.unwrap_or((0.0, 0.0));
                     unsafe { *(result_ptr as *mut f32).add(i) = re as f32; }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }
@@ -1066,19 +1052,18 @@ impl RumpyArray {
         use crate::array::dtype::DTypeKind;
 
         let kind = self.dtype().kind();
-        let size = self.size();
+        let src_ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
 
         match kind {
             DTypeKind::Complex128 => {
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float64());
                 let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
                 let result_ptr = result_buffer.as_mut_ptr();
-
-                let mut indices = vec![0usize; self.ndim()];
-                for i in 0..size {
-                    let (_re, im) = self.get_complex_element(&indices);
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let (_re, im) = unsafe { ops.read_complex(src_ptr, offset) }.unwrap_or((0.0, 0.0));
                     unsafe { *(result_ptr as *mut f64).add(i) = im; }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }
@@ -1086,12 +1071,9 @@ impl RumpyArray {
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float32());
                 let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
                 let result_ptr = result_buffer.as_mut_ptr();
-
-                let mut indices = vec![0usize; self.ndim()];
-                for i in 0..size {
-                    let (_re, im) = self.get_complex_element(&indices);
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let (_re, im) = unsafe { ops.read_complex(src_ptr, offset) }.unwrap_or((0.0, 0.0));
                     unsafe { *(result_ptr as *mut f32).add(i) = im as f32; }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }
@@ -1106,22 +1088,21 @@ impl RumpyArray {
         use crate::array::dtype::DTypeKind;
 
         let kind = self.dtype().kind();
-        let size = self.size();
+        let src_ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
 
         match kind {
             DTypeKind::Complex128 => {
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::complex128());
                 let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
                 let result_ptr = result_buffer.as_mut_ptr();
-
-                let mut indices = vec![0usize; self.ndim()];
-                for i in 0..size {
-                    let (re, im) = self.get_complex_element(&indices);
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let (re, im) = unsafe { ops.read_complex(src_ptr, offset) }.unwrap_or((0.0, 0.0));
                     unsafe {
                         *(result_ptr as *mut f64).add(i * 2) = re;
                         *(result_ptr as *mut f64).add(i * 2 + 1) = -im;
                     }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }
@@ -1129,15 +1110,12 @@ impl RumpyArray {
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::complex64());
                 let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
                 let result_ptr = result_buffer.as_mut_ptr();
-
-                let mut indices = vec![0usize; self.ndim()];
-                for i in 0..size {
-                    let (re, im) = self.get_complex_element(&indices);
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let (re, im) = unsafe { ops.read_complex(src_ptr, offset) }.unwrap_or((0.0, 0.0));
                     unsafe {
                         *(result_ptr as *mut f32).add(i * 2) = re as f32;
                         *(result_ptr as *mut f32).add(i * 2 + 1) = -im as f32;
                     }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }
@@ -1340,14 +1318,16 @@ impl RumpyArray {
         if size == 0 {
             return 0;
         }
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
         let mut count = 0;
-        let mut indices = vec![0usize; self.ndim()];
-        for _ in 0..size {
-            let val = self.get_element(&indices);
-            if val != 0.0 {
-                count += 1;
+        for offset in self.iter_offsets() {
+            if let Some(val) = unsafe { ops.read_f64(ptr, offset) } {
+                if val != 0.0 {
+                    count += 1;
+                }
             }
-            increment_indices(&mut indices, self.shape());
         }
         count
     }
@@ -1417,13 +1397,15 @@ impl RumpyArray {
         if size == 0 {
             return true; // numpy convention: empty array is all True
         }
-        let mut indices = vec![0usize; self.ndim()];
-        for _ in 0..size {
-            let val = self.get_element(&indices);
-            if val == 0.0 {
-                return false;
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
+        for offset in self.iter_offsets() {
+            if let Some(val) = unsafe { ops.read_f64(ptr, offset) } {
+                if val == 0.0 {
+                    return false;
+                }
             }
-            increment_indices(&mut indices, self.shape());
         }
         true
     }
@@ -1478,13 +1460,15 @@ impl RumpyArray {
         if size == 0 {
             return false; // numpy convention: empty array is all False
         }
-        let mut indices = vec![0usize; self.ndim()];
-        for _ in 0..size {
-            let val = self.get_element(&indices);
-            if val != 0.0 {
-                return true;
+        let ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
+        for offset in self.iter_offsets() {
+            if let Some(val) = unsafe { ops.read_f64(ptr, offset) } {
+                if val != 0.0 {
+                    return true;
+                }
             }
-            increment_indices(&mut indices, self.shape());
         }
         false
     }
@@ -1546,10 +1530,10 @@ impl RumpyArray {
         let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
         let result_ptr = result_buffer.as_mut_ptr();
         let ops = dtype.ops();
+        let src_ptr = self.data_ptr();
 
-        let mut indices = vec![0usize; self.ndim()];
-        for i in 0..size {
-            let mut val = self.get_element(&indices);
+        for (i, offset) in self.iter_offsets().enumerate() {
+            let mut val = unsafe { ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
             if let Some(min) = a_min {
                 if val < min {
                     val = min;
@@ -1561,7 +1545,6 @@ impl RumpyArray {
                 }
             }
             unsafe { ops.write_f64(result_ptr, i, val); }
-            increment_indices(&mut indices, self.shape());
         }
 
         result
@@ -1581,13 +1564,12 @@ impl RumpyArray {
         let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
         let result_ptr = result_buffer.as_mut_ptr();
         let ops = dtype.ops();
+        let src_ptr = self.data_ptr();
 
-        let mut indices = vec![0usize; self.ndim()];
-        for i in 0..size {
-            let val = self.get_element(&indices);
+        for (i, offset) in self.iter_offsets().enumerate() {
+            let val = unsafe { ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
             let rounded = (val * scale).round() / scale;
             unsafe { ops.write_f64(result_ptr, i, rounded); }
-            increment_indices(&mut indices, self.shape());
         }
 
         result
@@ -1611,13 +1593,13 @@ impl RumpyArray {
                 let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
                 let result_ptr = result_buffer.as_mut_ptr();
                 let ops = dtype.ops();
+                let src_ptr = self.data_ptr();
 
-                let mut indices = vec![0usize; self.ndim()];
                 let mut acc = identity;
-                for i in 0..size {
-                    acc = op(acc, self.get_element(&indices));
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let val = unsafe { ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
+                    acc = op(acc, val);
                     unsafe { ops.write_f64(result_ptr, i, acc); }
-                    increment_indices(&mut indices, self.shape());
                 }
                 result
             }

@@ -1,12 +1,14 @@
 pub mod buffer;
 pub mod dtype;
 pub mod flags;
+pub mod iter;
 
 use std::sync::Arc;
 
 pub use buffer::ArrayBuffer;
 pub use dtype::{promote_dtype, DType, DTypeOps};
 pub use flags::ArrayFlags;
+pub use iter::StridedIter;
 
 /// Core N-dimensional array type.
 #[derive(Clone)]
@@ -144,6 +146,12 @@ impl RumpyArray {
     /// Check if array is F-contiguous.
     pub fn is_f_contiguous(&self) -> bool {
         self.flags.contains(ArrayFlags::F_CONTIGUOUS)
+    }
+
+    /// Iterate over byte offsets for each element in row-major order.
+    /// More efficient than `increment_indices` for strided arrays.
+    pub fn iter_offsets(&self) -> StridedIter<'_> {
+        StridedIter::new(&self.shape, &self.strides, 0)
     }
 
     /// Create a view with new offset, shape, and strides, sharing the buffer.
@@ -590,22 +598,18 @@ impl RumpyArray {
         let result_ptr = buffer.as_mut_ptr();
         let dst_ops = result.dtype.ops();
         let src_ptr = self.data_ptr();
+        let src_ops = self.dtype.ops();
 
-        // If same dtype, just copy elements
         if self.dtype == new_dtype {
-            let mut indices = vec![0usize; self.ndim()];
-            for i in 0..size {
-                let src_offset = self.byte_offset_for(&indices);
-                unsafe { dst_ops.copy_element(src_ptr, src_offset, result_ptr, i); }
-                increment_indices(&mut indices, self.shape());
+            // Same dtype: copy elements directly
+            for (i, offset) in self.iter_offsets().enumerate() {
+                unsafe { dst_ops.copy_element(src_ptr, offset, result_ptr, i); }
             }
         } else {
             // Cross-dtype conversion via f64 (lossy for complex)
-            let mut indices = vec![0usize; self.ndim()];
-            for i in 0..size {
-                let val = self.get_element(&indices);
+            for (i, offset) in self.iter_offsets().enumerate() {
+                let val = unsafe { src_ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
                 unsafe { dst_ops.write_f64(result_ptr, i, val); }
-                increment_indices(&mut indices, self.shape());
             }
         }
         result
