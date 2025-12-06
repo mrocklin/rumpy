@@ -69,7 +69,7 @@ pub type UnaryLoopFn = unsafe fn(
 /// Initialize accumulator for reduction.
 pub type ReduceInitFn = unsafe fn(out_ptr: *mut u8, idx: usize);
 
-/// Accumulate one element into reduction.
+/// Accumulate one element into reduction (legacy, for full-array reductions).
 pub type ReduceAccFn = unsafe fn(
     acc_ptr: *mut u8,
     idx: usize,
@@ -77,11 +77,29 @@ pub type ReduceAccFn = unsafe fn(
     byte_offset: isize,
 );
 
+/// Strided reduction loop - processes N elements into an accumulator.
+///
+/// This is the fast path for axis reductions. Handles both contiguous
+/// (stride == itemsize) and strided cases with SIMD-friendly inner loops.
+///
+/// # Safety
+/// Caller must ensure:
+/// - `acc_ptr` points to valid, initialized accumulator
+/// - `src_ptr` is valid for `n` elements at `stride` intervals
+pub type ReduceLoopFn = unsafe fn(
+    acc_ptr: *mut u8,      // Single accumulator element
+    src_ptr: *const u8,    // Source data start
+    n: usize,              // Number of elements to reduce
+    stride: isize,         // Byte stride between elements
+);
+
 /// Registry for ufunc inner loops.
 pub struct UFuncRegistry {
     binary_loops: HashMap<(BinaryOp, TypeSignature), BinaryLoopFn>,
     unary_loops: HashMap<(UnaryOp, TypeSignature), UnaryLoopFn>,
     reduce_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceAccFn)>,
+    /// Strided reduction loops for axis reductions (fast path)
+    reduce_strided_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceLoopFn)>,
 }
 
 impl UFuncRegistry {
@@ -90,6 +108,7 @@ impl UFuncRegistry {
             binary_loops: HashMap::new(),
             unary_loops: HashMap::new(),
             reduce_loops: HashMap::new(),
+            reduce_strided_loops: HashMap::new(),
         }
     }
 
@@ -148,6 +167,27 @@ impl UFuncRegistry {
     ) -> Option<(ReduceInitFn, ReduceAccFn, DTypeKind)> {
         let sig = TypeSignature::reduce(input.clone(), input.clone());
         self.reduce_loops.get(&(op, sig)).map(|&(init, acc)| (init, acc, input))
+    }
+
+    /// Register a strided reduce loop for axis reductions.
+    pub fn register_reduce_strided(
+        &mut self,
+        op: ReduceOp,
+        sig: TypeSignature,
+        init: ReduceInitFn,
+        loop_fn: ReduceLoopFn,
+    ) {
+        self.reduce_strided_loops.insert((op, sig), (init, loop_fn));
+    }
+
+    /// Look up a strided reduce loop. Returns None if no registered loop exists.
+    pub fn lookup_reduce_strided(
+        &self,
+        op: ReduceOp,
+        input: DTypeKind,
+    ) -> Option<(ReduceInitFn, ReduceLoopFn, DTypeKind)> {
+        let sig = TypeSignature::reduce(input.clone(), input.clone());
+        self.reduce_strided_loops.get(&(op, sig)).map(|&(init, loop_fn)| (init, loop_fn, input))
     }
 }
 
@@ -695,6 +735,240 @@ fn init_default_loops() -> UFuncRegistry {
             if v == 0 { *acc = 0; }
         },
     );
+
+    // ========================================================================
+    // Strided reduce loops (for axis reductions)
+    // ========================================================================
+    //
+    // These process N elements at once, with contiguous fast path for SIMD.
+
+    macro_rules! register_strided_reduce_float {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            // Sum - uses multiple accumulators to break dependency chain for SIMD
+            $reg.register_reduce_strided(
+                ReduceOp::Sum,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = 0.0; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        // Contiguous: 8 accumulators break dependency chain for SIMD
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        let (mut s0, mut s1, mut s2, mut s3) = (0.0 as $T, 0.0 as $T, 0.0 as $T, 0.0 as $T);
+                        let (mut s4, mut s5, mut s6, mut s7) = (0.0 as $T, 0.0 as $T, 0.0 as $T, 0.0 as $T);
+                        let chunks = slice.chunks_exact(8);
+                        let remainder = chunks.remainder();
+                        for chunk in chunks {
+                            s0 += chunk[0]; s1 += chunk[1]; s2 += chunk[2]; s3 += chunk[3];
+                            s4 += chunk[4]; s5 += chunk[5]; s6 += chunk[6]; s7 += chunk[7];
+                        }
+                        *acc = (s0 + s1 + s2 + s3) + (s4 + s5 + s6 + s7) + remainder.iter().copied().sum::<$T>();
+                    } else {
+                        // Strided: simple loop (no SIMD benefit)
+                        let mut ptr = src_ptr;
+                        let mut sum: $T = 0.0;
+                        for _ in 0..n {
+                            sum += *(ptr as *const $T);
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = sum;
+                    }
+                },
+            );
+            // Prod
+            $reg.register_reduce_strided(
+                ReduceOp::Prod,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = 1.0; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        *acc = slice.iter().product();
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut prod: $T = 1.0;
+                        for _ in 0..n {
+                            prod *= *(ptr as *const $T);
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = prod;
+                    }
+                },
+            );
+            // Max - uses multiple accumulators to break dependency chain
+            $reg.register_reduce_strided(
+                ReduceOp::Max,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = <$T>::NEG_INFINITY; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        let (mut m0, mut m1, mut m2, mut m3) = (<$T>::NEG_INFINITY, <$T>::NEG_INFINITY, <$T>::NEG_INFINITY, <$T>::NEG_INFINITY);
+                        let chunks = slice.chunks_exact(4);
+                        let remainder = chunks.remainder();
+                        for chunk in chunks {
+                            m0 = m0.max(chunk[0]); m1 = m1.max(chunk[1]);
+                            m2 = m2.max(chunk[2]); m3 = m3.max(chunk[3]);
+                        }
+                        let mut result = m0.max(m1).max(m2.max(m3));
+                        for &v in remainder { result = result.max(v); }
+                        *acc = result;
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut max_val: $T = <$T>::NEG_INFINITY;
+                        for _ in 0..n {
+                            let v = *(ptr as *const $T);
+                            max_val = max_val.max(v);
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = max_val;
+                    }
+                },
+            );
+            // Min - uses multiple accumulators to break dependency chain
+            $reg.register_reduce_strided(
+                ReduceOp::Min,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = <$T>::INFINITY; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        let (mut m0, mut m1, mut m2, mut m3) = (<$T>::INFINITY, <$T>::INFINITY, <$T>::INFINITY, <$T>::INFINITY);
+                        let chunks = slice.chunks_exact(4);
+                        let remainder = chunks.remainder();
+                        for chunk in chunks {
+                            m0 = m0.min(chunk[0]); m1 = m1.min(chunk[1]);
+                            m2 = m2.min(chunk[2]); m3 = m3.min(chunk[3]);
+                        }
+                        let mut result = m0.min(m1).min(m2.min(m3));
+                        for &v in remainder { result = result.min(v); }
+                        *acc = result;
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut min_val: $T = <$T>::INFINITY;
+                        for _ in 0..n {
+                            let v = *(ptr as *const $T);
+                            min_val = min_val.min(v);
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = min_val;
+                    }
+                },
+            );
+        };
+    }
+    register_strided_reduce_float!(reg, DTypeKind::Float64, f64);
+    register_strided_reduce_float!(reg, DTypeKind::Float32, f32);
+
+    // Integer strided reduce loops
+    macro_rules! register_strided_reduce_int {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            // Sum (wrapping)
+            $reg.register_reduce_strided(
+                ReduceOp::Sum,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = 0; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        *acc = slice.iter().fold(0 as $T, |a, &b| a.wrapping_add(b));
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut sum: $T = 0;
+                        for _ in 0..n {
+                            sum = sum.wrapping_add(*(ptr as *const $T));
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = sum;
+                    }
+                },
+            );
+            // Prod (wrapping)
+            $reg.register_reduce_strided(
+                ReduceOp::Prod,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = 1; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        *acc = slice.iter().fold(1 as $T, |a, &b| a.wrapping_mul(b));
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut prod: $T = 1;
+                        for _ in 0..n {
+                            prod = prod.wrapping_mul(*(ptr as *const $T));
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = prod;
+                    }
+                },
+            );
+            // Max
+            $reg.register_reduce_strided(
+                ReduceOp::Max,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = <$T>::MIN; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        *acc = slice.iter().cloned().max().unwrap_or(<$T>::MIN);
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut max_val: $T = <$T>::MIN;
+                        for _ in 0..n {
+                            let v = *(ptr as *const $T);
+                            if v > max_val { max_val = v; }
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = max_val;
+                    }
+                },
+            );
+            // Min
+            $reg.register_reduce_strided(
+                ReduceOp::Min,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe { *(out_ptr as *mut $T) = <$T>::MAX; },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let acc = acc_ptr as *mut $T;
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    if stride == itemsize {
+                        let slice = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        *acc = slice.iter().cloned().min().unwrap_or(<$T>::MAX);
+                    } else {
+                        let mut ptr = src_ptr;
+                        let mut min_val: $T = <$T>::MAX;
+                        for _ in 0..n {
+                            let v = *(ptr as *const $T);
+                            if v < min_val { min_val = v; }
+                            ptr = ptr.offset(stride);
+                        }
+                        *acc = min_val;
+                    }
+                },
+            );
+        };
+    }
+    register_strided_reduce_int!(reg, DTypeKind::Int64, i64);
+    register_strided_reduce_int!(reg, DTypeKind::Int32, i32);
+    register_strided_reduce_int!(reg, DTypeKind::Int16, i16);
+    register_strided_reduce_int!(reg, DTypeKind::Uint64, u64);
+    register_strided_reduce_int!(reg, DTypeKind::Uint32, u32);
+    register_strided_reduce_int!(reg, DTypeKind::Uint16, u16);
+    register_strided_reduce_int!(reg, DTypeKind::Uint8, u8);
 
     reg
 }

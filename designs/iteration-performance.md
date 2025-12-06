@@ -2,108 +2,124 @@
 
 How rumpy iterates over array elements and the performance implications.
 
-## Iteration Patterns
+## Current Architecture
 
-Rumpy has several ways to access array elements:
+### Registry-Based Dispatch
 
-### 1. Registry Loops (Fast)
+All operations use the UFuncRegistry for type-specific loops:
 
-For ufuncs, strided loops receive pointers and strides directly:
-```rust
-unsafe fn add_f64(a: *const u8, b: *const u8, out: *mut u8, n: usize,
-                  strides: (isize, isize, isize))
+```
+Operation
+    │
+    ├─► Registry lookup ──► Typed loop function
+    │                         └── Handles contiguous/strided internally
+    │
+    └─► Trait fallback (slower)
 ```
 
-LLVM auto-vectorizes the contiguous case. See `designs/strided-loops.md`.
+### Loop Types
 
-### 2. StridedIter (Medium)
+| Type | Signature | Use Case |
+|------|-----------|----------|
+| `BinaryLoopFn` | `(a, b, out, n, strides)` | Element-wise binary ops |
+| `UnaryLoopFn` | `(src, out, n, strides)` | Element-wise unary ops |
+| `ReduceLoopFn` | `(acc, src, n, stride)` | Axis reductions |
+| `ReduceAccFn` | `(acc, idx, val, offset)` | Full reductions (legacy) |
 
-Iterator yielding byte offsets for each element:
+### Iteration Primitives
+
+**BackstrideIter**: Efficient traversal using precomputed backstrides
+- No per-element index→offset calculation
+- Used for full-array operations
+
+**AxisOffsetIter**: For axis operations
+- Iterates over outer dimensions
+- Yields base offsets for inner axis loop
+
+## Performance Results
+
+Benchmarks on 1000x1000 f64 array (vs NumPy):
+
+| Operation | Contiguous Axis | Non-contiguous Axis |
+|-----------|-----------------|---------------------|
+| sum | **0.84x** (faster) | 3.5x slower |
+| prod | **0.96x** (parity) | - |
+| max | 1.3x slower | 3.6x slower |
+| min | 1.3x slower | - |
+
+Integer types often faster than NumPy (int32 sum: 0.3x = 3x faster).
+
+## Key Optimizations
+
+### 1. Multiple Accumulators
+
+Breaking dependency chains enables SIMD:
+
 ```rust
-for offset in array.iter_offsets() {
-    let val = ops.read_f64(ptr, offset);
+// Bad: loop-carried dependency, no SIMD
+for x in slice { acc += x; }
+
+// Good: independent accumulators, SIMD-friendly
+for chunk in slice.chunks_exact(8) {
+    s0 += chunk[0]; s1 += chunk[1]; ...
+}
+acc = s0 + s1 + s2 + ...;
+```
+
+### 2. Contiguous Detection
+
+Each loop checks `stride == itemsize` and uses slice-based iteration:
+
+```rust
+if stride == itemsize {
+    let slice = from_raw_parts(ptr, n);
+    // LLVM auto-vectorizes this
+} else {
+    // Strided pointer loop
 }
 ```
 
-Overhead: index array per iteration, branch per dimension to detect wraparound.
-Used by: full-array reductions (sum, mean, var).
+### 3. Registry Dispatch
 
-### 3. get_element (Slow)
+Type-specific loops avoid virtual dispatch overhead. Macros generate
+optimized code for each dtype.
 
-Index-based element access:
-```rust
-for j in 0..axis_len {
-    indices[axis] = j;
-    let val = array.get_element(&indices);
-}
-```
+## Why Non-contiguous Is Slower
 
-Overhead: compute byte offset from indices each call.
-Used by: axis reductions (sum_axis, var_axis, moment_axis).
+For axis=0 reduction on C-order array:
+- Stride = 8000 bytes (jumping 1000 elements)
+- Cache misses on every access
+- No SIMD possible across non-contiguous memory
 
-## Performance Hierarchy
-
-| Method | Relative Speed | Vectorizable |
-|--------|---------------|--------------|
-| Registry loop (contiguous) | 1.0x | Yes |
-| Registry loop (strided) | 2-5x slower | No |
-| StridedIter | 3-5x slower | No |
-| get_element | 5-10x slower | No |
-
-## Why Axis Reductions Are Slow
-
-For a 1000x1000 array reduced along axis 0:
-- We compute 1000 results
-- Each result sums 1000 elements
-- Each element access uses `get_element` (index→offset calculation)
-- That's 1M index calculations vs NumPy's optimized strided iteration
-
-## Optimization Strategy
-
-### Contiguous Fast Paths
-
-For contiguous f64, bypass iteration entirely:
-```rust
-if self.is_c_contiguous() && dtype.kind() == Float64 {
-    let ptr = self.data_ptr() as *const f64;
-    // Direct pointer arithmetic
-}
-```
-
-### Strided Pointer Access
-
-For reductions along an axis, compute the stride once and use pointer arithmetic:
-```rust
-let axis_stride = strides[axis];
-let mut ptr = base_ptr;
-for _ in 0..axis_len {
-    let val = *ptr;
-    ptr = ptr.offset(axis_stride);
-}
-```
-
-This avoids per-element index calculation.
-
-### Inner Loop Optimization
-
-Process innermost dimension with a tight loop, only update outer indices:
-```rust
-for outer in outer_iter {
-    let base = compute_base_offset(outer);
-    for i in 0..inner_size {
-        process(ptr.offset(base + i * inner_stride));
-    }
-}
-```
-
-## Current State
-
-- Ufuncs: Use registry loops with strided support (fast)
-- Full reductions: Use StridedIter (medium)
-- Axis reductions: Use get_element (slow)
+NumPy has similar issues but may use cache-aware blocking.
 
 ## Future Work
 
-1. **Strided axis reductions**: Compute base pointer + axis stride, iterate with pointer arithmetic
-2. **Parallel iteration**: Rayon for large arrays (requires thread-safe design)
-3. **Explicit SIMD**: `std::simd` for critical paths when stable
+### Near-term
+
+1. **Cache-aware blocking for non-contiguous**: Process in cache-friendly chunks
+2. **Apply multi-accumulator to integers**: Currently only floats optimized
+3. **Optimize max/min**: Current 1.3x gap may be due to NaN handling branches
+
+### Medium-term
+
+4. **Parallel reductions**: Rayon for large arrays
+   - Split along outer dimension
+   - Merge partial results
+
+5. **Operation fusion**: Avoid intermediate allocations
+   - `(a - mean).pow(2).sum()` in one pass
+   - Requires Zip-style abstraction
+
+### Long-term
+
+6. **Explicit SIMD**: `std::simd` or `portable_simd` when stable
+7. **Transpose for non-contiguous**: Copy to contiguous buffer when profitable
+8. **BLAS integration**: Use optimized libraries for specific patterns
+
+## Design Principles
+
+1. **One pattern for all dtypes**: Macros generate typed loops, no special cases in operation code
+2. **Contiguous fast path**: Every loop checks and optimizes for contiguous
+3. **Registry consistency**: Reductions use same pattern as ufuncs
+4. **Incremental optimization**: Add fast paths without breaking fallbacks

@@ -489,136 +489,79 @@ fn reduce_all_f64(arr: &RumpyArray, op: ReduceOp) -> f64 {
 
 /// Reduce array along a specific axis.
 ///
-/// Uses axis_offsets() iterator with strided pointer arithmetic for efficiency.
+/// Uses strided reduce loops from the registry for efficient axis reductions.
+/// Each loop handles both contiguous (SIMD) and strided cases internally.
 /// See designs/backstride-iteration.md for design rationale.
 fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
-    use crate::array::dtype::DTypeKind;
-
     // Output shape: remove the reduction axis
     let mut out_shape: Vec<usize> = arr.shape().to_vec();
     let axis_len = out_shape.remove(axis);
 
-    // Handle edge cases
     if out_shape.is_empty() {
         out_shape = vec![1]; // Scalar result wrapped in 1D array
     }
 
     let dtype = arr.dtype();
     let kind = dtype.kind();
-    let itemsize = dtype.itemsize() as isize;
-
-    // Get axis stride for pointer arithmetic
+    let itemsize = dtype.itemsize();
     let axis_stride = arr.strides()[axis];
     let src_ptr = arr.data_ptr();
-    let axis_contiguous = axis_stride == itemsize;
 
-    // Fast path: contiguous f64 axis with Sum/Prod/Max/Min
-    // These can be vectorized when the axis is contiguous in memory
-    if axis_contiguous && kind == DTypeKind::Float64 {
-        match op {
-            ReduceOp::Sum => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
-                slice.iter().sum()
-            }),
-            ReduceOp::Prod => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
-                slice.iter().product()
-            }),
-            ReduceOp::Max => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
-                slice.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
-            }),
-            ReduceOp::Min => return reduce_axis_f64_contiguous(arr, axis, axis_len, &out_shape, |slice| {
-                slice.iter().cloned().fold(f64::INFINITY, f64::min)
-            }),
-        }
-    }
-
-    let mut result = RumpyArray::zeros(out_shape.clone(), arr.dtype());
+    let mut result = RumpyArray::zeros(out_shape, arr.dtype());
     let out_size = result.size();
-
-    let buffer = result.buffer_mut();
-    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
-    let result_ptr = result_buffer.as_mut_ptr();
-
-    // Try registry first
-    {
-        let reg = registry().read().unwrap();
-        if let Some((init_fn, acc_fn, _)) = reg.lookup_reduce(op, kind.clone()) {
-            // Initialize all accumulators
-            for i in 0..out_size {
-                unsafe { init_fn(result_ptr, i); }
-            }
-
-            if out_size == 0 || axis_len == 0 {
-                return result;
-            }
-
-            // Iterate using axis_offsets (strided pointer arithmetic)
-            for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
-                let mut ptr = unsafe { src_ptr.offset(base_offset) };
-                for _ in 0..axis_len {
-                    unsafe { acc_fn(result_ptr, i, ptr, 0); }
-                    ptr = unsafe { ptr.offset(axis_stride) };
-                }
-            }
-
-            return result;
-        }
-    }
-
-    // Fallback: trait-based dispatch
-    let ops = dtype.ops();
-
-    // Initialize all accumulators
-    for i in 0..out_size {
-        unsafe { ops.reduce_init(op, result_ptr, i); }
-    }
 
     if out_size == 0 || axis_len == 0 {
         return result;
     }
 
-    // Iterate using axis_offsets (strided pointer arithmetic)
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    // Try registry lookups (single lock acquisition)
+    let reg = registry().read().unwrap();
+
+    // Prefer strided loops (process N elements at once)
+    if let Some((init_fn, loop_fn, _)) = reg.lookup_reduce_strided(op, kind.clone()) {
+        for i in 0..out_size {
+            unsafe { init_fn(result_ptr, i); }
+        }
+        for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+            let src_start = unsafe { src_ptr.offset(base_offset) };
+            let acc_ptr = unsafe { result_ptr.add(i * itemsize) };
+            unsafe { loop_fn(acc_ptr, src_start, axis_len, axis_stride); }
+        }
+        return result;
+    }
+
+    // Fallback to per-element loops
+    if let Some((init_fn, acc_fn, _)) = reg.lookup_reduce(op, kind.clone()) {
+        for i in 0..out_size {
+            unsafe { init_fn(result_ptr, i); }
+        }
+        for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+            let mut ptr = unsafe { src_ptr.offset(base_offset) };
+            for _ in 0..axis_len {
+                unsafe { acc_fn(result_ptr, i, ptr, 0); }
+                ptr = unsafe { ptr.offset(axis_stride) };
+            }
+        }
+        return result;
+    }
+
+    drop(reg); // Release lock before trait dispatch
+
+    // Trait-based fallback
+    let ops = dtype.ops();
+    for i in 0..out_size {
+        unsafe { ops.reduce_init(op, result_ptr, i); }
+    }
     for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
         let mut ptr = unsafe { src_ptr.offset(base_offset) };
         for _ in 0..axis_len {
             unsafe { ops.reduce_acc(op, result_ptr, i, ptr, 0); }
             ptr = unsafe { ptr.offset(axis_stride) };
         }
-    }
-
-    result
-}
-
-/// Fast path for contiguous f64 axis reductions.
-/// Converts each axis slice to a Rust slice for SIMD-friendly iteration.
-#[inline]
-fn reduce_axis_f64_contiguous<F>(
-    arr: &RumpyArray,
-    axis: usize,
-    axis_len: usize,
-    out_shape: &[usize],
-    reduce_fn: F,
-) -> RumpyArray
-where
-    F: Fn(&[f64]) -> f64,
-{
-    let mut result = RumpyArray::zeros(out_shape.to_vec(), DType::float64());
-    let out_size = result.size();
-
-    if out_size == 0 || axis_len == 0 {
-        return result;
-    }
-
-    let buffer = result.buffer_mut();
-    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
-    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
-    let src_ptr = arr.data_ptr() as *const f64;
-
-    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
-        // base_offset is in bytes, convert to f64 index
-        let base_idx = base_offset / 8;
-        let slice = unsafe { std::slice::from_raw_parts(src_ptr.offset(base_idx), axis_len) };
-        let value = reduce_fn(slice);
-        unsafe { *result_ptr.add(i) = value; }
     }
 
     result

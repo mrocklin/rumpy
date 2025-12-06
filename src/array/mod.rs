@@ -8,7 +8,7 @@ use std::sync::Arc;
 pub use buffer::ArrayBuffer;
 pub use dtype::{promote_dtype, DType, DTypeOps};
 pub use flags::ArrayFlags;
-pub use iter::StridedIter;
+pub use iter::{StridedIter, AxisOffsetIter};
 
 /// Core N-dimensional array type.
 #[derive(Clone)]
@@ -150,8 +150,16 @@ impl RumpyArray {
 
     /// Iterate over byte offsets for each element in row-major order.
     /// More efficient than `increment_indices` for strided arrays.
-    pub fn iter_offsets(&self) -> StridedIter<'_> {
+    pub fn iter_offsets(&self) -> StridedIter {
         StridedIter::new(&self.shape, &self.strides, 0)
+    }
+
+    /// Iterate over base byte offsets for axis reduction.
+    ///
+    /// Each yielded offset is the starting point for a slice along `axis`.
+    /// Use with `strides()[axis]` to iterate along the axis from each base.
+    pub fn axis_offsets(&self, axis: usize) -> AxisOffsetIter {
+        AxisOffsetIter::new(&self.shape, &self.strides, axis, 0)
     }
 
     /// Create a view with new offset, shape, and strides, sharing the buffer.
