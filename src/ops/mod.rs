@@ -798,49 +798,39 @@ impl RumpyArray {
     }
 
     /// Central moment along axis.
+    /// Uses vectorized operations: (x - mean)^k summed along axis.
     pub fn moment_axis(&self, k: usize, axis: usize) -> RumpyArray {
+        let axis_len = self.shape()[axis];
+        if axis_len == 0 {
+            let mut out_shape: Vec<usize> = self.shape().to_vec();
+            out_shape.remove(axis);
+            if out_shape.is_empty() {
+                out_shape = vec![1];
+            }
+            return RumpyArray::zeros(out_shape, DType::float64());
+        }
+
+        // Compute mean and broadcast back to original shape
         let mean = self.mean_axis(axis);
         let mean_expanded = mean.expand_dims(axis).expect("expand_dims succeeds");
-        let mean_broadcast = mean_expanded.broadcast_to(self.shape()).expect("broadcast succeeds");
 
-        let mut out_shape: Vec<usize> = self.shape().to_vec();
-        let axis_len = out_shape.remove(axis);
-        if out_shape.is_empty() {
-            out_shape = vec![1];
-        }
+        // Compute deviations: x - mean (uses vectorized binary op with broadcasting)
+        let diff = self.binary_op(&mean_expanded, BinaryOp::Sub).expect("broadcast succeeds");
 
-        let mut result = RumpyArray::zeros(out_shape.clone(), DType::float64());
-        let out_size = result.size();
-        if out_size == 0 || axis_len == 0 {
-            return result;
-        }
+        // Raise to power k using vectorized ops
+        let powered = if k == 2 {
+            // Special case: x^2 = x * x (faster than pow)
+            diff.binary_op(&diff, BinaryOp::Mul).expect("same shape")
+        } else {
+            // General case: use pow
+            let k_arr = RumpyArray::full(vec![1], k as f64, diff.dtype());
+            diff.binary_op(&k_arr, BinaryOp::Pow).expect("broadcast works")
+        };
 
-        let buffer = result.buffer_mut();
-        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
-        let result_ptr = result_buffer.as_mut_ptr();
-        let result_dtype = DType::float64();
-        let result_ops = result_dtype.ops();
-
-        let mut out_indices = vec![0usize; out_shape.len()];
-        for i in 0..out_size {
-            let mut in_indices: Vec<usize> = out_indices[..axis.min(out_indices.len())].to_vec();
-            in_indices.push(0);
-            if axis < self.ndim() - 1 {
-                in_indices.extend_from_slice(&out_indices[axis..]);
-            }
-
-            let mut sum_mk = 0.0;
-            for j in 0..axis_len {
-                in_indices[axis] = j;
-                let diff = self.get_element(&in_indices) - mean_broadcast.get_element(&in_indices);
-                sum_mk += diff.powi(k as i32);
-            }
-
-            unsafe { result_ops.write_f64(result_ptr, i, sum_mk / axis_len as f64); }
-            increment_indices(&mut out_indices, &out_shape);
-        }
-
-        result
+        // Sum along axis and divide by count (uses efficient reduce_axis_op)
+        let sum = powered.sum_axis(axis);
+        let count_arr = RumpyArray::full(vec![1], axis_len as f64, sum.dtype());
+        sum.binary_op(&count_arr, BinaryOp::Div).expect("broadcast works")
     }
 
     /// Skewness of all elements (Fisher's definition: m3 / m2^1.5).

@@ -103,21 +103,15 @@ pub fn det(a: &RumpyArray) -> Option<f64> {
 }
 
 /// Compute Frobenius norm (sqrt of sum of squared elements).
+/// Uses vectorized operations: sqrt(sum(x * x)).
 pub fn norm(a: &RumpyArray, ord: Option<&str>) -> Option<f64> {
     let ord = ord.unwrap_or("fro");
 
     match ord {
         "fro" => {
-            // Frobenius norm: sqrt(sum of squared elements)
-            let mut sum_sq = 0.0;
-            let size = a.size();
-            let mut indices = vec![0usize; a.ndim()];
-            for _ in 0..size {
-                let val = a.get_element(&indices);
-                sum_sq += val * val;
-                crate::array::increment_indices(&mut indices, a.shape());
-            }
-            Some(sum_sq.sqrt())
+            // Frobenius norm: sqrt(sum(x^2)) using vectorized ops
+            let squared = a.binary_op(a, super::BinaryOp::Mul).expect("same shape");
+            Some(squared.sum().sqrt())
         }
         _ => None, // Other norms not yet implemented
     }
