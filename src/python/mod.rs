@@ -1334,66 +1334,94 @@ pub fn logical_not(x: &PyRumpyArray) -> PyRumpyArray {
 
 /// Element-wise equality test.
 #[pyfunction]
-pub fn equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::equal(&x1.inner, &x2.inner)
+pub fn equal(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let a = to_rumpy_array(x1)?;
+    let b = to_rumpy_array(x2)?;
+    crate::ops::equal(&a, &b)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 /// Element-wise not-equal test.
 #[pyfunction]
-pub fn not_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::not_equal(&x1.inner, &x2.inner)
+pub fn not_equal(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let a = to_rumpy_array(x1)?;
+    let b = to_rumpy_array(x2)?;
+    crate::ops::not_equal(&a, &b)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 /// Element-wise less-than test.
 #[pyfunction]
-pub fn less(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::less(&x1.inner, &x2.inner)
+pub fn less(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let a = to_rumpy_array(x1)?;
+    let b = to_rumpy_array(x2)?;
+    crate::ops::less(&a, &b)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 /// Element-wise less-than-or-equal test.
 #[pyfunction]
-pub fn less_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::less_equal(&x1.inner, &x2.inner)
+pub fn less_equal(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let a = to_rumpy_array(x1)?;
+    let b = to_rumpy_array(x2)?;
+    crate::ops::less_equal(&a, &b)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 /// Element-wise greater-than test.
 #[pyfunction]
-pub fn greater(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::greater(&x1.inner, &x2.inner)
+pub fn greater(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let a = to_rumpy_array(x1)?;
+    let b = to_rumpy_array(x2)?;
+    crate::ops::greater(&a, &b)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 /// Element-wise greater-than-or-equal test.
 #[pyfunction]
-pub fn greater_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::greater_equal(&x1.inner, &x2.inner)
+pub fn greater_equal(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let a = to_rumpy_array(x1)?;
+    let b = to_rumpy_array(x2)?;
+    crate::ops::greater_equal(&a, &b)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
-/// Element-wise approximate equality test.
+/// Element-wise approximate equality test: |a - b| <= atol + rtol * |b|.
 #[pyfunction]
-#[pyo3(signature = (x1, x2, rtol=1e-5, atol=1e-8))]
-pub fn isclose(x1: &PyRumpyArray, x2: &PyRumpyArray, rtol: f64, atol: f64) -> PyResult<PyRumpyArray> {
-    crate::ops::isclose(&x1.inner, &x2.inner, rtol, atol)
+#[pyo3(signature = (a, b, rtol=1e-5, atol=1e-8, equal_nan=false))]
+pub fn isclose(
+    a: &Bound<'_, PyAny>,
+    b: &Bound<'_, PyAny>,
+    rtol: f64,
+    atol: f64,
+    equal_nan: bool,
+) -> PyResult<PyRumpyArray> {
+    let arr_a = to_rumpy_array(a)?;
+    let arr_b = to_rumpy_array(b)?;
+    crate::ops::isclose(&arr_a, &arr_b, rtol, atol, equal_nan)
         .map(PyRumpyArray::new)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 /// Test if all elements are approximately equal.
 #[pyfunction]
-#[pyo3(signature = (x1, x2, rtol=1e-5, atol=1e-8))]
-pub fn allclose(x1: &PyRumpyArray, x2: &PyRumpyArray, rtol: f64, atol: f64) -> PyResult<bool> {
-    crate::ops::allclose(&x1.inner, &x2.inner, rtol, atol)
+#[pyo3(signature = (a, b, rtol=1e-5, atol=1e-8, equal_nan=false))]
+pub fn allclose(
+    a: &Bound<'_, PyAny>,
+    b: &Bound<'_, PyAny>,
+    rtol: f64,
+    atol: f64,
+    equal_nan: bool,
+) -> PyResult<bool> {
+    let arr_a = to_rumpy_array(a)?;
+    let arr_b = to_rumpy_array(b)?;
+    crate::ops::allclose(&arr_a, &arr_b, rtol, atol, equal_nan)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
