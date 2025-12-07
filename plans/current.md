@@ -87,7 +87,40 @@ Split `src/ops/mod.rs` from 2015 lines to 385 lines (81% reduction).
 - Rust allows multiple impl blocks across files
 - `mod.rs` declares modules and re-exports `lexsort`
 
-## Next
+## Completed: array/mod.rs Refactoring
+
+Split `src/array/mod.rs` from 2321 lines to 501 lines (78% reduction).
+
+### `src/array/` Structure
+
+| File | Lines | Contents |
+|------|-------|----------|
+| `mod.rs` | 501 | RumpyArray struct, accessors, get/set element, copy, astype, increment_indices |
+| `constructors.rs` | 168 | zeros, ones, full, arange, linspace, eye, from_vec, from_slice_i64 |
+| `views.rs` | 261 | view_with, slice_axis, reshape, transpose, flip, broadcast_to, squeeze, expand_dims, gufunc_subarray |
+| `format.rs` | 193 | format_repr, format_str, display helpers |
+| `manipulation.rs` | 1302 | concatenate, stack, split, tile, repeat, pad, roll, rot90, meshgrid, indices, convolve, etc. |
+
+### Pattern
+- Same as ops/mod.rs: each file has `impl RumpyArray { ... }` or module-level functions
+- Struct fields made `pub(crate)` for submodule access
+- Helper functions `is_c_contiguous`, `is_f_contiguous`, `increment_indices` made `pub(crate)`
+
+## Next: More File Refactoring
+
+### `src/python/pyarray.rs` (1796 lines)
+Split into `src/python/pyarray/` submodules:
+
+| Target File | Contents |
+|-------------|----------|
+| `dunder_ops.rs` | __add__, __sub__, __mul__, __truediv__, __pow__, __mod__, __neg__, __matmul__ |
+| `dunder_cmp.rs` | __eq__, __ne__, __lt__, __le__, __gt__, __ge__ |
+| `dunder_item.rs` | __getitem__, __setitem__ |
+| `reductions.rs` | sum, mean, std, var, min, max, argmin, argmax, all, any |
+
+Keep in `mod.rs` (rename to pyarray.rs): struct, properties, simple methods
+
+## Future Work
 
 ### Random (Phase 2)
 - `poisson(lam, size)` - Poisson distribution
@@ -99,7 +132,7 @@ Split `src/ops/mod.rs` from 2015 lines to 385 lines (81% reduction).
 - `eig`, `eigvals` - eigenvalue decomposition
 - More norm types (1, 2, inf, nuclear)
 
-## Known Limitations (Future Work)
+## Known Limitations
 
 - dtype accepts strings only (`"float64"`), not `np.float64`
 - `asarray()` doesn't infer bool dtype from Python bools
