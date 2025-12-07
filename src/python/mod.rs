@@ -309,7 +309,13 @@ pub fn array(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyR
 fn array_impl(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
     // Already a rumpy array?
     if let Ok(arr) = obj.extract::<PyRef<'_, PyRumpyArray>>() {
-        // TODO: handle dtype conversion if requested
+        // Convert dtype if requested
+        if let Some(dtype_str) = dtype {
+            let target_dtype = parse_dtype(dtype_str)?;
+            if arr.inner.dtype() != target_dtype {
+                return Ok(PyRumpyArray::new(arr.inner.astype(target_dtype)));
+            }
+        }
         return Ok(PyRumpyArray::new(arr.inner.clone()));
     }
 
@@ -894,17 +900,34 @@ pub fn nextafter(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRum
 }
 
 // deg2rad and rad2deg as module-level functions
+// These always return float64, even for integer inputs (like numpy)
 
 #[pyfunction]
 pub fn deg2rad(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     let deg_to_rad = std::f64::consts::PI / 180.0;
-    apply_unary(x, |v| v * deg_to_rad, |a| Ok(a.scalar_op(deg_to_rad, crate::array::dtype::BinaryOp::Mul)))
+    apply_unary(x, |v| v * deg_to_rad, |a| {
+        // Promote to float64 if integer (numpy behavior)
+        let arr = if a.dtype() != DType::float64() && a.dtype() != DType::float32() {
+            a.astype(DType::float64())
+        } else {
+            a.clone()
+        };
+        Ok(arr.scalar_op(deg_to_rad, crate::array::dtype::BinaryOp::Mul))
+    })
 }
 
 #[pyfunction]
 pub fn rad2deg(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     let rad_to_deg = 180.0 / std::f64::consts::PI;
-    apply_unary(x, |v| v * rad_to_deg, |a| Ok(a.scalar_op(rad_to_deg, crate::array::dtype::BinaryOp::Mul)))
+    apply_unary(x, |v| v * rad_to_deg, |a| {
+        // Promote to float64 if integer (numpy behavior)
+        let arr = if a.dtype() != DType::float64() && a.dtype() != DType::float32() {
+            a.astype(DType::float64())
+        } else {
+            a.clone()
+        };
+        Ok(arr.scalar_op(rad_to_deg, crate::array::dtype::BinaryOp::Mul))
+    })
 }
 
 /// Alias for deg2rad.
@@ -1556,8 +1579,17 @@ pub fn column_stack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
 }
 
 /// Stack arrays row-wise (alias for vstack).
+/// Deprecated: Use vstack instead.
 #[pyfunction]
-pub fn row_stack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
+pub fn row_stack(py: Python<'_>, arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
+    let warnings = py.import("warnings")?;
+    warnings.call_method1(
+        "warn",
+        (
+            "`row_stack` is deprecated. Use `vstack` instead.",
+            py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
+        ),
+    )?;
     vstack(arrays)
 }
 
@@ -3097,10 +3129,19 @@ pub fn isin(
 }
 
 /// Test whether each element of ar1 is in ar2 (flattens ar1).
+/// Deprecated: Use isin instead.
 #[pyfunction]
 #[pyo3(signature = (ar1, ar2, invert=false))]
-pub fn in1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray, invert: bool) -> PyRumpyArray {
-    PyRumpyArray::new(crate::ops::in1d(&ar1.inner, &ar2.inner, invert))
+pub fn in1d(py: Python<'_>, ar1: &PyRumpyArray, ar2: &PyRumpyArray, invert: bool) -> PyResult<PyRumpyArray> {
+    let warnings = py.import("warnings")?;
+    warnings.call_method1(
+        "warn",
+        (
+            "`in1d` is deprecated. Use `isin` instead.",
+            py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
+        ),
+    )?;
+    Ok(PyRumpyArray::new(crate::ops::in1d(&ar1.inner, &ar2.inner, invert)))
 }
 
 /// Find the sorted, unique intersection of two arrays.

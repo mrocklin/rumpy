@@ -579,42 +579,30 @@ Post-implementation cleanup opportunities identified during review.
 
 **Trade-off:** More files vs. easier navigation. Current structure works but may become unwieldy.
 
-### 2. Duplicate Test Files
+### 2. Duplicate Test Files ✅ FIXED
 
-- `tests/test_statistics.py` - Stream 7 (median, average, ptp, histogram, cov, corrcoef)
-- `tests/test_stats.py` - var, std, argmin, argmax, sort, unique
-
-**Action:**
-- [ ] Consolidate into `test_statistics.py` or rename to clarify scope
+Consolidated `test_stats.py` into `test_statistics.py`.
 
 ### 3. Open TODOs in Code
 
-| Location | TODO |
-|----------|------|
-| `src/array/mod.rs:1055` | dtype promotion for concatenate |
-| `src/python/mod.rs:312` | dtype conversion in astype |
-| `src/python/pyarray.rs:1603` | scalar op elision |
-| `src/python/linalg.rs:30` | full_matrices support in SVD |
+| Location | TODO | Status |
+|----------|------|--------|
+| `src/array/mod.rs:1055` | dtype promotion for concatenate | Open |
+| `src/python/pyarray.rs:1603` | scalar op elision | Open (optimization) |
+| `src/python/linalg.rs:30` | full_matrices support in SVD | Open |
 
 **Priority:**
 - [ ] dtype promotion - affects correctness when concatenating mixed types
 - [ ] full_matrices SVD - NumPy parity gap
-- [ ] Others are optimizations, lower priority
+- [x] ~~dtype conversion in asarray~~ - Fixed
 
-### 4. Deprecation Warnings
+### 4. Deprecation Warnings ✅ FIXED
 
-Functions that NumPy has deprecated:
-- `row_stack` - NumPy says use `vstack`
-- `in1d` - NumPy says use `isin`
+Added deprecation warnings for:
+- `row_stack` → use `vstack`
+- `in1d` → use `isin`
 
-**Action:**
-- [ ] Add deprecation warnings to match NumPy behavior
-- [ ] Or remove and document as intentional deviation
+### 5. Integer dtype behavior ✅ FIXED
 
-### 5. Integer dtype behavior
-
-`deg2rad`/`radians` returns 0 for integer inputs (integer multiplication truncates).
-NumPy promotes to float64.
-
-**Action:**
-- [ ] Consider auto-promoting integer inputs to float64 for angular functions
+`deg2rad`/`radians`/`rad2deg`/`degrees` now promote integer inputs to float64,
+matching NumPy behavior.
