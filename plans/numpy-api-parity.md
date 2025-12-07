@@ -398,10 +398,12 @@ Each agent runs in its own worktree directory:
 ```bash
 # Terminal 1
 cd ~/workspace/rumpy-stream-01
+cp ../rumpy/.claude/settings.local.json .claude/
 claude "Implement Stream 1 per plans/numpy-api-parity.md"
 
 # Terminal 2
 cd ~/workspace/rumpy-stream-02
+cp ../rumpy/.claude/settings.local.json .claude/
 claude "Implement Stream 2 per plans/numpy-api-parity.md"
 ```
 
@@ -469,7 +471,12 @@ You are implementing NumPy API parity for rumpy, a NumPy clone in Rust.
 **Reference Files**:
 - `designs/adding-operations.md` - how to add operations
 - `designs/ufuncs.md` - architecture overview
+- `designs/iteration-performance.md` - iteration patterns
+- `designs/backstride-iteration.md` - strided access
 - `plans/numpy-api-parity.md` - full plan (your section)
+
+**Philosophy**: Seek general solutions. There are many operations and dtypes - prefer
+well-factored code with shared abstractions (macros, traits) over copy-paste.
 
 **Your Tasks**:
 [LIST OF FUNCTIONS FROM PLAN]
