@@ -7,6 +7,10 @@ edition = "2021"
 name = "rumpy"
 crate-type = ["cdylib"]
 
+[features]
+default = ["accelerate"]
+accelerate = ["blas-src/accelerate"]
+
 [dependencies]
 pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods"] }
 bitflags = "2.6"
@@ -15,3 +19,5 @@ rand_pcg = "0.9"
 rand_core = "0.9"
 half = "2.4"
 rustfft = "6.2"
+blas-src = { version = "0.10", optional = true }
+blas = { version = "0.22" }

@@ -62,3 +62,9 @@ In practice this is safe because:
 - Chained pure-Python ops (the target use case) don't involve C mid-chain
 
 For safety-critical code with C extensions that might hold raw pointers, assign intermediates to variables to prevent elision.
+
+## BLAS Backend - macOS Only
+
+Rumpy uses Apple Accelerate for matmul on macOS, achieving NumPy-equivalent performance. On Linux/Windows, it falls back to faer (pure Rust), which is ~2x slower for large matrices.
+
+Adding OpenBLAS/MKL support for other platforms is possible but adds packaging complexity (bundling shared libraries or requiring system installs).
