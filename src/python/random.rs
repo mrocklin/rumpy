@@ -3,6 +3,7 @@
 use pyo3::prelude::*;
 use std::sync::Mutex;
 
+use crate::array::{DType, RumpyArray};
 use crate::random::Generator;
 use super::{parse_shape, PyRumpyArray};
 
@@ -214,6 +215,214 @@ impl PyGenerator {
         })
     }
 
+    /// Random permutation of integers from 0 to x-1, or a shuffled copy of x.
+    fn permutation(&self, x: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+        let mut gen = self.inner.lock().unwrap();
+
+        // Try integer first
+        if let Ok(n) = x.extract::<usize>() {
+            let arr = gen.permutation(n);
+            return Ok(PyRumpyArray::new(arr));
+        }
+
+        // Try array
+        if let Ok(arr_ref) = x.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+            // Copy array data
+            let ptr = arr_ref.inner.data_ptr();
+            let dtype = arr_ref.inner.dtype();
+            let ops = dtype.ops();
+            let mut data: Vec<f64> = Vec::with_capacity(arr_ref.inner.size());
+            for offset in arr_ref.inner.iter_offsets() {
+                data.push(unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0));
+            }
+            // Shuffle
+            gen.shuffle_data(&mut data);
+            let result = RumpyArray::from_vec(data, DType::float64());
+            return Ok(PyRumpyArray::new(result));
+        }
+
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "permutation: x must be an integer or array",
+        ))
+    }
+
+    /// Shuffle array in place along its first axis.
+    fn shuffle(&self, x: &Bound<'_, PyRumpyArray>) -> PyResult<()> {
+        let mut gen = self.inner.lock().unwrap();
+        let py_arr = x.borrow();
+
+        let arr = &py_arr.inner;
+        let n = arr.shape()[0];
+
+        if n <= 1 {
+            return Ok(());
+        }
+
+        // Get mutable pointer to data
+        // Safety: We have exclusive access via PyO3's borrow checking and the GIL
+        let ptr = arr.data_ptr() as *mut f64;
+        let size = arr.size();
+        let data = unsafe { std::slice::from_raw_parts_mut(ptr, size) };
+
+        // For 1D arrays, shuffle elements directly
+        if arr.ndim() == 1 {
+            for i in (1..n).rev() {
+                let j = gen.bounded_uint64((i + 1) as u64) as usize;
+                data.swap(i, j);
+            }
+        } else {
+            // For ND arrays, shuffle along first axis by swapping rows
+            let row_size = arr.shape()[1..].iter().product::<usize>();
+            for i in (1..n).rev() {
+                let j = gen.bounded_uint64((i + 1) as u64) as usize;
+                // Swap rows i and j
+                for k in 0..row_size {
+                    data.swap(i * row_size + k, j * row_size + k);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Generate samples from beta distribution.
+    #[pyo3(signature = (a, b, size=None))]
+    fn beta(
+        &self,
+        a: f64,
+        b: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    // Return scalar - use beta with shape [1] and extract
+                    let arr = gen.beta(a, b, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.beta(a, b, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from gamma distribution.
+    #[pyo3(signature = (shape_param, scale=1.0, size=None))]
+    fn gamma(
+        &self,
+        shape_param: f64,
+        scale: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.gamma(shape_param, scale, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.gamma(shape_param, scale, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Poisson distribution.
+    #[pyo3(signature = (lam=1.0, size=None))]
+    fn poisson(
+        &self,
+        lam: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.poisson(lam, vec![1]);
+                    let val = arr.get_element(&[0]) as i64;
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.poisson(lam, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from binomial distribution.
+    #[pyo3(signature = (n, p, size=None))]
+    fn binomial(
+        &self,
+        n: u64,
+        p: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.binomial(n, p, vec![1]);
+                    let val = arr.get_element(&[0]) as i64;
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.binomial(n, p, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from chi-square distribution.
+    #[pyo3(signature = (df, size=None))]
+    fn chisquare(
+        &self,
+        df: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.chisquare(df, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.chisquare(df, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from multivariate normal distribution.
+    #[pyo3(signature = (mean, cov, size=None))]
+    fn multivariate_normal(
+        &self,
+        mean: Vec<f64>,
+        cov: Vec<Vec<f64>>,
+        size: Option<usize>,
+    ) -> PyResult<PyRumpyArray> {
+        let mut gen = self.inner.lock().unwrap();
+        let n = size.unwrap_or(1);
+        let arr = gen.multivariate_normal(&mean, &cov, n);
+        Ok(PyRumpyArray::new(arr))
+    }
+
     /// Generate random samples from a given array or range.
     /// If `a` is an int, samples are from range(a).
     /// If `a` is an array, samples are from the array elements.
@@ -224,8 +433,6 @@ impl PyGenerator {
         size: Option<&Bound<'_, pyo3::PyAny>>,
         replace: bool,
     ) -> PyResult<PyObject> {
-        use crate::array::{DType, RumpyArray};
-
         Python::with_gil(|py| {
             let mut gen = self.inner.lock().unwrap();
 

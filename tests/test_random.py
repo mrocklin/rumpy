@@ -296,3 +296,183 @@ class TestRandomVsNumpy:
         assert n.min() > 0
         assert abs(r_np.mean() - 1.0) < 0.05
         assert abs(n.mean() - 1.0) < 0.05
+
+
+# Stream 15: New random extensions
+
+
+def test_permutation_from_int():
+    """Test permutation creates shuffled arange."""
+    rng = rp.random.default_rng(42)
+    p = rng.permutation(10)
+    n = np.asarray(p)
+
+    # Should be a permutation of 0-9
+    assert n.shape == (10,)
+    assert set(n.tolist()) == set(range(10))
+
+
+def test_permutation_from_array():
+    """Test permutation shuffles an array."""
+    rng = rp.random.default_rng(42)
+    arr = rp.arange(10)
+    p = rng.permutation(arr)
+    n = np.asarray(p)
+
+    # Should contain same elements
+    assert n.shape == (10,)
+    assert set(n.tolist()) == set(range(10))
+
+
+def test_shuffle():
+    """Test shuffle modifies array in place."""
+    rng = rp.random.default_rng(42)
+    arr = rp.arange(10)
+    original = np.asarray(arr).copy()
+
+    rng.shuffle(arr)
+    shuffled = np.asarray(arr)
+
+    # Should contain same elements but be shuffled
+    assert set(shuffled.tolist()) == set(original.tolist())
+    # With high probability, order should differ
+    assert not np.array_equal(shuffled, original)
+
+
+def test_beta_statistics():
+    """Test beta distribution has correct mean."""
+    rng = rp.random.default_rng(42)
+    a, b = 2.0, 5.0
+    arr = rng.beta(a, b, size=10000)
+    n = np.asarray(arr)
+
+    # Beta mean = a / (a + b)
+    expected_mean = a / (a + b)
+    assert abs(n.mean() - expected_mean) < 0.01
+    # Values should be in (0, 1)
+    assert n.min() > 0
+    assert n.max() < 1
+
+
+def test_gamma_statistics():
+    """Test gamma distribution has correct mean."""
+    rng = rp.random.default_rng(42)
+    shape_param, scale = 2.0, 3.0
+    arr = rng.gamma(shape_param, scale, size=10000)
+    n = np.asarray(arr)
+
+    # Gamma mean = shape * scale
+    expected_mean = shape_param * scale
+    assert abs(n.mean() - expected_mean) < 0.2
+    # Values should be positive
+    assert n.min() > 0
+
+
+def test_poisson_statistics():
+    """Test poisson distribution has correct mean."""
+    rng = rp.random.default_rng(42)
+    lam = 5.0
+    arr = rng.poisson(lam, size=10000)
+    n = np.asarray(arr)
+
+    # Poisson mean = lambda
+    assert abs(n.mean() - lam) < 0.15
+    # Values should be non-negative integers
+    assert n.min() >= 0
+
+
+def test_binomial_statistics():
+    """Test binomial distribution has correct mean."""
+    rng = rp.random.default_rng(42)
+    n_trials, p = 10, 0.3
+    arr = rng.binomial(n_trials, p, size=10000)
+    result = np.asarray(arr)
+
+    # Binomial mean = n * p
+    expected_mean = n_trials * p
+    assert abs(result.mean() - expected_mean) < 0.1
+    # Values should be in [0, n]
+    assert result.min() >= 0
+    assert result.max() <= n_trials
+
+
+def test_chisquare_statistics():
+    """Test chi-square distribution has correct mean."""
+    rng = rp.random.default_rng(42)
+    df = 5.0
+    arr = rng.chisquare(df, size=10000)
+    n = np.asarray(arr)
+
+    # Chi-square mean = df
+    assert abs(n.mean() - df) < 0.2
+    # Values should be positive
+    assert n.min() > 0
+
+
+def test_multivariate_normal_statistics():
+    """Test multivariate normal has correct mean and covariance."""
+    rng = rp.random.default_rng(42)
+    mean = [1.0, 2.0]
+    cov = [[1.0, 0.5], [0.5, 2.0]]
+    arr = rng.multivariate_normal(mean, cov, size=10000)
+    n = np.asarray(arr)
+
+    assert n.shape == (10000, 2)
+    # Check means
+    assert abs(n[:, 0].mean() - 1.0) < 0.1
+    assert abs(n[:, 1].mean() - 2.0) < 0.1
+
+
+def test_beta_vs_numpy():
+    """Test beta matches numpy shape."""
+    rng_rp = rp.random.default_rng(42)
+    rng_np = np.random.default_rng(42)
+
+    r = rng_rp.beta(2.0, 5.0, size=(10, 20))
+    n = rng_np.beta(2.0, 5.0, size=(10, 20))
+
+    assert np.asarray(r).shape == n.shape
+
+
+def test_gamma_vs_numpy():
+    """Test gamma matches numpy shape."""
+    rng_rp = rp.random.default_rng(42)
+    rng_np = np.random.default_rng(42)
+
+    r = rng_rp.gamma(2.0, 3.0, size=(10, 20))
+    n = rng_np.gamma(2.0, 3.0, size=(10, 20))
+
+    assert np.asarray(r).shape == n.shape
+
+
+def test_poisson_vs_numpy():
+    """Test poisson matches numpy shape."""
+    rng_rp = rp.random.default_rng(42)
+    rng_np = np.random.default_rng(42)
+
+    r = rng_rp.poisson(5.0, size=(10, 20))
+    n = rng_np.poisson(5.0, size=(10, 20))
+
+    assert np.asarray(r).shape == n.shape
+
+
+def test_binomial_vs_numpy():
+    """Test binomial matches numpy shape and range."""
+    rng_rp = rp.random.default_rng(42)
+    rng_np = np.random.default_rng(42)
+
+    r = rng_rp.binomial(10, 0.5, size=(10, 20))
+    n = rng_np.binomial(10, 0.5, size=(10, 20))
+
+    assert np.asarray(r).shape == n.shape
+
+
+def test_chisquare_vs_numpy():
+    """Test chisquare matches numpy shape."""
+    rng_rp = rp.random.default_rng(42)
+    rng_np = np.random.default_rng(42)
+
+    r = rng_rp.chisquare(5.0, size=(10, 20))
+    n = rng_np.chisquare(5.0, size=(10, 20))
+
+    assert np.asarray(r).shape == n.shape
