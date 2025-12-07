@@ -266,6 +266,55 @@ impl DTypeOps for Complex128Ops {
             BinaryOp::Minimum => if ar.is_nan() || ai.is_nan() || br.is_nan() || bi.is_nan() {
                 (f64::NAN, f64::NAN)
             } else if ar < br || (ar == br && ai <= bi) { (ar, ai) } else { (br, bi) },
+            // Stream 2: Binary Math Operations (complex versions)
+            BinaryOp::Arctan2 => {
+                // atan2(y, x) for complex: use atan(y/x)
+                let denom = br * br + bi * bi;
+                let div_r = (ar * br + ai * bi) / denom;
+                let div_i = (ai * br - ar * bi) / denom;
+                // arctan of quotient
+                let num = (1.0 + div_i, -div_r);
+                let den = (1.0 - div_i, div_r);
+                let den_mag2 = den.0 * den.0 + den.1 * den.1;
+                let q_r = (num.0 * den.0 + num.1 * den.1) / den_mag2;
+                let q_i = (num.1 * den.0 - num.0 * den.1) / den_mag2;
+                let log_mag = (q_r * q_r + q_i * q_i).sqrt();
+                (-q_i.atan2(q_r) / 2.0, log_mag.ln() / 2.0)
+            }
+            BinaryOp::Hypot => {
+                // hypot for complex: sqrt(|a|^2 + |b|^2)
+                let mag = ((ar * ar + ai * ai) + (br * br + bi * bi)).sqrt();
+                (mag, 0.0)
+            }
+            BinaryOp::FMax | BinaryOp::FMin => {
+                // Ignore NaN: return the non-NaN value
+                let a_nan = ar.is_nan() || ai.is_nan();
+                let b_nan = br.is_nan() || bi.is_nan();
+                if a_nan && b_nan { (f64::NAN, f64::NAN) }
+                else if a_nan { (br, bi) }
+                else if b_nan { (ar, ai) }
+                else {
+                    let is_max = matches!(op, BinaryOp::FMax);
+                    if (is_max && (ar > br || (ar == br && ai >= bi))) ||
+                       (!is_max && (ar < br || (ar == br && ai <= bi))) {
+                        (ar, ai)
+                    } else {
+                        (br, bi)
+                    }
+                }
+            }
+            BinaryOp::Copysign => {
+                // copysign not really defined for complex; copy sign of real parts
+                (ar.copysign(br), ai.copysign(bi))
+            }
+            BinaryOp::Logaddexp | BinaryOp::Logaddexp2 => {
+                // Not well-defined for complex; return NaN
+                (f64::NAN, f64::NAN)
+            }
+            BinaryOp::Nextafter => {
+                // Not defined for complex; return b
+                (br, bi)
+            }
         };
         Self::write(out, idx, out_r, out_i);
     }

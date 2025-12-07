@@ -59,8 +59,13 @@ impl DTypeOps for BoolOps {
             BinaryOp::Pow => av,  // not meaningful
             BinaryOp::Mod => av,  // not meaningful
             BinaryOp::FloorDiv => av,  // not meaningful
-            BinaryOp::Maximum => av || bv,  // max of bool is OR
-            BinaryOp::Minimum => av && bv,  // min of bool is AND
+            BinaryOp::Maximum | BinaryOp::FMax => av || bv,  // max of bool is OR
+            BinaryOp::Minimum | BinaryOp::FMin => av && bv,  // min of bool is AND
+            // Float ops: treat bool as 0.0/1.0, return bool
+            BinaryOp::Arctan2 | BinaryOp::Hypot => av || bv,
+            BinaryOp::Copysign => av,
+            BinaryOp::Logaddexp | BinaryOp::Logaddexp2 => av || bv,
+            BinaryOp::Nextafter => bv,
         };
         Self::write(out, idx, result);
     }

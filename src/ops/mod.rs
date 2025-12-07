@@ -393,6 +393,36 @@ pub fn map_binary_op_inplace(
                     BinaryOp::Minimum => if av.0.is_nan() || av.1.is_nan() || bv.0.is_nan() || bv.1.is_nan() {
                         (f64::NAN, f64::NAN)
                     } else if av.0 < bv.0 || (av.0 == bv.0 && av.1 <= bv.1) { av } else { bv },
+                    // Stream 2: Binary math ops for complex fallback
+                    BinaryOp::Arctan2 => {
+                        // atan2 for complex: atan(y/x) in complex domain
+                        let denom = bv.0 * bv.0 + bv.1 * bv.1;
+                        if denom == 0.0 { (f64::NAN, f64::NAN) } else {
+                            let div_r = (av.0 * bv.0 + av.1 * bv.1) / denom;
+                            let div_i = (av.1 * bv.0 - av.0 * bv.1) / denom;
+                            (div_i.atan2(div_r), 0.0)  // Simplified
+                        }
+                    }
+                    BinaryOp::Hypot => ((av.0 * av.0 + av.1 * av.1 + bv.0 * bv.0 + bv.1 * bv.1).sqrt(), 0.0),
+                    BinaryOp::FMax => {
+                        let a_nan = av.0.is_nan() || av.1.is_nan();
+                        let b_nan = bv.0.is_nan() || bv.1.is_nan();
+                        if a_nan && b_nan { (f64::NAN, f64::NAN) }
+                        else if a_nan { bv }
+                        else if b_nan { av }
+                        else if av.0 > bv.0 || (av.0 == bv.0 && av.1 >= bv.1) { av } else { bv }
+                    }
+                    BinaryOp::FMin => {
+                        let a_nan = av.0.is_nan() || av.1.is_nan();
+                        let b_nan = bv.0.is_nan() || bv.1.is_nan();
+                        if a_nan && b_nan { (f64::NAN, f64::NAN) }
+                        else if a_nan { bv }
+                        else if b_nan { av }
+                        else if av.0 < bv.0 || (av.0 == bv.0 && av.1 <= bv.1) { av } else { bv }
+                    }
+                    BinaryOp::Copysign => (av.0.copysign(bv.0), av.1.copysign(bv.1)),
+                    BinaryOp::Logaddexp | BinaryOp::Logaddexp2 => (f64::NAN, f64::NAN),
+                    BinaryOp::Nextafter => bv,
                 };
 
                 unsafe { result_ops.write_complex(result_ptr, i, result_val.0, result_val.1); }
@@ -415,6 +445,32 @@ pub fn map_binary_op_inplace(
                     BinaryOp::FloorDiv => (av / bv).floor(),
                     BinaryOp::Maximum => if av.is_nan() || bv.is_nan() { f64::NAN } else { av.max(bv) },
                     BinaryOp::Minimum => if av.is_nan() || bv.is_nan() { f64::NAN } else { av.min(bv) },
+                    // Stream 2: Binary math ops fallback
+                    BinaryOp::Arctan2 => av.atan2(bv),
+                    BinaryOp::Hypot => av.hypot(bv),
+                    BinaryOp::FMax => if bv.is_nan() { av } else if av.is_nan() { bv } else { av.max(bv) },
+                    BinaryOp::FMin => if bv.is_nan() { av } else if av.is_nan() { bv } else { av.min(bv) },
+                    BinaryOp::Copysign => av.copysign(bv),
+                    BinaryOp::Logaddexp => {
+                        let m = av.max(bv);
+                        if m.is_infinite() { m } else { m + (1.0 + (-(av - bv).abs()).exp()).ln() }
+                    }
+                    BinaryOp::Logaddexp2 => {
+                        let m = av.max(bv);
+                        let ln2 = std::f64::consts::LN_2;
+                        if m.is_infinite() { m } else { m + ((1.0 + (-(av - bv).abs() * ln2).exp()).ln() / ln2) }
+                    }
+                    BinaryOp::Nextafter => {
+                        if av.is_nan() || bv.is_nan() { f64::NAN }
+                        else if av == bv { bv }
+                        else if av < bv {
+                            let bits = av.to_bits();
+                            f64::from_bits(if av >= 0.0 { bits + 1 } else { bits - 1 })
+                        } else {
+                            let bits = av.to_bits();
+                            f64::from_bits(if av > 0.0 { bits - 1 } else { bits + 1 })
+                        }
+                    }
                 };
 
                 unsafe { result_ops.write_f64(result_ptr, i, result_val); }
