@@ -777,8 +777,10 @@ impl PyRumpyArray {
         rbitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_xor)
     }
 
-    fn __invert__(&self) -> Self {
-        Self::new(crate::ops::bitwise_not(&self.inner))
+    fn __invert__(&self) -> PyResult<Self> {
+        crate::ops::bitwise_not(&self.inner)
+            .map(Self::new)
+            .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("bitwise_not not supported for this dtype"))
     }
 
     fn __lshift__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {

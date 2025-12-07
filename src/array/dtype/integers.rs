@@ -1,7 +1,7 @@
 //! Integer dtype implementations (signed and unsigned).
 
 use super::macros::{impl_signed_int_dtype, impl_unsigned_int_dtype};
-use super::{BinaryOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
+use super::{BinaryOp, BitwiseOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
 
 // Signed integers
 impl_signed_int_dtype!(Int64Ops, i64, 8, Int64, "int64", "<i8", "q", 80);

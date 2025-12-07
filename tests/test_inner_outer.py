@@ -10,8 +10,8 @@ class TestInner:
 
     def test_1d_1d(self):
         """Basic 1D inner product (dot product)."""
-        r = rp.inner(rp.asarray([1, 2, 3]), rp.asarray([4, 5, 6]))
-        n = np.inner(np.array([1, 2, 3]), np.array([4, 5, 6]))
+        r = rp.inner(rp.asarray([1.0, 2.0, 3.0]), rp.asarray([4.0, 5.0, 6.0]))
+        n = np.inner(np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0]))
         assert_eq(r, n)
 
     def test_1d_values(self):
@@ -50,8 +50,8 @@ class TestOuter:
 
     def test_1d_1d(self):
         """Basic 1D outer product."""
-        r = rp.outer(rp.asarray([1, 2, 3]), rp.asarray([4, 5]))
-        n = np.outer(np.array([1, 2, 3]), np.array([4, 5]))
+        r = rp.outer(rp.asarray([1.0, 2.0, 3.0]), rp.asarray([4.0, 5.0]))
+        n = np.outer(np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0]))
         assert_eq(r, n)
 
     def test_values(self):

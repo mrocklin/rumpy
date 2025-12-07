@@ -1,6 +1,6 @@
 //! Bool dtype implementation.
 
-use super::{BinaryOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
+use super::{BinaryOp, BitwiseOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
 use std::cmp::Ordering;
 
 /// Bool dtype operations.
@@ -127,5 +127,25 @@ impl DTypeOps for BoolOps {
 
     unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
         Some((if Self::read(ptr, byte_offset) { 1.0 } else { 0.0 }, 0.0))
+    }
+
+    unsafe fn bitwise_op(&self, op: BitwiseOp, a: *const u8, a_offset: isize,
+                         b: *const u8, b_offset: isize, out: *mut u8, idx: usize) -> bool {
+        let av = Self::read(a, a_offset);
+        let bv = Self::read(b, b_offset);
+        let result = match op {
+            BitwiseOp::And => av && bv,
+            BitwiseOp::Or => av || bv,
+            BitwiseOp::Xor => av != bv,
+            BitwiseOp::LeftShift => av,
+            BitwiseOp::RightShift => av,
+        };
+        Self::write(out, idx, result);
+        true
+    }
+
+    unsafe fn bitwise_not(&self, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize) -> bool {
+        Self::write(out, idx, !Self::read(src, byte_offset));
+        true
     }
 }

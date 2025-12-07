@@ -243,3 +243,89 @@ class TestComplex128Interop:
         n = np.asarray(r)
         assert n.dtype == np.complex128
         assert_eq(r, n)
+
+
+class TestDtypeInference:
+    """Test dtype inference from Python list values."""
+
+    def test_int_list_infers_int64(self):
+        r = rp.array([1, 2, 3])
+        n = np.array([1, 2, 3])
+        assert r.dtype == str(n.dtype)
+
+    def test_float_list_infers_float64(self):
+        r = rp.array([1.0, 2.0, 3.0])
+        n = np.array([1.0, 2.0, 3.0])
+        assert r.dtype == str(n.dtype)
+
+    def test_bool_list_infers_bool(self):
+        r = rp.array([True, False, True])
+        assert r.dtype == "bool"
+
+    def test_nested_int_list_infers_int64(self):
+        r = rp.array([[1, 2], [3, 4]])
+        n = np.array([[1, 2], [3, 4]])
+        assert r.dtype == str(n.dtype)
+
+    def test_explicit_dtype_overrides_inference(self):
+        """Explicit dtype should override inference."""
+        r = rp.array([1, 2, 3], dtype="float32")
+        assert r.dtype == "float32"
+
+
+class TestBitwiseDtypePreservation:
+    """Test that bitwise operations preserve dtype."""
+
+    def test_bitwise_and_preserves_uint8(self):
+        a = rp.array([1, 2, 3], dtype="uint8")
+        b = rp.array([1, 1, 1], dtype="uint8")
+        r = a & b
+        n = np.array([1, 2, 3], dtype=np.uint8) & np.array([1, 1, 1], dtype=np.uint8)
+        assert r.dtype == "uint8"
+        assert_eq(r, n)
+
+    def test_bitwise_or_preserves_int32(self):
+        a = rp.array([1, 2, 3], dtype="int32")
+        b = rp.array([4, 5, 6], dtype="int32")
+        r = a | b
+        n = np.array([1, 2, 3], dtype=np.int32) | np.array([4, 5, 6], dtype=np.int32)
+        assert r.dtype == "int32"
+        assert_eq(r, n)
+
+    def test_bitwise_xor_preserves_uint64(self):
+        a = rp.array([1, 2, 3], dtype="uint64")
+        b = rp.array([3, 2, 1], dtype="uint64")
+        r = a ^ b
+        n = np.array([1, 2, 3], dtype=np.uint64) ^ np.array([3, 2, 1], dtype=np.uint64)
+        assert r.dtype == "uint64"
+        assert_eq(r, n)
+
+    def test_bitwise_not_preserves_int64(self):
+        a = rp.array([1, 2, 3], dtype="int64")
+        r = ~a
+        n = ~np.array([1, 2, 3], dtype=np.int64)
+        assert r.dtype == "int64"
+        assert_eq(r, n)
+
+    def test_bitwise_not_preserves_bool(self):
+        a = rp.array([True, False, True])
+        r = ~a
+        n = ~np.array([True, False, True])
+        assert r.dtype == "bool"
+        assert_eq(r, n)
+
+    def test_left_shift_preserves_dtype(self):
+        a = rp.array([1, 2, 4], dtype="int32")
+        b = rp.array([1, 1, 1], dtype="int32")
+        r = a << b
+        n = np.array([1, 2, 4], dtype=np.int32) << np.array([1, 1, 1], dtype=np.int32)
+        assert r.dtype == "int32"
+        assert_eq(r, n)
+
+    def test_right_shift_preserves_dtype(self):
+        a = rp.array([8, 4, 2], dtype="uint16")
+        b = rp.array([1, 1, 1], dtype="uint16")
+        r = a >> b
+        n = np.array([8, 4, 2], dtype=np.uint16) >> np.array([1, 1, 1], dtype=np.uint16)
+        assert r.dtype == "uint16"
+        assert_eq(r, n)
