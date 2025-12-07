@@ -398,6 +398,7 @@ Each agent runs in its own worktree directory:
 ```bash
 # Terminal 1
 cd ~/workspace/rumpy-stream-01
+mkdir .claude
 cp ../rumpy/.claude/settings.local.json .claude/
 claude "Implement Stream 1 per plans/numpy-api-parity.md"
 
