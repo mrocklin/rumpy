@@ -354,7 +354,7 @@ impl PyRumpyArray {
         // Handle tuple for multi-dimensional indexing
         if let Ok(tuple) = key.downcast::<PyTuple>() {
             // Pre-process: expand ellipsis and parse all items
-            let items = expand_ellipsis(&tuple, self.inner.ndim())?;
+            let items = expand_ellipsis(tuple, self.inner.ndim())?;
 
             // Fast path: all integers and matches ndim -> scalar access
             if items.len() == self.inner.ndim() &&
@@ -1049,6 +1049,286 @@ impl PyRumpyArray {
         Ok(Self::new(self.inner.cumprod(axis)))
     }
 
+    /// Return indices of non-zero elements as tuple of arrays.
+    fn nonzero(&self) -> Vec<Self> {
+        self.inner.nonzero().into_iter().map(Self::new).collect()
+    }
+
+    /// Return indices that would sort the array.
+    #[pyo3(signature = (axis=None))]
+    fn argsort(&self, axis: Option<isize>) -> Self {
+        let ax = normalize_axis_option(axis, self.inner.ndim(), false);
+        Self::new(self.inner.argsort(ax))
+    }
+
+    /// Sort array in-place.
+    #[pyo3(signature = (axis=None))]
+    fn sort(&mut self, axis: Option<isize>) {
+        let ax = normalize_axis_option(axis, self.inner.ndim(), true);
+        self.inner = self.inner.sort(ax);
+    }
+
+    /// Find indices where elements should be inserted to maintain order.
+    #[pyo3(signature = (v, side="left"))]
+    fn searchsorted<'py>(&self, py: Python<'py>, v: &Bound<'py, PyAny>, side: &str) -> PyResult<PyObject> {
+        // Handle scalar input - always use float64 for the search value to avoid truncation
+        if let Ok(scalar) = v.extract::<f64>() {
+            let v_arr = RumpyArray::from_vec(vec![scalar], DType::float64());
+            let result = crate::ops::indexing::searchsorted(&self.inner, &v_arr, side)
+                .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("searchsorted failed"))?;
+            // Return scalar for scalar input
+            let idx = result.get_element(&[0]) as i64;
+            return Ok(idx.into_pyobject(py)?.into_any().unbind());
+        }
+        // Handle array input
+        if let Ok(arr) = v.extract::<PyRef<'_, PyRumpyArray>>() {
+            let result = crate::ops::indexing::searchsorted(&self.inner, &arr.inner, side)
+                .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("searchsorted failed"))?;
+            return Ok(Self::new(result).into_pyobject(py)?.into_any().unbind());
+        }
+        Err(pyo3::exceptions::PyTypeError::new_err("v must be a scalar or array"))
+    }
+
+    /// Repeat elements of an array.
+    #[pyo3(signature = (repeats, axis=None))]
+    fn repeat(&self, repeats: usize, axis: Option<usize>) -> PyResult<Self> {
+        let arr = &self.inner;
+        let dtype = arr.dtype();
+
+        // For axis=None, flatten first; for axis=Some, validate bounds
+        let (src, ax) = match axis {
+            None => (arr.copy().reshape(vec![arr.size()]).unwrap(), 0usize),
+            Some(ax) => {
+                if ax >= arr.ndim() {
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "axis {} is out of bounds for array of dimension {}",
+                        ax, arr.ndim()
+                    )));
+                }
+                (arr.clone(), ax)
+            }
+        };
+
+        let shape = src.shape();
+        let mut new_shape = shape.to_vec();
+        new_shape[ax] *= repeats;
+
+        let mut result = RumpyArray::zeros(new_shape.clone(), dtype.clone());
+        let result_buffer = std::sync::Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+
+        // Fast path for 1D contiguous
+        if src.ndim() == 1 && src.is_c_contiguous() {
+            let src_ptr = src.data_ptr();
+            let itemsize = dtype.itemsize();
+            for i in 0..shape[0] {
+                let val = unsafe { dtype.ops().read_f64(src_ptr, (i * itemsize) as isize) }.unwrap_or(0.0);
+                let base = i * repeats;
+                for j in 0..repeats {
+                    unsafe { dtype.ops().write_f64(result_ptr, base + j, val); }
+                }
+            }
+        } else {
+            // General case
+            let mut out_indices = vec![0usize; src.ndim()];
+            for i in 0..result.size() {
+                let mut src_indices = out_indices.clone();
+                src_indices[ax] /= repeats;
+                let val = src.get_element(&src_indices);
+                unsafe { dtype.ops().write_f64(result_ptr, i, val); }
+                crate::array::increment_indices(&mut out_indices, &new_shape);
+            }
+        }
+
+        Ok(Self::new(result))
+    }
+
+    /// Take elements from an array along an axis.
+    /// If axis is None, the array is flattened before taking.
+    #[pyo3(signature = (indices, axis=None))]
+    fn take(&self, indices: &PyRumpyArray, axis: Option<usize>) -> PyResult<Self> {
+        let (arr, ax) = match axis {
+            None => (self.inner.copy().reshape(vec![self.inner.size()]).unwrap(), 0),
+            Some(ax) => (self.inner.clone(), ax),
+        };
+        crate::ops::indexing::take(&arr, &indices.inner, Some(ax))
+            .map(Self::new)
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("index out of bounds"))
+    }
+
+    /// Set values at indices (in-place).
+    fn put(&mut self, indices: &Bound<'_, PyAny>, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        let idx_vec = extract_i64_vec(indices, "indices")?;
+        let val_vec = extract_f64_vec(values, "values")?;
+        crate::ops::indexing::put(&mut self.inner, &idx_vec, &val_vec)
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("index out of bounds"))
+    }
+
+    /// Fill the array with a scalar value (in-place).
+    fn fill(&mut self, value: f64) {
+        let size = self.inner.size();
+        if size == 0 {
+            return;
+        }
+
+        // Fast path: contiguous float64 - direct slice fill
+        if self.inner.is_c_contiguous() && self.inner.dtype().ops().name() == "float64" {
+            let ptr = self.inner.data_ptr_mut() as *mut f64;
+            let slice = unsafe { std::slice::from_raw_parts_mut(ptr, size) };
+            slice.fill(value);
+            return;
+        }
+
+        // Fast path: other contiguous types
+        if self.inner.is_c_contiguous() {
+            let dtype = self.inner.dtype();
+            let ptr = self.inner.data_ptr_mut();
+            let ops = dtype.ops();
+            for i in 0..size {
+                unsafe { ops.write_f64(ptr, i, value); }
+            }
+        } else {
+            // Slow path: strided iteration
+            let ndim = self.inner.ndim();
+            let shape = self.inner.shape().to_vec();
+            let mut indices = vec![0usize; ndim];
+            for _ in 0..size {
+                self.inner.set_element(&indices, value);
+                crate::array::increment_indices(&mut indices, &shape);
+            }
+        }
+    }
+
+    /// Return the array data as a bytes object.
+    fn tobytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        // Need contiguous array
+        let arr = if self.inner.is_c_contiguous() {
+            self.inner.clone()
+        } else {
+            self.inner.copy()
+        };
+
+        let nbytes = arr.nbytes();
+        let ptr = arr.data_ptr();
+        let bytes = unsafe { std::slice::from_raw_parts(ptr, nbytes) };
+        Ok(pyo3::types::PyBytes::new(py, bytes))
+    }
+
+    /// View array with a different dtype.
+    fn view(&self, dtype: &str) -> PyResult<Self> {
+        let new_dtype = parse_dtype(dtype)?;
+        let old_itemsize = self.inner.dtype().itemsize();
+        let new_itemsize = new_dtype.itemsize();
+
+        // Check that array is contiguous
+        if !self.inner.is_c_contiguous() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "view requires contiguous array"
+            ));
+        }
+
+        let shape = self.inner.shape();
+        let nbytes = self.inner.nbytes();
+
+        // Calculate new shape - last dimension changes
+        if shape.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "cannot view 0-d array with different dtype"
+            ));
+        }
+
+        let last_dim_bytes = shape[shape.len() - 1] * old_itemsize;
+        if !last_dim_bytes.is_multiple_of(new_itemsize) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "view cannot reshape array"
+            ));
+        }
+
+        let mut new_shape = shape.to_vec();
+        new_shape[shape.len() - 1] = last_dim_bytes / new_itemsize;
+
+        // Create new strides
+        let mut new_strides = Vec::with_capacity(new_shape.len());
+        let mut stride = new_itemsize as isize;
+        for &dim in new_shape.iter().rev() {
+            new_strides.push(stride);
+            stride *= dim as isize;
+        }
+        new_strides.reverse();
+
+        // Verify total bytes match
+        let new_size: usize = new_shape.iter().product();
+        if new_size * new_itemsize != nbytes {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "view cannot reshape array"
+            ));
+        }
+
+        // Create view with shared buffer
+        Ok(Self::new(self.inner.view_with_dtype(new_shape, new_strides, new_dtype)))
+    }
+
+    /// Partially sort array in-place so element at kth position is in sorted position.
+    fn partition(&mut self, kth: usize) -> PyResult<()> {
+        let size = self.inner.size();
+        if kth >= size {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "kth(={}) out of bounds ({})", kth, size
+            )));
+        }
+
+        // Fast path: contiguous float64 array - work directly on buffer
+        if self.inner.is_c_contiguous() && self.inner.dtype().ops().name() == "float64" {
+            let ptr = self.inner.data_ptr_mut() as *mut f64;
+            let slice = unsafe { std::slice::from_raw_parts_mut(ptr, size) };
+            partition_select(slice, kth);
+            return Ok(());
+        }
+
+        // General path: copy, partition, write back
+        let mut values: Vec<f64> = Vec::with_capacity(size);
+        for offset in self.inner.iter_offsets() {
+            let val = unsafe { self.inner.dtype().ops().read_f64(self.inner.data_ptr(), offset) }.unwrap_or(0.0);
+            values.push(val);
+        }
+        partition_select(&mut values, kth);
+
+        let shape = self.inner.shape().to_vec();
+        let mut indices = vec![0usize; self.inner.ndim()];
+        for (i, &val) in values.iter().enumerate() {
+            self.inner.set_element(&indices, val);
+            if i + 1 < size {
+                crate::array::increment_indices(&mut indices, &shape);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Return indices that would partition the array.
+    fn argpartition(&self, kth: usize) -> PyResult<Self> {
+        let size = self.inner.size();
+        if kth >= size {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "kth(={}) out of bounds ({})", kth, size
+            )));
+        }
+
+        // Collect values with original indices
+        let mut indexed: Vec<(f64, usize)> = Vec::with_capacity(size);
+        for (i, offset) in self.inner.iter_offsets().enumerate() {
+            let val = unsafe { self.inner.dtype().ops().read_f64(self.inner.data_ptr(), offset) }.unwrap_or(0.0);
+            indexed.push((val, i));
+        }
+
+        // Partition by value
+        partition_select_indexed(&mut indexed, kth);
+
+        // Extract indices
+        let indices: Vec<f64> = indexed.iter().map(|(_, idx)| *idx as f64).collect();
+        Ok(Self::new(RumpyArray::from_vec(indices, DType::int64())))
+    }
+
 }
 
 /// Parse dtype string to DType enum.
@@ -1073,6 +1353,45 @@ fn normalize_index(idx: isize, len: usize) -> usize {
         (len as isize + idx) as usize
     } else {
         idx as usize
+    }
+}
+
+/// Normalize axis for sort/argsort operations.
+/// - If axis is None and default_last is false, returns None (flatten behavior)
+/// - If axis is None and default_last is true, returns last axis
+/// - Handles negative axis values
+fn normalize_axis_option(axis: Option<isize>, ndim: usize, default_last: bool) -> Option<usize> {
+    match axis {
+        None if default_last => Some(ndim - 1),
+        None => None,
+        Some(a) if a >= 0 => Some(a as usize),
+        Some(a) => Some((ndim as isize + a) as usize),
+    }
+}
+
+/// Extract i64 values from a Python list or array.
+fn extract_i64_vec(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<Vec<i64>> {
+    if let Ok(list) = obj.downcast::<PyList>() {
+        list.iter().map(|x| x.extract::<i64>()).collect()
+    } else if let Ok(arr) = obj.extract::<PyRef<'_, PyRumpyArray>>() {
+        Ok(arr.inner.iter_offsets()
+            .map(|offset| unsafe { arr.inner.dtype().ops().read_f64(arr.inner.data_ptr(), offset) }.unwrap_or(0.0) as i64)
+            .collect())
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(format!("{} must be list or array", name)))
+    }
+}
+
+/// Extract f64 values from a Python list or array.
+fn extract_f64_vec(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<Vec<f64>> {
+    if let Ok(list) = obj.downcast::<PyList>() {
+        list.iter().map(|x| x.extract::<f64>()).collect()
+    } else if let Ok(arr) = obj.extract::<PyRef<'_, PyRumpyArray>>() {
+        Ok(arr.inner.iter_offsets()
+            .map(|offset| unsafe { arr.inner.dtype().ops().read_f64(arr.inner.data_ptr(), offset) }.unwrap_or(0.0))
+            .collect())
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(format!("{} must be list or array", name)))
     }
 }
 
@@ -1403,5 +1722,75 @@ where
         Err(pyo3::exceptions::PyTypeError::new_err(
             "operand must be an integer",
         ))
+    }
+}
+
+/// Quickselect-style partition: rearrange so that element at kth position is in sorted position.
+fn partition_select(arr: &mut [f64], kth: usize) {
+    if arr.len() <= 1 {
+        return;
+    }
+
+    // Simple quickselect
+    let mut left = 0;
+    let mut right = arr.len() - 1;
+
+    while left < right {
+        let pivot_idx = (left + right) / 2;
+        let pivot = arr[pivot_idx];
+
+        // Move pivot to end
+        arr.swap(pivot_idx, right);
+
+        let mut store = left;
+        for i in left..right {
+            if arr[i] < pivot {
+                arr.swap(i, store);
+                store += 1;
+            }
+        }
+        arr.swap(store, right);
+
+        if store == kth {
+            return;
+        } else if store < kth {
+            left = store + 1;
+        } else {
+            right = store.saturating_sub(1);
+        }
+    }
+}
+
+/// Quickselect for indexed values: partition so kth smallest is at position kth.
+fn partition_select_indexed(arr: &mut [(f64, usize)], kth: usize) {
+    if arr.len() <= 1 {
+        return;
+    }
+
+    let mut left = 0;
+    let mut right = arr.len() - 1;
+
+    while left < right {
+        let pivot_idx = (left + right) / 2;
+        let pivot = arr[pivot_idx].0;
+
+        arr.swap(pivot_idx, right);
+
+        let mut store = left;
+        for i in left..right {
+            if arr[i].0 < pivot {
+                arr.swap(i, store);
+                store += 1;
+            }
+        }
+        arr.swap(store, right);
+
+        if store == kth {
+            return;
+        } else if store < kth {
+            left = store + 1;
+        } else {
+            right = store.saturating_sub(1);
+        }
     }
 }

@@ -151,7 +151,7 @@ impl RumpyArray {
         // select_nth_unstable partitions so values[mid] is the correct element
         values.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-        if size % 2 == 0 {
+        if size.is_multiple_of(2) {
             // For even length, need max of left partition (which is unsorted)
             let left_max = values[..mid].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
             (left_max + values[mid]) / 2.0

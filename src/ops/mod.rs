@@ -874,8 +874,8 @@ impl RumpyArray {
             DTypeKind::Float32 => nan_to_num_impl!(f32, DType::float32()),
             DTypeKind::Float16 => {
                 use half::f16;
-                let pos = posinf.map(|v| f16::from_f64(v)).unwrap_or(f16::MAX);
-                let neg = neginf.map(|v| f16::from_f64(v)).unwrap_or(f16::MIN);
+                let pos = posinf.map(f16::from_f64).unwrap_or(f16::MAX);
+                let neg = neginf.map(f16::from_f64).unwrap_or(f16::MIN);
                 let nan_val = f16::from_f64(nan);
 
                 let mut result = RumpyArray::zeros(self.shape().to_vec(), DType::float16());

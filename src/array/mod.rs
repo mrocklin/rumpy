@@ -151,6 +151,12 @@ impl RumpyArray {
         unsafe { self.buffer.as_ptr().add(self.offset) }
     }
 
+    /// Get mutable pointer to start of array data (for in-place operations).
+    /// Safety: caller must ensure exclusive access.
+    pub fn data_ptr_mut(&mut self) -> *mut u8 {
+        unsafe { (self.buffer.as_ptr() as *mut u8).add(self.offset) }
+    }
+
     /// Get mutable reference to buffer (for internal use).
     pub(crate) fn buffer_mut(&mut self) -> &mut Arc<ArrayBuffer> {
         &mut self.buffer
@@ -212,6 +218,26 @@ impl RumpyArray {
             shape,
             strides,
             dtype: self.dtype.clone(),
+            flags,
+        }
+    }
+
+    /// Create a view with new shape, strides, and dtype, sharing the buffer.
+    pub fn view_with_dtype(&self, shape: Vec<usize>, strides: Vec<isize>, dtype: DType) -> Self {
+        let mut flags = ArrayFlags::WRITEABLE;
+        if is_c_contiguous(&shape, &strides, dtype.itemsize()) {
+            flags |= ArrayFlags::C_CONTIGUOUS;
+        }
+        if is_f_contiguous(&shape, &strides, dtype.itemsize()) {
+            flags |= ArrayFlags::F_CONTIGUOUS;
+        }
+
+        Self {
+            buffer: Arc::clone(&self.buffer),
+            offset: self.offset,
+            shape,
+            strides,
+            dtype,
             flags,
         }
     }
