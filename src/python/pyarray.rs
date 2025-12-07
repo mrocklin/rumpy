@@ -748,6 +748,55 @@ impl PyRumpyArray {
         comparison_op_dispatch(&self.inner, other, ComparisonOp::Ne)
     }
 
+    // Bitwise operations
+
+    fn __and__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        bitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_and)
+    }
+
+    fn __rand__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // AND is commutative, so order doesn't matter
+        rbitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_and)
+    }
+
+    fn __or__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        bitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_or)
+    }
+
+    fn __ror__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // OR is commutative, so order doesn't matter
+        rbitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_or)
+    }
+
+    fn __xor__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        bitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_xor)
+    }
+
+    fn __rxor__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // XOR is commutative, so order doesn't matter
+        rbitwise_binary_op_dispatch(&self.inner, other, crate::ops::bitwise_xor)
+    }
+
+    fn __invert__(&self) -> Self {
+        Self::new(crate::ops::bitwise_not(&self.inner))
+    }
+
+    fn __lshift__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        bitwise_binary_op_dispatch(&self.inner, other, crate::ops::left_shift)
+    }
+
+    fn __rlshift__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbitwise_binary_op_dispatch(&self.inner, other, crate::ops::left_shift)
+    }
+
+    fn __rshift__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        bitwise_binary_op_dispatch(&self.inner, other, crate::ops::right_shift)
+    }
+
+    fn __rrshift__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        rbitwise_binary_op_dispatch(&self.inner, other, crate::ops::right_shift)
+    }
+
     // Reductions
 
     #[pyo3(signature = (axis=None, keepdims=false))]
@@ -1299,6 +1348,58 @@ fn comparison_op_dispatch(
     } else {
         Err(pyo3::exceptions::PyTypeError::new_err(
             "operand must be ndarray or number",
+        ))
+    }
+}
+
+/// Dispatch bitwise binary operation: array op (array or scalar).
+fn bitwise_binary_op_dispatch<F>(
+    arr: &RumpyArray,
+    other: &Bound<'_, PyAny>,
+    op: F,
+) -> PyResult<PyRumpyArray>
+where
+    F: Fn(&RumpyArray, &RumpyArray) -> Option<RumpyArray>,
+{
+    if let Ok(other_arr) = other.extract::<PyRef<'_, PyRumpyArray>>() {
+        op(arr, &other_arr.inner)
+            .map(PyRumpyArray::new)
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            })
+    } else if let Ok(scalar) = other.extract::<i64>() {
+        let scalar_arr = RumpyArray::full(vec![1], scalar as f64, DType::int64());
+        op(arr, &scalar_arr)
+            .map(PyRumpyArray::new)
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            })
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray or integer",
+        ))
+    }
+}
+
+/// Dispatch reverse bitwise binary operation: scalar op array.
+fn rbitwise_binary_op_dispatch<F>(
+    arr: &RumpyArray,
+    other: &Bound<'_, PyAny>,
+    op: F,
+) -> PyResult<PyRumpyArray>
+where
+    F: Fn(&RumpyArray, &RumpyArray) -> Option<RumpyArray>,
+{
+    if let Ok(scalar) = other.extract::<i64>() {
+        let scalar_arr = RumpyArray::full(vec![1], scalar as f64, DType::int64());
+        op(&scalar_arr, arr)
+            .map(PyRumpyArray::new)
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
+            })
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be an integer",
         ))
     }
 }

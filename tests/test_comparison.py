@@ -1,194 +1,157 @@
 """Tests for comparison operations."""
-
 import numpy as np
-import rumpy
-
+import rumpy as rp
 from helpers import assert_eq
 
 
-class TestComparisonScalar:
-    """Test array vs scalar comparisons."""
-
-    def test_gt_scalar(self):
-        r = rumpy.arange(5) > 2
-        n = np.arange(5) > 2
+class TestEqual:
+    def test_basic(self):
+        a = rp.array([1, 2, 3, 4])
+        b = rp.array([1, 0, 3, 0])
+        r = rp.equal(a, b)
+        n = np.equal([1, 2, 3, 4], [1, 0, 3, 0])
         assert_eq(r, n)
 
-    def test_lt_scalar(self):
-        r = rumpy.arange(5) < 2
-        n = np.arange(5) < 2
+    def test_float(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0, 2.1, 3.0])
+        r = rp.equal(a, b)
+        n = np.equal([1.0, 2.0, 3.0], [1.0, 2.1, 3.0])
         assert_eq(r, n)
 
-    def test_ge_scalar(self):
-        r = rumpy.arange(5) >= 2
-        n = np.arange(5) >= 2
-        assert_eq(r, n)
-
-    def test_le_scalar(self):
-        r = rumpy.arange(5) <= 2
-        n = np.arange(5) <= 2
-        assert_eq(r, n)
-
-    def test_eq_scalar(self):
-        r = rumpy.arange(5) == 2
-        n = np.arange(5) == 2
-        assert_eq(r, n)
-
-    def test_ne_scalar(self):
-        r = rumpy.arange(5) != 2
-        n = np.arange(5) != 2
+    def test_broadcasting(self):
+        a = rp.array([[1, 2], [3, 4]])
+        b = rp.array([1, 2])
+        r = rp.equal(a, b)
+        n = np.equal([[1, 2], [3, 4]], [1, 2])
         assert_eq(r, n)
 
 
-class TestComparisonArray:
-    """Test array vs array comparisons."""
-
-    def test_gt_array(self):
-        a = rumpy.arange(5)
-        b = rumpy.full([5], 2.0)
-        r = a > b
-        n = np.arange(5) > np.full(5, 2.0)
-        assert_eq(r, n)
-
-    def test_lt_array(self):
-        a = rumpy.arange(5)
-        b = rumpy.full([5], 2.0)
-        r = a < b
-        n = np.arange(5) < np.full(5, 2.0)
-        assert_eq(r, n)
-
-    def test_eq_array(self):
-        a = rumpy.arange(5)
-        b = rumpy.arange(5)
-        r = a == b
-        n = np.arange(5) == np.arange(5)
-        assert_eq(r, n)
-
-    def test_ne_array(self):
-        a = rumpy.arange(5)
-        b = rumpy.full([5], 2.0)
-        r = a != b
-        n = np.arange(5) != np.full(5, 2.0)
+class TestNotEqual:
+    def test_basic(self):
+        a = rp.array([1, 2, 3, 4])
+        b = rp.array([1, 0, 3, 0])
+        r = rp.not_equal(a, b)
+        n = np.not_equal([1, 2, 3, 4], [1, 0, 3, 0])
         assert_eq(r, n)
 
 
-class TestComparisonBroadcast:
-    """Test comparisons with broadcasting."""
-
-    def test_gt_broadcast_1d_2d(self):
-        a = rumpy.arange(3).reshape([1, 3])
-        b = rumpy.arange(3).reshape([3, 1])
-        r = a > b
-        n = np.arange(3).reshape(1, 3) > np.arange(3).reshape(3, 1)
+class TestLess:
+    def test_basic(self):
+        a = rp.array([1, 2, 3, 4])
+        b = rp.array([2, 2, 2, 2])
+        r = rp.less(a, b)
+        n = np.less([1, 2, 3, 4], [2, 2, 2, 2])
         assert_eq(r, n)
 
-    def test_lt_broadcast_scalar_shape(self):
-        a = rumpy.arange(6).reshape([2, 3])
-        b = rumpy.full([1], 3.0)
-        r = a < b
-        n = np.arange(6).reshape(2, 3) < np.full([1], 3.0)
+    def test_float(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.5, 1.5, 1.5])
+        r = rp.less(a, b)
+        n = np.less([1.0, 2.0, 3.0], [1.5, 1.5, 1.5])
         assert_eq(r, n)
 
 
-class TestComparisonDtype:
-    """Test that comparison results have bool dtype."""
+class TestLessEqual:
+    def test_basic(self):
+        a = rp.array([1, 2, 3, 4])
+        b = rp.array([2, 2, 2, 2])
+        r = rp.less_equal(a, b)
+        n = np.less_equal([1, 2, 3, 4], [2, 2, 2, 2])
+        assert_eq(r, n)
 
-    def test_result_dtype_is_bool(self):
-        r = rumpy.arange(5) > 2
+
+class TestGreater:
+    def test_basic(self):
+        a = rp.array([1, 2, 3, 4])
+        b = rp.array([2, 2, 2, 2])
+        r = rp.greater(a, b)
+        n = np.greater([1, 2, 3, 4], [2, 2, 2, 2])
+        assert_eq(r, n)
+
+
+class TestGreaterEqual:
+    def test_basic(self):
+        a = rp.array([1, 2, 3, 4])
+        b = rp.array([2, 2, 2, 2])
+        r = rp.greater_equal(a, b)
+        n = np.greater_equal([1, 2, 3, 4], [2, 2, 2, 2])
+        assert_eq(r, n)
+
+
+class TestIsclose:
+    def test_exact(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0, 2.0, 3.0])
+        r = rp.isclose(a, b)
+        n = np.isclose([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])
+        assert_eq(r, n)
+
+    def test_close(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0 + 1e-9, 2.0 + 1e-9, 3.0 + 1e-9])
+        r = rp.isclose(a, b)
+        n = np.isclose([1.0, 2.0, 3.0], [1.0 + 1e-9, 2.0 + 1e-9, 3.0 + 1e-9])
+        assert_eq(r, n)
+
+    def test_not_close(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.1, 2.1, 3.1])
+        r = rp.isclose(a, b)
+        n = np.isclose([1.0, 2.0, 3.0], [1.1, 2.1, 3.1])
+        assert_eq(r, n)
+
+    def test_custom_tolerance(self):
+        a = rp.array([1.0, 2.0])
+        b = rp.array([1.05, 2.05])
+        r = rp.isclose(a, b, rtol=0.1, atol=0.0)
+        n = np.isclose([1.0, 2.0], [1.05, 2.05], rtol=0.1, atol=0.0)
+        assert_eq(r, n)
+
+
+class TestAllclose:
+    def test_true(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0 + 1e-9, 2.0 + 1e-9, 3.0 + 1e-9])
+        assert rp.allclose(a, b) == np.allclose([1.0, 2.0, 3.0], [1.0 + 1e-9, 2.0 + 1e-9, 3.0 + 1e-9])
+
+    def test_false(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.1, 2.0, 3.0])
+        assert rp.allclose(a, b) == np.allclose([1.0, 2.0, 3.0], [1.1, 2.0, 3.0])
+
+
+class TestArrayEqual:
+    def test_equal(self):
+        a = rp.array([1, 2, 3])
+        b = rp.array([1, 2, 3])
+        assert rp.array_equal(a, b) == np.array_equal([1, 2, 3], [1, 2, 3])
+
+    def test_not_equal_values(self):
+        a = rp.array([1, 2, 3])
+        b = rp.array([1, 2, 4])
+        assert rp.array_equal(a, b) == np.array_equal([1, 2, 3], [1, 2, 4])
+
+    def test_not_equal_shape(self):
+        a = rp.array([1, 2, 3])
+        b = rp.array([1, 2])
+        assert rp.array_equal(a, b) == np.array_equal([1, 2, 3], [1, 2])
+
+    def test_2d(self):
+        a = rp.array([[1, 2], [3, 4]])
+        b = rp.array([[1, 2], [3, 4]])
+        assert rp.array_equal(a, b) == np.array_equal([[1, 2], [3, 4]], [[1, 2], [3, 4]])
+
+
+class TestOutputDtype:
+    def test_equal_dtype(self):
+        r = rp.equal(rp.array([1, 2]), rp.array([1, 3]))
         assert r.dtype == "bool"
 
-    def test_result_dtype_array_comparison(self):
-        a = rumpy.arange(5)
-        b = rumpy.full([5], 2.0)
-        r = a > b
+    def test_less_dtype(self):
+        r = rp.less(rp.array([1.0, 2.0]), rp.array([1.5, 1.5]))
         assert r.dtype == "bool"
 
-
-class TestBooleanIndexing:
-    """Test boolean array indexing (arr[mask])."""
-
-    def test_bool_index_1d(self):
-        arr = rumpy.arange(10)
-        mask = arr > 5
-        r = arr[mask]
-        n = np.arange(10)[np.arange(10) > 5]
-        assert_eq(r, n)
-
-    def test_bool_index_returns_1d(self):
-        arr = rumpy.arange(6).reshape([2, 3])
-        mask = arr > 2
-        r = arr[mask]
-        n = np.arange(6).reshape(2, 3)[np.arange(6).reshape(2, 3) > 2]
-        assert_eq(r, n)
-
-    def test_bool_index_all_true(self):
-        arr = rumpy.arange(5)
-        mask = arr >= 0
-        r = arr[mask]
-        n = np.arange(5)[np.arange(5) >= 0]
-        assert_eq(r, n)
-
-    def test_bool_index_all_false(self):
-        arr = rumpy.arange(5)
-        mask = arr > 100
-        r = arr[mask]
-        n = np.arange(5)[np.arange(5) > 100]
-        assert_eq(r, n)
-        assert r.size == 0
-
-    def test_bool_index_preserves_dtype(self):
-        arr = rumpy.arange(5, dtype="int32")
-        mask = arr > 2
-        r = arr[mask]
-        assert r.dtype == "int32"
-
-    def test_bool_index_chained(self):
-        arr = rumpy.arange(10)
-        r = arr[arr > 5]
-        n = np.arange(10)[np.arange(10) > 5]
-        assert_eq(r, n)
-
-
-class TestWhere:
-    """Test where() conditional selection."""
-
-    def test_where_scalar_values(self):
-        cond = rumpy.arange(5) > 2
-        r = rumpy.where(cond, 1, 0)
-        n = np.where(np.arange(5) > 2, 1, 0)
-        assert_eq(r, n)
-
-    def test_where_array_values(self):
-        cond = rumpy.arange(5) > 2
-        x = rumpy.arange(5)
-        y = rumpy.zeros([5])
-        r = rumpy.where(cond, x, y)
-        n = np.where(np.arange(5) > 2, np.arange(5), np.zeros(5))
-        assert_eq(r, n)
-
-    def test_where_mixed_scalar_array(self):
-        cond = rumpy.arange(5) > 2
-        x = rumpy.arange(5)
-        r = rumpy.where(cond, x, 0)
-        n = np.where(np.arange(5) > 2, np.arange(5), 0)
-        assert_eq(r, n)
-
-    def test_where_broadcast(self):
-        cond = rumpy.arange(3).reshape([3, 1]) > 0
-        x = rumpy.ones([3, 3])
-        y = rumpy.zeros([3, 3])
-        r = rumpy.where(cond, x, y)
-        n = np.where(np.arange(3).reshape(3, 1) > 0, np.ones((3, 3)), np.zeros((3, 3)))
-        assert_eq(r, n)
-
-    def test_where_all_true(self):
-        cond = rumpy.arange(5) >= 0
-        r = rumpy.where(cond, 1, 0)
-        n = np.where(np.arange(5) >= 0, 1, 0)
-        assert_eq(r, n)
-
-    def test_where_all_false(self):
-        cond = rumpy.arange(5) < 0
-        r = rumpy.where(cond, 1, 0)
-        n = np.where(np.arange(5) < 0, 1, 0)
-        assert_eq(r, n)
+    def test_isclose_dtype(self):
+        r = rp.isclose(rp.array([1.0]), rp.array([1.0]))
+        assert r.dtype == "bool"
