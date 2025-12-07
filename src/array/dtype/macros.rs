@@ -366,6 +366,26 @@ macro_rules! impl_signed_int_dtype {
             unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
                 Some((Self::read(ptr, byte_offset) as f64, 0.0))
             }
+
+            unsafe fn bitwise_op(&self, op: BitwiseOp, a: *const u8, a_offset: isize,
+                                 b: *const u8, b_offset: isize, out: *mut u8, idx: usize) -> bool {
+                let av = Self::read(a, a_offset);
+                let bv = Self::read(b, b_offset);
+                let result = match op {
+                    BitwiseOp::And => av & bv,
+                    BitwiseOp::Or => av | bv,
+                    BitwiseOp::Xor => av ^ bv,
+                    BitwiseOp::LeftShift => av.wrapping_shl(bv as u32),
+                    BitwiseOp::RightShift => av.wrapping_shr(bv as u32),
+                };
+                Self::write(out, idx, result);
+                true
+            }
+
+            unsafe fn bitwise_not(&self, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize) -> bool {
+                Self::write(out, idx, !Self::read(src, byte_offset));
+                true
+            }
         }
     };
 }
@@ -534,6 +554,26 @@ macro_rules! impl_unsigned_int_dtype {
 
             unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
                 Some((Self::read(ptr, byte_offset) as f64, 0.0))
+            }
+
+            unsafe fn bitwise_op(&self, op: BitwiseOp, a: *const u8, a_offset: isize,
+                                 b: *const u8, b_offset: isize, out: *mut u8, idx: usize) -> bool {
+                let av = Self::read(a, a_offset);
+                let bv = Self::read(b, b_offset);
+                let result = match op {
+                    BitwiseOp::And => av & bv,
+                    BitwiseOp::Or => av | bv,
+                    BitwiseOp::Xor => av ^ bv,
+                    BitwiseOp::LeftShift => av.wrapping_shl(bv as u32),
+                    BitwiseOp::RightShift => av.wrapping_shr(bv as u32),
+                };
+                Self::write(out, idx, result);
+                true
+            }
+
+            unsafe fn bitwise_not(&self, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize) -> bool {
+                Self::write(out, idx, !Self::read(src, byte_offset));
+                true
             }
         }
     };

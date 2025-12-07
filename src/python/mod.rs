@@ -418,9 +418,35 @@ fn from_array_interface(
     Ok(PyRumpyArray::new(arr))
 }
 
+/// Infer dtype from first element of a Python list.
+fn infer_dtype_from_list(list: &Bound<'_, PyList>) -> Option<DType> {
+    if list.is_empty() {
+        return Some(DType::float64());
+    }
+    let first = list.get_item(0).ok()?;
+    // Recurse into nested lists
+    if let Ok(sublist) = first.downcast::<PyList>() {
+        return infer_dtype_from_list(sublist);
+    }
+    // Check type of first element - order matters: bool before int!
+    if first.is_instance_of::<pyo3::types::PyBool>() {
+        return Some(DType::bool());
+    }
+    if first.is_instance_of::<pyo3::types::PyInt>() {
+        return Some(DType::int64());
+    }
+    if first.is_instance_of::<pyo3::types::PyFloat>() {
+        return Some(DType::float64());
+    }
+    Some(DType::float64())
+}
+
 /// Create array from Python list.
 fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => infer_dtype_from_list(list).unwrap_or(DType::float64()),
+    };
 
     // Check if nested (2D+)
     if list.is_empty() {
@@ -2079,14 +2105,18 @@ pub fn bitwise_xor(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArra
 
 /// Element-wise bitwise NOT (invert).
 #[pyfunction]
-pub fn bitwise_not(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(crate::ops::bitwise_not(&x.inner))
+pub fn bitwise_not(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::bitwise_not(&x.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("bitwise_not not supported for this dtype"))
 }
 
 /// Alias for bitwise_not.
 #[pyfunction]
-pub fn invert(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(crate::ops::bitwise_not(&x.inner))
+pub fn invert(x: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::bitwise_not(&x.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("bitwise_not not supported for this dtype"))
 }
 
 /// Element-wise left shift.

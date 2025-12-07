@@ -3,7 +3,7 @@
 //! Provides NumPy-style dispatch: registered loops checked first,
 //! then fallback to DTypeOps trait methods.
 
-use crate::array::dtype::{BinaryOp, DTypeKind, ReduceOp, UnaryOp};
+use crate::array::dtype::{BinaryOp, BitwiseOp, DTypeKind, ReduceOp, UnaryOp};
 use crate::ops::ComparisonOp;
 use half::f16;
 use std::collections::HashMap;
@@ -115,6 +115,10 @@ pub struct UFuncRegistry {
     reduce_strided_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceLoopFn)>,
     /// Comparison loops (output is always bool)
     compare_loops: HashMap<(ComparisonOp, DTypeKind), CompareLoopFn>,
+    /// Bitwise binary loops (integer/bool types)
+    bitwise_binary_loops: HashMap<(BitwiseOp, DTypeKind), BinaryLoopFn>,
+    /// Bitwise NOT loops (integer/bool types)
+    bitwise_not_loops: HashMap<DTypeKind, UnaryLoopFn>,
 }
 
 impl UFuncRegistry {
@@ -125,6 +129,8 @@ impl UFuncRegistry {
             reduce_loops: HashMap::new(),
             reduce_strided_loops: HashMap::new(),
             compare_loops: HashMap::new(),
+            bitwise_binary_loops: HashMap::new(),
+            bitwise_not_loops: HashMap::new(),
         }
     }
 
@@ -214,6 +220,26 @@ impl UFuncRegistry {
     /// Look up a comparison loop. Returns None if no registered loop exists.
     pub fn lookup_compare(&self, op: ComparisonOp, input: DTypeKind) -> Option<CompareLoopFn> {
         self.compare_loops.get(&(op, input)).copied()
+    }
+
+    /// Register a bitwise binary loop for a specific operation and dtype.
+    pub fn register_bitwise_binary(&mut self, op: BitwiseOp, dtype: DTypeKind, f: BinaryLoopFn) {
+        self.bitwise_binary_loops.insert((op, dtype), f);
+    }
+
+    /// Look up a bitwise binary loop.
+    pub fn lookup_bitwise_binary(&self, op: BitwiseOp, dtype: DTypeKind) -> Option<BinaryLoopFn> {
+        self.bitwise_binary_loops.get(&(op, dtype)).copied()
+    }
+
+    /// Register a bitwise NOT loop for a specific dtype.
+    pub fn register_bitwise_not(&mut self, dtype: DTypeKind, f: UnaryLoopFn) {
+        self.bitwise_not_loops.insert(dtype, f);
+    }
+
+    /// Look up a bitwise NOT loop.
+    pub fn lookup_bitwise_not(&self, dtype: DTypeKind) -> Option<UnaryLoopFn> {
+        self.bitwise_not_loops.get(&dtype).copied()
     }
 }
 
@@ -1128,6 +1154,188 @@ fn init_default_loops() -> UFuncRegistry {
     register_all_compare!(reg, DTypeKind::Uint32, u32);
     register_all_compare!(reg, DTypeKind::Uint16, u16);
     register_all_compare!(reg, DTypeKind::Uint8, u8);
+
+    // ========================================================================
+    // Bitwise operations (integer/bool types)
+    // ========================================================================
+
+    // Macro for bitwise binary loops with contiguous fast path
+    macro_rules! register_bitwise_binary {
+        ($reg:expr, $op:expr, $kind:expr, $T:ty, $f:expr) => {
+            $reg.register_bitwise_binary(
+                $op,
+                $kind.clone(),
+                |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    let (sa, sb, so) = strides;
+                    if sa == itemsize && sb == itemsize && so == itemsize {
+                        // Contiguous fast path - LLVM can auto-vectorize
+                        let a = std::slice::from_raw_parts(a_ptr as *const $T, n);
+                        let b = std::slice::from_raw_parts(b_ptr as *const $T, n);
+                        let out = std::slice::from_raw_parts_mut(out_ptr as *mut $T, n);
+                        for i in 0..n {
+                            out[i] = $f(a[i], b[i]);
+                        }
+                    } else {
+                        // Strided path
+                        let mut ap = a_ptr;
+                        let mut bp = b_ptr;
+                        let mut op = out_ptr;
+                        for _ in 0..n {
+                            let a = *(ap as *const $T);
+                            let b = *(bp as *const $T);
+                            *(op as *mut $T) = $f(a, b);
+                            ap = ap.offset(sa);
+                            bp = bp.offset(sb);
+                            op = op.offset(so);
+                        }
+                    }
+                },
+            );
+        };
+    }
+
+    // Macro for bitwise NOT loops
+    macro_rules! register_bitwise_not {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            $reg.register_bitwise_not(
+                $kind.clone(),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let itemsize = std::mem::size_of::<$T>() as isize;
+                    let (ss, so) = strides;
+                    if ss == itemsize && so == itemsize {
+                        // Contiguous fast path
+                        let src = std::slice::from_raw_parts(src_ptr as *const $T, n);
+                        let out = std::slice::from_raw_parts_mut(out_ptr as *mut $T, n);
+                        for i in 0..n {
+                            out[i] = !src[i];
+                        }
+                    } else {
+                        // Strided path
+                        let mut sp = src_ptr;
+                        let mut op = out_ptr;
+                        for _ in 0..n {
+                            *(op as *mut $T) = !(*(sp as *const $T));
+                            sp = sp.offset(ss);
+                            op = op.offset(so);
+                        }
+                    }
+                },
+            );
+        };
+    }
+
+    // Register all bitwise ops for an integer type
+    macro_rules! register_bitwise_ops {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            register_bitwise_binary!($reg, BitwiseOp::And, $kind, $T, |a: $T, b: $T| a & b);
+            register_bitwise_binary!($reg, BitwiseOp::Or, $kind, $T, |a: $T, b: $T| a | b);
+            register_bitwise_binary!($reg, BitwiseOp::Xor, $kind, $T, |a: $T, b: $T| a ^ b);
+            register_bitwise_binary!($reg, BitwiseOp::LeftShift, $kind, $T, |a: $T, b: $T| a.wrapping_shl(b as u32));
+            register_bitwise_binary!($reg, BitwiseOp::RightShift, $kind, $T, |a: $T, b: $T| a.wrapping_shr(b as u32));
+            register_bitwise_not!($reg, $kind, $T);
+        };
+    }
+
+    // Register for all integer types
+    register_bitwise_ops!(reg, DTypeKind::Int64, i64);
+    register_bitwise_ops!(reg, DTypeKind::Int32, i32);
+    register_bitwise_ops!(reg, DTypeKind::Int16, i16);
+    register_bitwise_ops!(reg, DTypeKind::Uint64, u64);
+    register_bitwise_ops!(reg, DTypeKind::Uint32, u32);
+    register_bitwise_ops!(reg, DTypeKind::Uint16, u16);
+    register_bitwise_ops!(reg, DTypeKind::Uint8, u8);
+
+    // Bool bitwise (use logical operators)
+    reg.register_bitwise_binary(
+        BitwiseOp::And,
+        DTypeKind::Bool,
+        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+            let (sa, sb, so) = strides;
+            if sa == 1 && sb == 1 && so == 1 {
+                let a = std::slice::from_raw_parts(a_ptr, n);
+                let b = std::slice::from_raw_parts(b_ptr, n);
+                let out = std::slice::from_raw_parts_mut(out_ptr, n);
+                for i in 0..n {
+                    out[i] = (a[i] != 0 && b[i] != 0) as u8;
+                }
+            } else {
+                let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                for _ in 0..n {
+                    *op = (*ap != 0 && *bp != 0) as u8;
+                    ap = ap.offset(sa);
+                    bp = bp.offset(sb);
+                    op = op.offset(so);
+                }
+            }
+        },
+    );
+    reg.register_bitwise_binary(
+        BitwiseOp::Or,
+        DTypeKind::Bool,
+        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+            let (sa, sb, so) = strides;
+            if sa == 1 && sb == 1 && so == 1 {
+                let a = std::slice::from_raw_parts(a_ptr, n);
+                let b = std::slice::from_raw_parts(b_ptr, n);
+                let out = std::slice::from_raw_parts_mut(out_ptr, n);
+                for i in 0..n {
+                    out[i] = (a[i] != 0 || b[i] != 0) as u8;
+                }
+            } else {
+                let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                for _ in 0..n {
+                    *op = (*ap != 0 || *bp != 0) as u8;
+                    ap = ap.offset(sa);
+                    bp = bp.offset(sb);
+                    op = op.offset(so);
+                }
+            }
+        },
+    );
+    reg.register_bitwise_binary(
+        BitwiseOp::Xor,
+        DTypeKind::Bool,
+        |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
+            let (sa, sb, so) = strides;
+            if sa == 1 && sb == 1 && so == 1 {
+                let a = std::slice::from_raw_parts(a_ptr, n);
+                let b = std::slice::from_raw_parts(b_ptr, n);
+                let out = std::slice::from_raw_parts_mut(out_ptr, n);
+                for i in 0..n {
+                    out[i] = ((a[i] != 0) != (b[i] != 0)) as u8;
+                }
+            } else {
+                let (mut ap, mut bp, mut op) = (a_ptr, b_ptr, out_ptr);
+                for _ in 0..n {
+                    *op = ((*ap != 0) != (*bp != 0)) as u8;
+                    ap = ap.offset(sa);
+                    bp = bp.offset(sb);
+                    op = op.offset(so);
+                }
+            }
+        },
+    );
+    reg.register_bitwise_not(
+        DTypeKind::Bool,
+        |src_ptr, out_ptr, n, strides| unsafe {
+            let (ss, so) = strides;
+            if ss == 1 && so == 1 {
+                let src = std::slice::from_raw_parts(src_ptr, n);
+                let out = std::slice::from_raw_parts_mut(out_ptr, n);
+                for i in 0..n {
+                    out[i] = (src[i] == 0) as u8;
+                }
+            } else {
+                let (mut sp, mut op) = (src_ptr, out_ptr);
+                for _ in 0..n {
+                    *op = (*sp == 0) as u8;
+                    sp = sp.offset(ss);
+                    op = op.offset(so);
+                }
+            }
+        },
+    );
 
     reg
 }

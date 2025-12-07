@@ -121,6 +121,16 @@ pub enum ReduceOp {
     Min,
 }
 
+/// Bitwise operations (integer/bool only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BitwiseOp {
+    And,
+    Or,
+    Xor,
+    LeftShift,
+    RightShift,
+}
+
 /// Trait defining all dtype-specific behavior.
 ///
 /// Operations work directly on buffers - each dtype uses its native type internally.
@@ -266,6 +276,25 @@ pub trait DTypeOps: Send + Sync + 'static {
     unsafe fn read_complex(&self, ptr: *const u8, byte_offset: isize) -> Option<(f64, f64)> {
         let _ = (ptr, byte_offset);
         None
+    }
+
+    /// Apply bitwise binary op. Returns false if unsupported (e.g., for floats).
+    ///
+    /// # Safety
+    /// All pointers must be valid.
+    unsafe fn bitwise_op(&self, op: BitwiseOp, a: *const u8, a_offset: isize,
+                         b: *const u8, b_offset: isize, out: *mut u8, idx: usize) -> bool {
+        let _ = (op, a, a_offset, b, b_offset, out, idx);
+        false
+    }
+
+    /// Apply bitwise NOT. Returns false if unsupported.
+    ///
+    /// # Safety
+    /// Both pointers must be valid.
+    unsafe fn bitwise_not(&self, src: *const u8, byte_offset: isize, out: *mut u8, idx: usize) -> bool {
+        let _ = (src, byte_offset, out, idx);
+        false
     }
 }
 
