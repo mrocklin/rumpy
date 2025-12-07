@@ -9,84 +9,84 @@ Each stream is independent and can be worked on by a separate agent.
 
 ---
 
-## Stream 1: Math Operations (Unary)
+## Stream 1: Math Operations (Unary) ✅ COMPLETE
 
 Simple element-wise operations using `map_unary`. Pattern: add to `UnaryOp` enum,
 implement in dtype files, add Python binding, test.
 
 ### Tier 1 - Common
-- [ ] `square` - x²
-- [ ] `negative` - -x
-- [ ] `positive` - +x (identity for numeric)
-- [ ] `reciprocal` - 1/x
-- [ ] `abs`/`absolute` - already have abs, add alias
+- [x] `square` - x²
+- [x] `negative` - -x
+- [x] `positive` - +x (identity for numeric)
+- [x] `reciprocal` - 1/x
+- [x] `abs`/`absolute` - already have abs, add alias
 
 ### Tier 2 - Precision Variants
-- [ ] `exp2` - 2^x
-- [ ] `expm1` - e^x - 1 (precise for small x)
-- [ ] `log1p` - log(1 + x) (precise for small x)
-- [ ] `cbrt` - cube root
+- [x] `exp2` - 2^x
+- [x] `expm1` - e^x - 1 (precise for small x)
+- [x] `log1p` - log(1 + x) (precise for small x)
+- [x] `cbrt` - cube root
 
 ### Tier 3 - Rounding
-- [ ] `trunc` - truncate toward zero
-- [ ] `rint` - round to nearest integer
-- [ ] `fix` - round toward zero (alias for trunc)
+- [x] `trunc` - truncate toward zero
+- [x] `rint` - round to nearest integer
+- [x] `fix` - round toward zero (alias for trunc)
 
 ### Tier 4 - Inverse Hyperbolic
-- [ ] `arcsinh` - inverse sinh
-- [ ] `arccosh` - inverse cosh
-- [ ] `arctanh` - inverse tanh
+- [x] `arcsinh` - inverse sinh
+- [x] `arccosh` - inverse cosh
+- [x] `arctanh` - inverse tanh
 
 ### Tier 5 - Misc
-- [ ] `signbit` - true if sign bit set
-- [ ] `nan_to_num` - replace nan/inf with numbers
+- [x] `signbit` - true if sign bit set
+- [x] `nan_to_num` - replace nan/inf with numbers
 
 **Files**: `src/array/dtype/mod.rs`, `src/array/dtype/*.rs`, `src/ops/registry.rs`,
 `src/python/pyarray.rs`, `tests/test_math.py`
 
 ---
 
-## Stream 2: Math Operations (Binary)
+## Stream 2: Math Operations (Binary) ✅ COMPLETE
 
 Element-wise binary ops using `map_binary` with broadcasting.
 
 ### Tier 1 - Essential
-- [ ] `arctan2` - two-argument arctangent
-- [ ] `hypot` - sqrt(x² + y²)
-- [ ] `mod` - alias for remainder
-- [ ] `fmax` - element-wise max ignoring NaN
-- [ ] `fmin` - element-wise min ignoring NaN
-- [ ] `copysign` - copy sign from y to x
+- [x] `arctan2` - two-argument arctangent
+- [x] `hypot` - sqrt(x² + y²)
+- [x] `mod` - alias for remainder
+- [x] `fmax` - element-wise max ignoring NaN
+- [x] `fmin` - element-wise min ignoring NaN
+- [x] `copysign` - copy sign from y to x
 
 ### Tier 2 - Precision
-- [ ] `logaddexp` - log(exp(x) + exp(y))
-- [ ] `logaddexp2` - log2(2^x + 2^y)
-- [ ] `nextafter` - next floating point value toward y
+- [x] `logaddexp` - log(exp(x) + exp(y))
+- [x] `logaddexp2` - log2(2^x + 2^y)
+- [x] `nextafter` - next floating point value toward y
 
 ### Tier 3 - Angular
-- [ ] `deg2rad` / `radians` - degrees to radians
-- [ ] `rad2deg` / `degrees` - radians to degrees
+- [x] `deg2rad` / `radians` - degrees to radians
+- [x] `rad2deg` / `degrees` - radians to degrees
 
 **Files**: Same as Stream 1 plus `src/ops/mod.rs` for mixed-type fallbacks.
 
 ---
 
-## Stream 3: Comparison Operations
+## Stream 3: Comparison Operations ✅ COMPLETE
 
 Return boolean arrays. Use `map_binary` with bool output.
 
 ### Core Comparisons
-- [ ] `equal` - x == y (element-wise)
-- [ ] `not_equal` - x != y
-- [ ] `less` - x < y
-- [ ] `less_equal` - x <= y
-- [ ] `greater` - x > y
-- [ ] `greater_equal` - x >= y
+- [x] `equal` - x == y (element-wise)
+- [x] `not_equal` - x != y
+- [x] `less` - x < y
+- [x] `less_equal` - x <= y
+- [x] `greater` - x > y
+- [x] `greater_equal` - x >= y
 
 ### Approximate Comparisons
-- [ ] `isclose` - element-wise approximate equality
-- [ ] `allclose` - all elements approximately equal (returns scalar)
-- [ ] `array_equal` - arrays have same shape and elements
+- [x] `isclose` - element-wise approximate equality
+- [x] `allclose` - all elements approximately equal (returns scalar)
+- [x] `array_equal` - arrays have same shape and elements
 
 **Note**: The `__lt__`, `__eq__` etc. operators may already exist. These are the
 function forms that can take `out` parameter and work with `where`.
@@ -96,134 +96,134 @@ function forms that can take `out` parameter and work with `where`.
 
 ---
 
-## Stream 4: Logical Operations
+## Stream 4: Logical Operations ✅ COMPLETE
 
 Boolean logic, both element-wise and reduction.
 
 ### Element-wise
-- [ ] `logical_and` - element-wise AND
-- [ ] `logical_or` - element-wise OR
-- [ ] `logical_not` - element-wise NOT
-- [ ] `logical_xor` - element-wise XOR
+- [x] `logical_and` - element-wise AND
+- [x] `logical_or` - element-wise OR
+- [x] `logical_not` - element-wise NOT
+- [x] `logical_xor` - element-wise XOR
 
-**Files**: `src/ops/logical.rs` (new), `src/python/mod.rs`
+**Files**: `src/ops/comparison.rs`, `src/python/mod.rs`
 
 ---
 
-## Stream 5: Bitwise Operations
+## Stream 5: Bitwise Operations ✅ COMPLETE
 
 Integer-only bit manipulation.
 
-- [ ] `bitwise_and` - &
-- [ ] `bitwise_or` - |
-- [ ] `bitwise_xor` - ^
-- [ ] `bitwise_not` / `invert` - ~
-- [ ] `left_shift` - <<
-- [ ] `right_shift` - >>
+- [x] `bitwise_and` - &
+- [x] `bitwise_or` - |
+- [x] `bitwise_xor` - ^
+- [x] `bitwise_not` / `invert` - ~
+- [x] `left_shift` - <<
+- [x] `right_shift` - >>
 
-**Files**: `src/ops/bitwise.rs` (new), `src/python/mod.rs`, `tests/test_bitwise.py`
+**Files**: `src/ops/bitwise.rs`, `src/python/mod.rs`, `tests/test_bitwise.py`
 
 ---
 
-## Stream 6: Reductions (NaN-aware)
+## Stream 6: Reductions (NaN-aware) ✅ COMPLETE
 
 Same as existing reductions but ignore NaN values.
 
-- [ ] `nansum` - sum ignoring NaN
-- [ ] `nanprod` - product ignoring NaN
-- [ ] `nanmean` - mean ignoring NaN
-- [ ] `nanstd` - std ignoring NaN
-- [ ] `nanvar` - var ignoring NaN
-- [ ] `nanmin` - min ignoring NaN
-- [ ] `nanmax` - max ignoring NaN
-- [ ] `nanargmin` - argmin ignoring NaN
-- [ ] `nanargmax` - argmax ignoring NaN
+- [x] `nansum` - sum ignoring NaN
+- [x] `nanprod` - product ignoring NaN
+- [x] `nanmean` - mean ignoring NaN
+- [x] `nanstd` - std ignoring NaN
+- [x] `nanvar` - var ignoring NaN
+- [x] `nanmin` - min ignoring NaN
+- [x] `nanmax` - max ignoring NaN
+- [x] `nanargmin` - argmin ignoring NaN
+- [x] `nanargmax` - argmax ignoring NaN
 
 **Pattern**: Wrap existing reduction with NaN check in accumulator.
 
-**Files**: `src/ops/reductions.rs`, `src/python/mod.rs`, `tests/test_nan.py`
+**Files**: `src/ops/mod.rs`, `src/python/mod.rs`, `tests/test_nan.py`
 
 ---
 
-## Stream 7: Statistical Operations
+## Stream 7: Statistical Operations ✅ COMPLETE
 
-- [ ] `median` - median value (requires sorting)
-- [ ] `average` - weighted average
-- [ ] `ptp` - peak-to-peak (max - min)
-- [ ] `histogram` - compute histogram
-- [ ] `corrcoef` - correlation coefficient matrix
-- [ ] `cov` - covariance matrix
+- [x] `median` - median value (requires sorting)
+- [x] `average` - weighted average
+- [x] `ptp` - peak-to-peak (max - min)
+- [x] `histogram` - compute histogram
+- [x] `corrcoef` - correlation coefficient matrix
+- [x] `cov` - covariance matrix
 
-**Files**: `src/ops/statistics.rs` (new), `src/python/mod.rs`, `tests/test_statistics.py`
+**Files**: `src/ops/statistics.rs`, `src/python/mod.rs`, `tests/test_statistics.py`
 
 ---
 
-## Stream 8: Array Creation
+## Stream 8: Array Creation ✅ COMPLETE
 
 ### Tier 1 - Common
-- [ ] `full_like` - like full but match shape/dtype of input
-- [ ] `identity` - identity matrix
-- [ ] `logspace` - logarithmically spaced values
-- [ ] `geomspace` - geometrically spaced values
+- [x] `full_like` - like full but match shape/dtype of input
+- [x] `identity` - identity matrix
+- [x] `logspace` - logarithmically spaced values
+- [x] `geomspace` - geometrically spaced values
 
 ### Tier 2 - Triangular
-- [ ] `tri` - triangular matrix of ones
-- [ ] `tril` - lower triangle
-- [ ] `triu` - upper triangle
-- [ ] `diagflat` - create diagonal matrix from flat input
+- [x] `tri` - triangular matrix of ones
+- [x] `tril` - lower triangle
+- [x] `triu` - upper triangle
+- [x] `diagflat` - create diagonal matrix from flat input
 
 ### Tier 3 - Advanced
-- [ ] `meshgrid` - coordinate matrices from vectors
-- [ ] `indices` - grid of indices
-- [ ] `fromfunction` - construct from function
+- [x] `meshgrid` - coordinate matrices from vectors
+- [x] `indices` - grid of indices
+- [x] `fromfunction` - construct from function
 
-**Files**: `src/python/mod.rs`, `tests/test_creation.py`
+**Files**: `src/array/mod.rs`, `src/python/mod.rs`, `tests/test_creation.py`
 
 ---
 
-## Stream 9: Shape Manipulation (Module-level)
+## Stream 9: Shape Manipulation (Module-level) ✅ COMPLETE
 
 Module-level versions of array methods + new functions.
 
 ### Tier 1 - Aliases
-- [ ] `reshape` - module-level reshape
-- [ ] `ravel` - flatten to 1D (return view if possible)
-- [ ] `flatten` - flatten to 1D (always copy)
-- [ ] `transpose` - module-level transpose
+- [x] `reshape` - module-level reshape
+- [x] `ravel` - flatten to 1D (return view if possible)
+- [x] `flatten` - flatten to 1D (always copy)
+- [x] `transpose` - module-level transpose
 
 ### Tier 2 - Dimension Manipulation
-- [ ] `atleast_1d` - ensure at least 1D
-- [ ] `atleast_2d` - ensure at least 2D
-- [ ] `atleast_3d` - ensure at least 3D
-- [ ] `moveaxis` - move axis to new position
-- [ ] `rollaxis` - roll axis backward
+- [x] `atleast_1d` - ensure at least 1D
+- [x] `atleast_2d` - ensure at least 2D
+- [x] `atleast_3d` - ensure at least 3D
+- [x] `moveaxis` - move axis to new position
+- [x] `rollaxis` - roll axis backward
 
 ### Tier 3 - Broadcasting
-- [ ] `broadcast_to` - broadcast array to shape
-- [ ] `broadcast_arrays` - broadcast multiple arrays together
+- [x] `broadcast_to` - broadcast array to shape
+- [x] `broadcast_arrays` - broadcast multiple arrays together
 
-**Files**: `src/python/mod.rs`, `tests/test_shape.py`
+**Files**: `src/array/mod.rs`, `src/python/mod.rs`, `tests/test_shape.py`
 
 ---
 
-## Stream 10: Indexing Operations
+## Stream 10: Indexing Operations ✅ COMPLETE
 
 ### Tier 1 - Selection
-- [ ] `take` - take elements along axis
-- [ ] `take_along_axis` - take using index array along axis
-- [ ] `compress` - select elements using boolean mask along axis
+- [x] `take` - take elements along axis
+- [x] `take_along_axis` - take using index array along axis
+- [x] `compress` - select elements using boolean mask along axis
 
 ### Tier 2 - Search
-- [ ] `searchsorted` - find insertion points for sorted array
-- [ ] `argwhere` - indices where condition is true
-- [ ] `flatnonzero` - indices of non-zero elements in flattened array
+- [x] `searchsorted` - find insertion points for sorted array
+- [x] `argwhere` - indices where condition is true
+- [x] `flatnonzero` - indices of non-zero elements in flattened array
 
 ### Tier 3 - Modification
-- [ ] `put` - replace elements at indices
-- [ ] `put_along_axis` - put values using index array
-- [ ] `choose` - construct array from index array and choices
+- [x] `put` - replace elements at indices
+- [x] `put_along_axis` - put values using index array
+- [x] `choose` - construct array from index array and choices
 
-**Files**: `src/ops/indexing.rs` (new), `src/python/mod.rs`, `tests/test_indexing.py`
+**Files**: `src/ops/indexing.rs`, `src/python/mod.rs`, `tests/test_indexing_ops.py`
 
 ---
 
@@ -275,48 +275,48 @@ Module-level versions of array methods + new functions.
 
 ---
 
-## Stream 13: Sorting/Searching Advanced
+## Stream 13: Sorting/Searching Advanced ✅ COMPLETE
 
-- [ ] `partition` - partial sort
-- [ ] `argpartition` - indices for partial sort
-- [ ] `lexsort` - indirect sort using multiple keys
+- [x] `partition` - partial sort
+- [x] `argpartition` - indices for partial sort
+- [x] `lexsort` - indirect sort using multiple keys
 
-**Files**: `src/ops/sorting.rs`, `src/python/mod.rs`, `tests/test_sorting.py`
+**Files**: `src/ops/mod.rs`, `src/python/mod.rs`, `tests/test_sorting.py`
 
 ---
 
-## Stream 14: Linear Algebra Extensions
+## Stream 14: Linear Algebra Extensions ✅ COMPLETE
 
 ### linalg submodule
-- [ ] `eig` - general eigenvalue decomposition
-- [ ] `eigvals` - eigenvalues only
-- [ ] `lstsq` - least squares solution
-- [ ] `pinv` - Moore-Penrose pseudo-inverse
-- [ ] `matrix_rank` - matrix rank
-- [ ] `cond` - condition number
-- [ ] `slogdet` - sign and log of determinant
+- [x] `eig` - general eigenvalue decomposition
+- [x] `eigvals` - eigenvalues only
+- [x] `lstsq` - least squares solution
+- [x] `pinv` - Moore-Penrose pseudo-inverse
+- [x] `matrix_rank` - matrix rank
+- [x] `cond` - condition number
+- [x] `slogdet` - sign and log of determinant
 
 ### Module-level
-- [ ] `tensordot` - tensor dot product
-- [ ] `vdot` - vector dot product (conjugate first arg)
-- [ ] `kron` - Kronecker product
-- [ ] `cross` - cross product
+- [x] `tensordot` - tensor dot product
+- [x] `vdot` - vector dot product (conjugate first arg)
+- [x] `kron` - Kronecker product
+- [x] `cross` - cross product
 
-**Files**: `src/linalg/*.rs`, `src/python/linalg.rs`, `tests/test_linalg.py`
+**Files**: `src/ops/linalg.rs`, `src/python/linalg.rs`, `tests/test_linalg.py`
 
 ---
 
-## Stream 15: Random Extensions
+## Stream 15: Random Extensions ✅ COMPLETE
 
 ### Generator methods
-- [ ] `permutation` - random permutation
-- [ ] `shuffle` - shuffle in place
-- [ ] `beta` - beta distribution
-- [ ] `gamma` - gamma distribution
-- [ ] `poisson` - Poisson distribution
-- [ ] `binomial` - binomial distribution
-- [ ] `chisquare` - chi-square distribution
-- [ ] `multivariate_normal` - multivariate normal
+- [x] `permutation` - random permutation
+- [x] `shuffle` - shuffle in place
+- [x] `beta` - beta distribution
+- [x] `gamma` - gamma distribution
+- [x] `poisson` - Poisson distribution
+- [x] `binomial` - binomial distribution
+- [x] `chisquare` - chi-square distribution
+- [x] `multivariate_normal` - multivariate normal
 
 **Files**: `src/random/*.rs`, `src/python/random.rs`, `tests/test_random.py`
 
@@ -346,29 +346,29 @@ Module-level versions of array methods + new functions.
 
 ---
 
-## Stream 18: ndarray Methods
+## Stream 18: ndarray Methods ✅ COMPLETE
 
 Methods missing from the array class itself.
 
 ### Tier 1 - Index operations
-- [ ] `nonzero()` method - indices of non-zero elements
-- [ ] `argsort()` method - already have? verify
-- [ ] `sort()` method - in-place sort
-- [ ] `searchsorted()` method
+- [x] `nonzero()` method - indices of non-zero elements
+- [x] `argsort()` method
+- [x] `sort()` method - in-place sort
+- [x] `searchsorted()` method
 
 ### Tier 2 - Element operations
-- [ ] `repeat()` method
-- [ ] `take()` method
-- [ ] `put()` method
-- [ ] `fill()` method - fill with scalar
+- [x] `repeat()` method
+- [x] `take()` method
+- [x] `put()` method
+- [x] `fill()` method - fill with scalar
 
 ### Tier 3 - Conversion
-- [ ] `tobytes()` method - raw bytes
-- [ ] `view()` method - view with different dtype
+- [x] `tobytes()` method - raw bytes
+- [x] `view()` method - view with different dtype
 
 ### Tier 4 - Sorting
-- [ ] `partition()` method
-- [ ] `argpartition()` method
+- [x] `partition()` method
+- [x] `argpartition()` method
 
 **Files**: `src/python/pyarray.rs`, `tests/test_array_methods.py`
 

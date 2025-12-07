@@ -720,6 +720,12 @@ pub fn trunc(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     apply_unary(x, |v| v.trunc(), |a| a.trunc())
 }
 
+/// Alias for trunc - round toward zero.
+#[pyfunction]
+pub fn fix(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    trunc(x)
+}
+
 #[pyfunction]
 pub fn rint(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     apply_unary(x, |v| v.round(), |a| a.rint())
@@ -899,6 +905,18 @@ pub fn deg2rad(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
 pub fn rad2deg(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     let rad_to_deg = 180.0 / std::f64::consts::PI;
     apply_unary(x, |v| v * rad_to_deg, |a| Ok(a.scalar_op(rad_to_deg, crate::array::dtype::BinaryOp::Mul)))
+}
+
+/// Alias for deg2rad.
+#[pyfunction]
+pub fn radians(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    deg2rad(x)
+}
+
+/// Alias for rad2deg.
+#[pyfunction]
+pub fn degrees(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    rad2deg(x)
 }
 
 // Complex accessors
@@ -3242,6 +3260,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(log1p, m)?)?;
     m.add_function(wrap_pyfunction!(cbrt, m)?)?;
     m.add_function(wrap_pyfunction!(trunc, m)?)?;
+    m.add_function(wrap_pyfunction!(fix, m)?)?;
     m.add_function(wrap_pyfunction!(rint, m)?)?;
     m.add_function(wrap_pyfunction!(arcsinh, m)?)?;
     m.add_function(wrap_pyfunction!(arccosh, m)?)?;
@@ -3268,6 +3287,8 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(nextafter, m)?)?;
     m.add_function(wrap_pyfunction!(deg2rad, m)?)?;
     m.add_function(wrap_pyfunction!(rad2deg, m)?)?;
+    m.add_function(wrap_pyfunction!(radians, m)?)?;
+    m.add_function(wrap_pyfunction!(degrees, m)?)?;
     m.add_function(wrap_pyfunction!(real, m)?)?;
     m.add_function(wrap_pyfunction!(imag, m)?)?;
     m.add_function(wrap_pyfunction!(conj, m)?)?;
