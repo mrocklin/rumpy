@@ -1,9 +1,129 @@
 //! Python bindings for linalg submodule (numpy.linalg compatibility).
+//!
+//! Many functions are exposed at both top-level (np.dot) and submodule (np.linalg.solve).
 
 use pyo3::prelude::*;
 use crate::ops::linalg as linalg_ops;
 use crate::ops::solve as solve_ops;
 use crate::python::PyRumpyArray;
+
+// ============================================================================
+// Top-level linear algebra functions (exposed as np.X)
+// ============================================================================
+
+/// Matrix multiplication.
+#[pyfunction]
+pub fn matmul(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::matmul::matmul(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("matmul: incompatible shapes"))
+}
+
+/// Dot product with numpy semantics.
+#[pyfunction]
+pub fn dot(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::dot::dot(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("dot: incompatible shapes"))
+}
+
+/// Inner product of two arrays.
+#[pyfunction]
+pub fn inner(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::inner::inner(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("inner: incompatible shapes"))
+}
+
+/// Outer product of two arrays.
+#[pyfunction]
+pub fn outer(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::outer::outer(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("outer: incompatible shapes"))
+}
+
+/// Compute trace of a matrix (sum of diagonal elements).
+#[pyfunction]
+pub fn trace(a: &PyRumpyArray) -> PyResult<f64> {
+    linalg_ops::trace(&a.inner)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("trace requires 2D array"))
+}
+
+/// Extract diagonal or construct diagonal matrix.
+#[pyfunction]
+pub fn diag(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    linalg_ops::diag(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("diag requires 1D or 2D array"))
+}
+
+/// Vector dot product (flattens arrays then computes inner product).
+#[pyfunction]
+pub fn vdot(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<f64> {
+    linalg_ops::vdot(&a.inner, &b.inner)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("vdot: arrays must have same total size"))
+}
+
+/// Kronecker product of two arrays.
+#[pyfunction]
+pub fn kron(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    linalg_ops::kron(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("kron: unsupported dimensions"))
+}
+
+/// Cross product of two 3D vectors.
+#[pyfunction]
+pub fn cross(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    linalg_ops::cross(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("cross: requires 1D arrays of length 3"))
+}
+
+/// Tensor dot product over specified axes.
+#[pyfunction]
+#[pyo3(signature = (a, b, axes=None))]
+pub fn tensordot(a: &PyRumpyArray, b: &PyRumpyArray, axes: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<PyRumpyArray> {
+    // Parse axes - can be int or tuple of two lists (default is 2)
+    let (a_axes, b_axes) = if let Some(axes) = axes {
+        if let Ok(n) = axes.extract::<usize>() {
+            // axes=n means last n axes of a and first n axes of b
+            let a_axes: Vec<usize> = (a.inner.ndim().saturating_sub(n)..a.inner.ndim()).collect();
+            let b_axes: Vec<usize> = (0..n).collect();
+            (a_axes, b_axes)
+        } else if let Ok((ax_a, ax_b)) = axes.extract::<(Vec<usize>, Vec<usize>)>() {
+            (ax_a, ax_b)
+        } else if let Ok((ax_a, ax_b)) = axes.extract::<(Vec<i64>, Vec<i64>)>() {
+            // Handle negative indices
+            let a_axes: Vec<usize> = ax_a.into_iter()
+                .map(|x| if x < 0 { (a.inner.ndim() as i64 + x) as usize } else { x as usize })
+                .collect();
+            let b_axes: Vec<usize> = ax_b.into_iter()
+                .map(|x| if x < 0 { (b.inner.ndim() as i64 + x) as usize } else { x as usize })
+                .collect();
+            (a_axes, b_axes)
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "axes must be integer or tuple of two lists"
+            ));
+        }
+    } else {
+        // Default: axes=2
+        let n = 2;
+        let a_axes: Vec<usize> = (a.inner.ndim().saturating_sub(n)..a.inner.ndim()).collect();
+        let b_axes: Vec<usize> = (0..n).collect();
+        (a_axes, b_axes)
+    };
+
+    linalg_ops::tensordot(&a.inner, &b.inner, (a_axes, b_axes))
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("tensordot: incompatible dimensions"))
+}
+
+// ============================================================================
+// Linalg submodule functions (exposed as np.linalg.X)
+// ============================================================================
 
 /// Solve linear system Ax = b.
 #[pyfunction]
