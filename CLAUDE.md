@@ -34,12 +34,19 @@ def test_feature():
 ```
 src/array/          # Core Rust types
   mod.rs            # RumpyArray struct, constructors, views, broadcast
-  dtype.rs          # DType enum (f32, f64, i32, i64, bool)
+  dtype/            # DType system with macro-generated implementations
+    mod.rs          # DType wrapper, DTypeOps trait, type promotion
+    macros.rs       # impl_float_dtype!, impl_signed_int_dtype!, etc.
   buffer.rs         # ArrayBuffer (Arc-wrapped memory)
   flags.rs          # ArrayFlags (contiguity, writeable)
 
 src/ops/            # Operations (ufunc-style)
-  mod.rs            # map_unary, map_binary, reduce_all, reduce_axis
+  mod.rs            # RumpyArray methods, error types, re-exports
+  ufunc.rs          # Core: map_unary_op, map_binary_op, reduce_axis_op
+  registry.rs       # Type-specific optimized loops (SIMD fast paths)
+  statistics.rs     # histogram, cov, corrcoef, median, ptp, average
+  comparison.rs     # logical_and/or/xor/not, equal, isclose, etc.
+  bitwise.rs        # bitwise_and/or/xor/not, left_shift, right_shift
 
 src/python/         # PyO3 bindings
   mod.rs            # Module-level functions (zeros, ones, arange)
@@ -63,35 +70,51 @@ plans/              # Work status (what's next)
 ## Key Design Decisions
 
 - **Arc<ArrayBuffer>** for views - shared ownership, no copy
-- **DType as enum** (not generic) - simpler PyO3 interop
+- **DType as trait object** - `DType(Arc<dyn DTypeOps>)` with macro-generated impls
+- **Two-tier dispatch** - registry fast path → trait fallback
 - **Signed strides (isize)** - enables negative strides for reversed views
 - **`__array_interface__`** for NumPy interop - zero-copy when possible
 
+## Key Design Docs
+
+| Doc | When to Read |
+|-----|--------------|
+| `designs/dtype-system.md` | Adding new dtypes |
+| `designs/adding-operations.md` | Adding unary/binary/reduce ops |
+| `designs/ufuncs.md` | Understanding ufunc architecture |
+| `designs/iteration-performance.md` | Optimizing loops, benchmarks |
+| `designs/gufuncs.md` | Matrix ops like matmul |
+| `designs/linalg.md` | faer integration for linear algebra |
+| `designs/deviations.md` | Where rumpy differs from NumPy |
+
 ## Adding New Operations
 
-Use the ufunc machinery in `src/ops/mod.rs`:
+Use the ufunc machinery in `src/ops/ufunc.rs`:
 
 ```rust
-// Element-wise unary: use map_unary
-pub fn sqrt(&self) -> RumpyArray {
-    map_unary(self, |x| x.sqrt())
+// Element-wise unary: use map_unary_op with UnaryOp enum
+pub fn sqrt(&self) -> Result<RumpyArray, UnaryOpError> {
+    map_unary_op(self, UnaryOp::Sqrt)
 }
 
-// Element-wise binary: use map_binary (handles broadcasting)
-pub fn binary_op(&self, other: &RumpyArray, op: BinaryOp) -> Option<RumpyArray> {
-    map_binary(self, other, |a, b| a + b)
+// Element-wise binary: use map_binary_op with BinaryOp enum (handles broadcasting)
+pub fn add(&self, other: &RumpyArray) -> Result<RumpyArray, BinaryOpError> {
+    map_binary_op(self, other, BinaryOp::Add)
 }
 
-// Full reduction: use reduce_all
+// Full reduction: use reduce_all_op with ReduceOp enum
 pub fn sum(&self) -> f64 {
-    reduce_all(self, 0.0, |acc, x| acc + x)
+    reduce_all_op(self, ReduceOp::Sum, false)  // false = not NaN-aware
 }
 
-// Axis reduction: use reduce_axis
+// Axis reduction: use reduce_axis_op
 pub fn sum_axis(&self, axis: usize) -> RumpyArray {
-    reduce_axis(self, axis, 0.0, |acc, x| acc + x)
+    reduce_axis_op(self, axis, ReduceOp::Sum, false)
 }
 ```
+
+The registry in `src/ops/registry.rs` provides optimized type-specific loops.
+To add a new operation, add the enum variant and register loops for each dtype.
 
 Then add Python bindings in `pyarray.rs` and tests.
 

@@ -10,18 +10,21 @@ This keeps code DRY and ensures consistent handling of strides, broadcasting, an
 ## The Four Primitives
 
 ```
-map_unary(arr, f)         -> RumpyArray   # f(x) for each element
-map_binary(a, b, f)       -> RumpyArray   # f(a, b) with broadcasting
-reduce_all(arr, init, f)  -> f64          # fold all elements
-reduce_axis(arr, axis, init, f) -> RumpyArray  # fold along one axis
+map_unary_op(arr, UnaryOp)       -> Result<RumpyArray>  # sqrt, exp, log, etc.
+map_binary_op(a, b, BinaryOp)   -> Result<RumpyArray>  # +, -, *, / with broadcasting
+reduce_all_op(arr, ReduceOp)    -> f64                 # fold all elements
+reduce_axis_op(arr, axis, ReduceOp) -> RumpyArray      # fold along one axis
 ```
 
 ## How They Work
 
-All use index-based iteration via `get_element(&indices)` + `increment_indices()`.
-This correctly handles non-contiguous arrays (views, transposes, broadcasts).
+**Registry dispatch**: Operations first check `UFuncRegistry` for optimized type-specific
+loops. These loops receive stride information and handle contiguous/strided cases internally,
+enabling LLVM auto-vectorization for contiguous arrays.
 
-**Broadcasting**: `map_binary` calls `broadcast_shapes()` then `broadcast_to()` on both
+**Fallback**: If no registry loop exists, use `DTypeOps` trait methods (slower but universal).
+
+**Broadcasting**: `map_binary_op` calls `broadcast_shapes()` then `broadcast_to()` on both
 inputs before iteration. `broadcast_to()` creates a view with zero strides for
 broadcast dimensions.
 
@@ -29,17 +32,17 @@ broadcast dimensions.
 
 ## Adding New Operations
 
-1. **Unary math** (sqrt, exp, log): Add method using `map_unary`
-2. **Binary ops**: Already handled via `BinaryOp` enum
-3. **New reduction**: Add method using `reduce_all` or `reduce_axis`
-4. **Comparison ops**: Would use `map_binary` with bool output dtype
+1. **Unary math** (sqrt, exp, log): Add variant to `UnaryOp` enum, implement in registry
+2. **Binary ops**: Add variant to `BinaryOp` enum, register loops
+3. **New reduction**: Add variant to `ReduceOp` enum, register strided loops
+4. **Comparison ops**: Use `map_compare_op` with `ComparisonOp` enum
 
-## Performance Notes
+See `designs/adding-operations.md` for step-by-step guide.
 
-Current implementation is simple but not optimal:
-- Index-based iteration has overhead vs pointer arithmetic
-- No SIMD vectorization
-- No special fast path for contiguous arrays
+## Performance
 
-These are intentional tradeoffs for correctness and simplicity. Optimize later
-by adding contiguous fast paths that fall back to index-based for views.
+Registry loops enable SIMD via LLVM auto-vectorization:
+- Contiguous fast path: convert to slice, tight loop
+- Strided path: pointer arithmetic with stride offsets
+
+See `designs/iteration-performance.md` for benchmarks.

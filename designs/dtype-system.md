@@ -92,7 +92,7 @@ For types that share similar structure, use existing macros in `src/ops/registry
 ## Key Files
 
 - `src/array/dtype/mod.rs` - `DType`, `DTypeKind`, `DTypeOps` trait, `promote_dtype()`
-- `src/array/dtype/*.rs` - dtype implementations (float64, int64, uint8, datetime64, complex64, etc.)
+- `src/array/dtype/*.rs` - dtype implementations via macros (floats.rs, integers.rs, complex64.rs, etc.)
 - `src/ops/registry.rs` - `UFuncRegistry` for type-specific inner loops
-- `src/ops/mod.rs` - `map_binary_op`, `map_unary_op` with registry dispatch
+- `src/ops/ufunc.rs` - `map_binary_op`, `map_unary_op` with registry dispatch
 - `src/python/mod.rs` - Python typestr parsing in `dtype_from_typestr()`

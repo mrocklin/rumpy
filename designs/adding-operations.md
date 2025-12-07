@@ -6,21 +6,20 @@ Guide for adding new ufunc operations (unary, binary, reduce).
 
 1. **`src/array/dtype/mod.rs`** - Add to enum (`UnaryOp`, `BinaryOp`, or `ReduceOp`)
 
-2. **`src/array/dtype/*.rs`** - Implement in each dtype's `DTypeOps`:
-   - `float64.rs`, `float32.rs`, `float16.rs` - floating point
-   - `int64.rs`, `int32.rs`, `int16.rs` - signed integers
-   - `uint64.rs`, `uint32.rs`, `uint16.rs`, `uint8.rs` - unsigned integers
-   - `bool.rs`, `complex128.rs`, `datetime64.rs` - special types
+2. **`src/array/dtype/*.rs`** - Implement in each dtype's `DTypeOps` (trait fallback):
+   - `floats.rs` - f32, f64 via `impl_float_dtype!` macro
+   - `float16.rs` - f16 with software emulation
+   - `integers.rs` - i16, i32, i64, u8, u16, u32, u64 via macros
+   - `bool.rs`, `complex64.rs`, `complex128.rs`, `datetime64.rs` - special types
 
-3. **`src/ops/registry.rs`** - Register fast loops (optional but recommended):
+3. **`src/ops/registry.rs`** - Register fast loops (recommended for performance):
    - Use `register_strided_binary!` / `register_strided_unary!` macros
    - Or existing group macros: `register_arithmetic!`, `register_float_unary!`
+   - Complex types: use `register_complex_loops!` macro
 
-4. **`src/ops/mod.rs`** - Update mixed-type fallback match arms (for binary ops)
+4. **`src/python/pyarray.rs`** - Add Python bindings (`__pow__`, `fn sqrt`, etc.)
 
-5. **`src/python/pyarray.rs`** - Add Python bindings (`__pow__`, `fn sqrt`, etc.)
-
-6. **`tests/test_*.py`** - Add tests comparing against NumPy
+5. **`tests/test_*.py`** - Add tests comparing against NumPy
 
 ## Example: Adding `BinaryOp::Pow`
 

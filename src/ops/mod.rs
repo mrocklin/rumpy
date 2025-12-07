@@ -1482,11 +1482,8 @@ impl RumpyArray {
     // NaN-aware reductions
     // ========================================================================
     //
-    // TODO(perf): Axis reductions use get_element() which computes offsets per-element.
-    // For better performance, refactor to use:
-    // - axis_offsets() to iterate outer dimensions
-    // - Registry-registered ReduceLoopFn for inner loops with contiguous fast path
-    // See designs/iteration-performance.md and designs/backstride-iteration.md
+    // Note: NaN-aware axis reductions still use get_element() which is slower.
+    // Non-NaN reductions use registry strided loops via reduce_axis_op().
 
     /// Helper: iterate non-NaN values, returning (value, was_found) for full reductions.
     fn nan_reduce_full<F>(&self, init: f64, mut f: F) -> (f64, bool)
