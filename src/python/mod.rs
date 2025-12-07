@@ -2991,6 +2991,55 @@ pub fn setxor1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(crate::ops::setxor1d(&ar1.inner, &ar2.inner))
 }
 
+// ============================================================================
+// Stream 17: Polynomial Operations
+// ============================================================================
+
+/// Evaluate polynomial at given points.
+/// Coefficients are in descending order (highest degree first).
+#[pyfunction]
+pub fn polyval(p: &PyRumpyArray, x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::polyval(&p.inner, &x.inner))
+}
+
+/// Compute polynomial derivative.
+/// Returns coefficients of d^m/dx^m polynomial.
+#[pyfunction]
+#[pyo3(signature = (p, m=1))]
+pub fn polyder(p: &PyRumpyArray, m: usize) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::polyder(&p.inner, m))
+}
+
+/// Compute polynomial integral.
+/// Returns coefficients of m-th order antiderivative with integration constant(s) k.
+#[pyfunction]
+#[pyo3(signature = (p, m=1, k=None))]
+pub fn polyint(p: &PyRumpyArray, m: usize, k: Option<&PyRumpyArray>) -> PyRumpyArray {
+    let k_inner = k.map(|arr| &arr.inner);
+    PyRumpyArray::new(crate::ops::polyint(&p.inner, m, k_inner))
+}
+
+/// Fit polynomial of degree deg to data points (x, y).
+/// Returns coefficients in descending order (highest degree first).
+#[pyfunction]
+#[pyo3(signature = (x, y, deg, w=None))]
+pub fn polyfit(x: &PyRumpyArray, y: &PyRumpyArray, deg: usize, w: Option<&PyRumpyArray>) -> PyResult<PyRumpyArray> {
+    let w_inner = w.map(|arr| &arr.inner);
+    crate::ops::polyfit(&x.inner, &y.inner, deg, w_inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("polyfit failed - check inputs"))
+}
+
+/// Find roots of polynomial.
+/// Coefficients are in descending order (highest degree first).
+#[pyfunction]
+#[pyo3(name = "roots")]
+pub fn roots_fn(p: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::roots(&p.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("roots computation failed"))
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
@@ -3236,6 +3285,12 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(union1d, m)?)?;
     m.add_function(wrap_pyfunction!(setdiff1d, m)?)?;
     m.add_function(wrap_pyfunction!(setxor1d, m)?)?;
+    // Stream 17: Polynomial operations
+    m.add_function(wrap_pyfunction!(polyval, m)?)?;
+    m.add_function(wrap_pyfunction!(polyder, m)?)?;
+    m.add_function(wrap_pyfunction!(polyint, m)?)?;
+    m.add_function(wrap_pyfunction!(polyfit, m)?)?;
+    m.add_function(wrap_pyfunction!(roots_fn, m)?)?;
     // Dtype constants (as strings, compatible with our dtype= parameters)
     m.add("float32", "float32")?;
     m.add("float64", "float64")?;

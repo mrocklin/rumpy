@@ -334,15 +334,15 @@ Module-level versions of array methods + new functions.
 
 ---
 
-## Stream 17: Polynomial Operations
+## Stream 17: Polynomial Operations ✓ COMPLETE
 
-- [ ] `polyfit` - polynomial curve fitting
-- [ ] `polyval` - evaluate polynomial
-- [ ] `polyder` - polynomial derivative
-- [ ] `polyint` - polynomial integral
-- [ ] `roots` - polynomial roots
+- [x] `polyfit` - polynomial curve fitting
+- [x] `polyval` - evaluate polynomial
+- [x] `polyder` - polynomial derivative
+- [x] `polyint` - polynomial integral
+- [x] `roots` - polynomial roots
 
-**Files**: `src/ops/poly.rs` (new), `src/python/mod.rs`, `tests/test_poly.py`
+**Files**: `src/ops/poly.rs`, `src/python/mod.rs`, `tests/test_poly.py`
 
 ---
 
