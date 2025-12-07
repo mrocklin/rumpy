@@ -1523,8 +1523,193 @@ pub fn diag(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("diag requires 1D or 2D array"))
 }
 
-/// Conditional selection: where(condition, x, y).
-/// Returns elements from x where condition is true, else from y.
+// ============================================================================
+// Indexing operations (Stream 10)
+// ============================================================================
+
+#[pyfunction]
+#[pyo3(signature = (a, indices, axis=None))]
+pub fn take(
+    a: &PyRumpyArray,
+    indices: &Bound<'_, pyo3::PyAny>,
+    axis: Option<usize>,
+) -> PyResult<PyRumpyArray> {
+    // Convert indices to array
+    let indices_arr = if let Ok(arr) = indices.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(list) = indices.extract::<Vec<i64>>() {
+        let data: Vec<f64> = list.into_iter().map(|x| x as f64).collect();
+        RumpyArray::from_vec(data, DType::int64())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "indices must be array or list of integers",
+        ));
+    };
+
+    crate::ops::indexing::take(&a.inner, &indices_arr, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("index out of bounds"))
+}
+
+#[pyfunction]
+pub fn take_along_axis(
+    arr: &PyRumpyArray,
+    indices: &PyRumpyArray,
+    axis: usize,
+) -> PyResult<PyRumpyArray> {
+    crate::ops::indexing::take_along_axis(&arr.inner, &indices.inner, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "indices array shape doesn't match or axis out of bounds",
+            )
+        })
+}
+
+#[pyfunction]
+#[pyo3(signature = (condition, a, axis=None))]
+pub fn compress(
+    condition: &Bound<'_, pyo3::PyAny>,
+    a: &PyRumpyArray,
+    axis: Option<usize>,
+) -> PyResult<PyRumpyArray> {
+    // Convert condition to Vec<bool>
+    let cond_vec: Vec<bool> = if let Ok(list) = condition.extract::<Vec<bool>>() {
+        list
+    } else if let Ok(arr) = condition.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        let ptr = arr.inner.data_ptr();
+        let dtype = arr.inner.dtype();
+        let ops = dtype.ops();
+        arr.inner.iter_offsets()
+            .map(|offset| unsafe { ops.is_truthy(ptr, offset) })
+            .collect()
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "condition must be array or list of bools",
+        ));
+    };
+
+    crate::ops::indexing::compress(&cond_vec, &a.inner, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("axis out of bounds"))
+}
+
+#[pyfunction]
+#[pyo3(signature = (a, v, side="left"))]
+pub fn searchsorted(
+    a: &PyRumpyArray,
+    v: &Bound<'_, pyo3::PyAny>,
+    side: &str,
+) -> PyResult<PyRumpyArray> {
+    // Convert v to array
+    let v_arr = if let Ok(arr) = v.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = v.extract::<f64>() {
+        RumpyArray::from_vec(vec![scalar], DType::float64())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "v must be array or number",
+        ));
+    };
+
+    crate::ops::indexing::searchsorted(&a.inner, &v_arr, side)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("a must be 1-D"))
+}
+
+#[pyfunction]
+pub fn argwhere(a: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::indexing::argwhere(&a.inner))
+}
+
+#[pyfunction]
+pub fn flatnonzero(a: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::indexing::flatnonzero(&a.inner))
+}
+
+#[pyfunction]
+pub fn put(
+    a: &mut PyRumpyArray,
+    ind: &Bound<'_, pyo3::PyAny>,
+    v: &Bound<'_, pyo3::PyAny>,
+) -> PyResult<()> {
+    // Convert ind to Vec<i64>
+    let indices: Vec<i64> = if let Ok(list) = ind.extract::<Vec<i64>>() {
+        list
+    } else if let Ok(arr) = ind.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        let size = arr.inner.size();
+        let mut result = Vec::with_capacity(size);
+        for offset in arr.inner.iter_offsets() {
+            let val = unsafe { arr.inner.dtype().ops().read_f64(arr.inner.data_ptr(), offset) }
+                .unwrap_or(0.0);
+            result.push(val as i64);
+        }
+        result
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "ind must be array or list of integers",
+        ));
+    };
+
+    // Convert v to Vec<f64>
+    let values: Vec<f64> = if let Ok(scalar) = v.extract::<f64>() {
+        vec![scalar]
+    } else if let Ok(list) = v.extract::<Vec<f64>>() {
+        list
+    } else if let Ok(arr) = v.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        let size = arr.inner.size();
+        let mut result = Vec::with_capacity(size);
+        for offset in arr.inner.iter_offsets() {
+            let val = unsafe { arr.inner.dtype().ops().read_f64(arr.inner.data_ptr(), offset) }
+                .unwrap_or(0.0);
+            result.push(val);
+        }
+        result
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "v must be number, array, or list",
+        ));
+    };
+
+    crate::ops::indexing::put(&mut a.inner, &indices, &values)
+        .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("index out of bounds"))
+}
+
+#[pyfunction]
+pub fn put_along_axis(
+    arr: &mut PyRumpyArray,
+    indices: &PyRumpyArray,
+    values: &PyRumpyArray,
+    axis: usize,
+) -> PyResult<()> {
+    crate::ops::indexing::put_along_axis(&mut arr.inner, &indices.inner, &values.inner, axis)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "indices/values shape doesn't match or axis out of bounds",
+            )
+        })
+}
+
+#[pyfunction]
+pub fn choose(a: &PyRumpyArray, choices: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
+    let choice_arrs: PyResult<Vec<RumpyArray>> = choices
+        .iter()
+        .map(|item| {
+            item.extract::<pyo3::PyRef<'_, PyRumpyArray>>()
+                .map(|arr| arr.inner.clone())
+        })
+        .collect();
+    let choice_arrs = choice_arrs?;
+
+    crate::ops::indexing::choose(&a.inner, &choice_arrs)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "shapes don't match or index out of bounds",
+            )
+        })
+}
+
 #[pyfunction]
 #[pyo3(name = "where")]
 pub fn where_fn(
@@ -2306,6 +2491,16 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(inv, m)?)?;
     m.add_function(wrap_pyfunction!(eigh, m)?)?;
     m.add_function(wrap_pyfunction!(diag, m)?)?;
+    // Indexing operations
+    m.add_function(wrap_pyfunction!(take, m)?)?;
+    m.add_function(wrap_pyfunction!(take_along_axis, m)?)?;
+    m.add_function(wrap_pyfunction!(compress, m)?)?;
+    m.add_function(wrap_pyfunction!(searchsorted, m)?)?;
+    m.add_function(wrap_pyfunction!(argwhere, m)?)?;
+    m.add_function(wrap_pyfunction!(flatnonzero, m)?)?;
+    m.add_function(wrap_pyfunction!(put, m)?)?;
+    m.add_function(wrap_pyfunction!(put_along_axis, m)?)?;
+    m.add_function(wrap_pyfunction!(choose, m)?)?;
     // Dtype constants (as strings, compatible with our dtype= parameters)
     m.add("float32", "float32")?;
     m.add("float64", "float64")?;

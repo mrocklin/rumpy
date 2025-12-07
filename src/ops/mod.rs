@@ -5,6 +5,7 @@
 pub mod dot;
 pub mod fft;
 pub mod gufunc;
+pub mod indexing;
 pub mod inner;
 pub mod linalg;
 pub mod matmul;
