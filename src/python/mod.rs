@@ -948,6 +948,47 @@ pub fn argsort(x: &PyRumpyArray, axis: Option<isize>) -> PyRumpyArray {
 }
 
 #[pyfunction]
+#[pyo3(signature = (x, kth, axis=-1))]
+pub fn partition(x: &PyRumpyArray, kth: usize, axis: Option<isize>) -> PyRumpyArray {
+    let resolved_axis = axis.map(|a| resolve_axis(a, x.inner.ndim()));
+    PyRumpyArray::new(x.inner.partition(kth, resolved_axis))
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, kth, axis=-1))]
+pub fn argpartition(x: &PyRumpyArray, kth: usize, axis: Option<isize>) -> PyRumpyArray {
+    let resolved_axis = axis.map(|a| resolve_axis(a, x.inner.ndim()));
+    PyRumpyArray::new(x.inner.argpartition(kth, resolved_axis))
+}
+
+/// Perform an indirect stable sort using a sequence of keys.
+/// The last key is the primary sort key, second-to-last is secondary, etc.
+#[pyfunction]
+pub fn lexsort(py: Python<'_>, keys: &Bound<'_, pyo3::types::PyTuple>) -> PyResult<PyRumpyArray> {
+    let key_arrays: Vec<crate::array::RumpyArray> = keys
+        .iter()
+        .map(|item| {
+            // Try to extract as PyRumpyArray first
+            if let Ok(arr) = item.extract::<PyRef<'_, PyRumpyArray>>() {
+                Ok(arr.inner.clone())
+            } else {
+                // Try to convert via array_impl
+                let arr = array_impl(py, &item, None)?;
+                Ok(arr.inner.clone())
+            }
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let key_refs: Vec<&crate::array::RumpyArray> = key_arrays.iter().collect();
+
+    crate::ops::lexsort(&key_refs)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(
+            "lexsort requires 1-D arrays of the same length"
+        ))
+}
+
+#[pyfunction]
 #[pyo3(signature = (x, n=1, axis=-1))]
 pub fn diff(x: &PyRumpyArray, n: usize, axis: isize) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.diff(n, resolve_axis(axis, x.inner.ndim())))
@@ -2737,6 +2778,9 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(swapaxes, m)?)?;
     m.add_function(wrap_pyfunction!(sort, m)?)?;
     m.add_function(wrap_pyfunction!(argsort, m)?)?;
+    m.add_function(wrap_pyfunction!(partition, m)?)?;
+    m.add_function(wrap_pyfunction!(argpartition, m)?)?;
+    m.add_function(wrap_pyfunction!(lexsort, m)?)?;
     m.add_function(wrap_pyfunction!(diff, m)?)?;
     m.add_function(wrap_pyfunction!(all, m)?)?;
     m.add_function(wrap_pyfunction!(any, m)?)?;

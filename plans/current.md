@@ -6,9 +6,14 @@
 
 ## Status
 
-**Complete**: Random module with Generator class. Linalg: matmul, dot, inner, outer, solve, trace, det, norm, qr, svd, inv, eigh, diag.
+**Complete**: Random module with Generator class. Linalg: matmul, dot, inner, outer, solve, trace, det, norm, qr, svd, inv, eigh, diag. Stream 13 sorting: partition, argpartition, lexsort.
 
 ### Recent Work
+
+- [x] **Stream 13: Sorting Advanced** (`src/ops/mod.rs`)
+  - `partition(a, kth, axis)` - partial sort, kth element in sorted position
+  - `argpartition(a, kth, axis)` - indices for partial sort
+  - `lexsort(keys)` - indirect sort using multiple keys (last key is primary)
 
 - [x] **Random module** (`src/random/`)
   - PCG64DXSM BitGenerator (custom impl for numpy state compatibility)
