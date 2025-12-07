@@ -70,7 +70,7 @@ impl GufuncKernel for MatmulKernel {
                 fb.as_ref(),
                 None,  // No existing C to add
                 1.0,   // alpha = 1
-                faer::Parallelism::None,
+                faer::Parallelism::Rayon(0),  // Use all available threads
             );
         }
     }

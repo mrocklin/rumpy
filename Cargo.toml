@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods"] }
 bitflags = "2.6"
-faer = "0.20"
+faer = { version = "0.20", features = ["rayon"] }
 rand_pcg = "0.9"
 rand_core = "0.9"
 half = "2.4"
