@@ -2495,6 +2495,84 @@ pub fn broadcast_arrays(arrays: &Bound<'_, pyo3::types::PyList>) -> PyResult<Vec
     Ok(results)
 }
 
+// ============================================================================
+// Stream 7: Statistical Operations
+// ============================================================================
+
+/// Median of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn median(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.median())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.median_axis(ax))))
+        }
+    }
+}
+
+/// Weighted average of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None, weights=None))]
+pub fn average(
+    x: &PyRumpyArray,
+    axis: Option<usize>,
+    weights: Option<&PyRumpyArray>,
+) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => {
+            let weights_inner = weights.map(|w| &w.inner);
+            Ok(pyarray::ReductionResult::Scalar(x.inner.average(weights_inner)))
+        }
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            let weights_inner = weights.map(|w| &w.inner);
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(
+                x.inner.average_axis(ax, weights_inner),
+            )))
+        }
+    }
+}
+
+/// Peak to peak (max - min) of array elements.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn ptp(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.ptp())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.ptp_axis(ax))))
+        }
+    }
+}
+
+/// Compute histogram.
+#[pyfunction]
+#[pyo3(signature = (x, bins=10, range=None))]
+pub fn histogram(
+    x: &PyRumpyArray,
+    bins: usize,
+    range: Option<(f64, f64)>,
+) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
+    let (counts, edges) = crate::ops::histogram(&x.inner, bins, range);
+    Ok((PyRumpyArray::new(counts), PyRumpyArray::new(edges)))
+}
+
+/// Compute covariance matrix.
+#[pyfunction]
+#[pyo3(name = "cov", signature = (x, ddof=1))]
+pub fn cov_fn(x: &PyRumpyArray, ddof: usize) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::cov(&x.inner, ddof))
+}
+
+/// Compute correlation coefficient matrix.
+#[pyfunction]
+pub fn corrcoef(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::corrcoef(&x.inner))
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
@@ -2678,6 +2756,13 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bincount, m)?)?;
     m.add_function(wrap_pyfunction!(percentile, m)?)?;
     m.add_function(wrap_pyfunction!(quantile, m)?)?;
+    // Stream 7: Statistical operations
+    m.add_function(wrap_pyfunction!(median, m)?)?;
+    m.add_function(wrap_pyfunction!(average, m)?)?;
+    m.add_function(wrap_pyfunction!(ptp, m)?)?;
+    m.add_function(wrap_pyfunction!(histogram, m)?)?;
+    m.add_function(wrap_pyfunction!(cov_fn, m)?)?;
+    m.add_function(wrap_pyfunction!(corrcoef, m)?)?;
     // Signal processing
     m.add_function(wrap_pyfunction!(convolve, m)?)?;
     // Linear algebra
