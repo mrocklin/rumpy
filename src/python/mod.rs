@@ -938,6 +938,141 @@ pub fn argmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
     }
 }
 
+// ============================================================================
+// NaN-aware reduction functions
+// ============================================================================
+
+/// Sum ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nansum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nansum())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nansum_axis(ax))))
+        }
+    }
+}
+
+/// Product ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanprod())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanprod_axis(ax))))
+        }
+    }
+}
+
+/// Mean ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanmean(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmean())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmean_axis(ax))))
+        }
+    }
+}
+
+/// Variance ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanvar(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanvar())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanvar_axis(ax))))
+        }
+    }
+}
+
+/// Standard deviation ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanstd(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanstd())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanstd_axis(ax))))
+        }
+    }
+}
+
+/// Minimum ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmin())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmin_axis(ax))))
+        }
+    }
+}
+
+/// Maximum ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmax())),
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmax_axis(ax))))
+        }
+    }
+}
+
+/// Index of minimum ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanargmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => {
+            match x.inner.nanargmin() {
+                Some(idx) => Ok(pyarray::ReductionResult::Scalar(idx as f64)),
+                None => Err(pyo3::exceptions::PyValueError::new_err(
+                    "All-NaN slice encountered"
+                )),
+            }
+        }
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanargmin_axis(ax))))
+        }
+    }
+}
+
+/// Index of maximum ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanargmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+    match axis {
+        None => {
+            match x.inner.nanargmax() {
+                Some(idx) => Ok(pyarray::ReductionResult::Scalar(idx as f64)),
+                None => Err(pyo3::exceptions::PyValueError::new_err(
+                    "All-NaN slice encountered"
+                )),
+            }
+        }
+        Some(ax) => {
+            check_axis(ax, x.inner.ndim())?;
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanargmax_axis(ax))))
+        }
+    }
+}
+
 /// Round to the given number of decimals.
 #[pyfunction]
 #[pyo3(signature = (x, decimals=0))]
@@ -1626,6 +1761,16 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(min, m)?)?;
     m.add_function(wrap_pyfunction!(argmax, m)?)?;
     m.add_function(wrap_pyfunction!(argmin, m)?)?;
+    // NaN-aware reductions
+    m.add_function(wrap_pyfunction!(nansum, m)?)?;
+    m.add_function(wrap_pyfunction!(nanprod, m)?)?;
+    m.add_function(wrap_pyfunction!(nanmean, m)?)?;
+    m.add_function(wrap_pyfunction!(nanvar, m)?)?;
+    m.add_function(wrap_pyfunction!(nanstd, m)?)?;
+    m.add_function(wrap_pyfunction!(nanmin, m)?)?;
+    m.add_function(wrap_pyfunction!(nanmax, m)?)?;
+    m.add_function(wrap_pyfunction!(nanargmin, m)?)?;
+    m.add_function(wrap_pyfunction!(nanargmax, m)?)?;
     // Math ufuncs
     m.add_function(wrap_pyfunction!(sqrt, m)?)?;
     m.add_function(wrap_pyfunction!(exp, m)?)?;
