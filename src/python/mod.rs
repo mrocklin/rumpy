@@ -2573,6 +2573,52 @@ pub fn corrcoef(x: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(crate::ops::corrcoef(&x.inner))
 }
 
+// ============================================================================
+// Set operations (Stream 12)
+// ============================================================================
+
+/// Test whether each element of `element` is in `test_elements`.
+#[pyfunction]
+#[pyo3(signature = (element, test_elements, invert=false))]
+pub fn isin(
+    element: &PyRumpyArray,
+    test_elements: &PyRumpyArray,
+    invert: bool,
+) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::isin(&element.inner, &test_elements.inner, invert))
+}
+
+/// Test whether each element of ar1 is in ar2 (flattens ar1).
+#[pyfunction]
+#[pyo3(signature = (ar1, ar2, invert=false))]
+pub fn in1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray, invert: bool) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::in1d(&ar1.inner, &ar2.inner, invert))
+}
+
+/// Find the sorted, unique intersection of two arrays.
+#[pyfunction]
+pub fn intersect1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::intersect1d(&ar1.inner, &ar2.inner))
+}
+
+/// Find the sorted, unique union of two arrays.
+#[pyfunction]
+pub fn union1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::union1d(&ar1.inner, &ar2.inner))
+}
+
+/// Find the set difference of two arrays (elements in ar1 not in ar2).
+#[pyfunction]
+pub fn setdiff1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::setdiff1d(&ar1.inner, &ar2.inner))
+}
+
+/// Find the symmetric set difference of two arrays.
+#[pyfunction]
+pub fn setxor1d(ar1: &PyRumpyArray, ar2: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::setxor1d(&ar1.inner, &ar2.inner))
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
@@ -2789,6 +2835,13 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(put, m)?)?;
     m.add_function(wrap_pyfunction!(put_along_axis, m)?)?;
     m.add_function(wrap_pyfunction!(choose, m)?)?;
+    // Set operations (Stream 12)
+    m.add_function(wrap_pyfunction!(isin, m)?)?;
+    m.add_function(wrap_pyfunction!(in1d, m)?)?;
+    m.add_function(wrap_pyfunction!(intersect1d, m)?)?;
+    m.add_function(wrap_pyfunction!(union1d, m)?)?;
+    m.add_function(wrap_pyfunction!(setdiff1d, m)?)?;
+    m.add_function(wrap_pyfunction!(setxor1d, m)?)?;
     // Dtype constants (as strings, compatible with our dtype= parameters)
     m.add("float32", "float32")?;
     m.add("float64", "float64")?;
