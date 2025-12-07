@@ -1288,6 +1288,175 @@ pub fn where_fn(
         })
 }
 
+// Logical operations
+
+/// Element-wise logical AND.
+/// Treats any non-zero value as true, returns bool array.
+#[pyfunction]
+pub fn logical_and(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::logical_and(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together")
+        })
+}
+
+/// Element-wise logical OR.
+/// Treats any non-zero value as true, returns bool array.
+#[pyfunction]
+pub fn logical_or(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::logical_or(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together")
+        })
+}
+
+/// Element-wise logical XOR.
+/// Treats any non-zero value as true, returns bool array.
+#[pyfunction]
+pub fn logical_xor(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::logical_xor(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together")
+        })
+}
+
+/// Element-wise logical NOT.
+/// Treats any non-zero value as true, returns bool array.
+#[pyfunction]
+pub fn logical_not(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::logical_not(&x.inner))
+}
+
+// Comparison operations
+
+/// Element-wise equality test.
+#[pyfunction]
+pub fn equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::equal(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise not-equal test.
+#[pyfunction]
+pub fn not_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::not_equal(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise less-than test.
+#[pyfunction]
+pub fn less(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::less(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise less-than-or-equal test.
+#[pyfunction]
+pub fn less_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::less_equal(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise greater-than test.
+#[pyfunction]
+pub fn greater(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::greater(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise greater-than-or-equal test.
+#[pyfunction]
+pub fn greater_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::greater_equal(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise approximate equality test.
+#[pyfunction]
+#[pyo3(signature = (x1, x2, rtol=1e-5, atol=1e-8))]
+pub fn isclose(x1: &PyRumpyArray, x2: &PyRumpyArray, rtol: f64, atol: f64) -> PyResult<PyRumpyArray> {
+    crate::ops::isclose(&x1.inner, &x2.inner, rtol, atol)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Test if all elements are approximately equal.
+#[pyfunction]
+#[pyo3(signature = (x1, x2, rtol=1e-5, atol=1e-8))]
+pub fn allclose(x1: &PyRumpyArray, x2: &PyRumpyArray, rtol: f64, atol: f64) -> PyResult<bool> {
+    crate::ops::allclose(&x1.inner, &x2.inner, rtol, atol)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Test if two arrays have the same shape and elements.
+#[pyfunction]
+pub fn array_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> bool {
+    crate::ops::array_equal(&x1.inner, &x2.inner)
+}
+
+// Bitwise operations
+
+/// Element-wise bitwise AND.
+#[pyfunction]
+pub fn bitwise_and(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::bitwise_and(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise bitwise OR.
+#[pyfunction]
+pub fn bitwise_or(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::bitwise_or(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise bitwise XOR.
+#[pyfunction]
+pub fn bitwise_xor(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::bitwise_xor(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise bitwise NOT (invert).
+#[pyfunction]
+pub fn bitwise_not(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::bitwise_not(&x.inner))
+}
+
+/// Alias for bitwise_not.
+#[pyfunction]
+pub fn invert(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::bitwise_not(&x.inner))
+}
+
+/// Element-wise left shift.
+#[pyfunction]
+pub fn left_shift(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::left_shift(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
+/// Element-wise right shift.
+#[pyfunction]
+pub fn right_shift(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::right_shift(&x1.inner, &x2.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
@@ -1367,6 +1536,29 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cumprod, m)?)?;
     // Conditional
     m.add_function(wrap_pyfunction!(where_fn, m)?)?;
+    // Logical operations
+    m.add_function(wrap_pyfunction!(logical_and, m)?)?;
+    m.add_function(wrap_pyfunction!(logical_or, m)?)?;
+    m.add_function(wrap_pyfunction!(logical_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(logical_not, m)?)?;
+    // Comparison operations
+    m.add_function(wrap_pyfunction!(equal, m)?)?;
+    m.add_function(wrap_pyfunction!(not_equal, m)?)?;
+    m.add_function(wrap_pyfunction!(less, m)?)?;
+    m.add_function(wrap_pyfunction!(less_equal, m)?)?;
+    m.add_function(wrap_pyfunction!(greater, m)?)?;
+    m.add_function(wrap_pyfunction!(greater_equal, m)?)?;
+    m.add_function(wrap_pyfunction!(isclose, m)?)?;
+    m.add_function(wrap_pyfunction!(allclose, m)?)?;
+    m.add_function(wrap_pyfunction!(array_equal, m)?)?;
+    // Bitwise operations
+    m.add_function(wrap_pyfunction!(bitwise_and, m)?)?;
+    m.add_function(wrap_pyfunction!(bitwise_or, m)?)?;
+    m.add_function(wrap_pyfunction!(bitwise_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(bitwise_not, m)?)?;
+    m.add_function(wrap_pyfunction!(invert, m)?)?;
+    m.add_function(wrap_pyfunction!(left_shift, m)?)?;
+    m.add_function(wrap_pyfunction!(right_shift, m)?)?;
     // Shape manipulation
     m.add_function(wrap_pyfunction!(expand_dims, m)?)?;
     m.add_function(wrap_pyfunction!(squeeze, m)?)?;

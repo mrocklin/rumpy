@@ -1962,3 +1962,271 @@ pub fn where_select(condition: &RumpyArray, x: &RumpyArray, y: &RumpyArray) -> O
 
     Some(result)
 }
+
+// ============================================================================
+// Binary broadcast helper
+// ============================================================================
+
+/// Set up broadcasting for a binary operation, returning broadcasted arrays and output.
+/// Returns (a_broadcasted, b_broadcasted, result_array, output_shape).
+fn broadcast_binary_setup(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_dtype: DType,
+) -> Option<(RumpyArray, RumpyArray, RumpyArray, Vec<usize>)> {
+    let out_shape = broadcast_shapes(a.shape(), b.shape())?;
+    let a_bc = a.broadcast_to(&out_shape)?;
+    let b_bc = b.broadcast_to(&out_shape)?;
+    let result = RumpyArray::zeros(out_shape.clone(), out_dtype);
+    Some((a_bc, b_bc, result, out_shape))
+}
+
+/// Apply a binary function element-wise, writing bool results.
+/// The function receives (a_value, b_value) as f64 and returns bool.
+pub fn map_binary_to_bool<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
+where
+    F: Fn(f64, f64) -> bool,
+{
+    let (a_bc, b_bc, mut result, out_shape) = broadcast_binary_setup(a, b, DType::bool())?;
+    let size = result.size();
+    if size == 0 {
+        return Some(result);
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    let mut indices = vec![0usize; out_shape.len()];
+    for i in 0..size {
+        let a_val = a_bc.get_element(&indices);
+        let b_val = b_bc.get_element(&indices);
+        unsafe { *result_ptr.add(i) = if f(a_val, b_val) { 1 } else { 0 }; }
+        increment_indices(&mut indices, &out_shape);
+    }
+    Some(result)
+}
+
+// ============================================================================
+// Logical operations (element-wise boolean logic)
+// ============================================================================
+
+/// Apply a binary operation on truthiness values, returning a bool array.
+fn map_binary_logical<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
+where
+    F: Fn(bool, bool) -> bool,
+{
+    let (a_bc, b_bc, mut result, out_shape) = broadcast_binary_setup(a, b, DType::bool())?;
+    let size = result.size();
+    if size == 0 {
+        return Some(result);
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+    let a_ptr = a_bc.data_ptr();
+    let b_ptr = b_bc.data_ptr();
+    let a_dtype = a_bc.dtype();
+    let b_dtype = b_bc.dtype();
+    let a_ops = a_dtype.ops();
+    let b_ops = b_dtype.ops();
+
+    let mut indices = vec![0usize; out_shape.len()];
+    for i in 0..size {
+        let a_offset = a_bc.byte_offset_for(&indices);
+        let b_offset = b_bc.byte_offset_for(&indices);
+        let a_truthy = unsafe { a_ops.is_truthy(a_ptr, a_offset) };
+        let b_truthy = unsafe { b_ops.is_truthy(b_ptr, b_offset) };
+        unsafe { *result_ptr.add(i) = if f(a_truthy, b_truthy) { 1 } else { 0 }; }
+        increment_indices(&mut indices, &out_shape);
+    }
+    Some(result)
+}
+
+/// Apply a unary operation on truthiness values, returning a bool array.
+fn map_unary_logical<F>(a: &RumpyArray, f: F) -> RumpyArray
+where
+    F: Fn(bool) -> bool,
+{
+    let mut result = RumpyArray::zeros(a.shape().to_vec(), DType::bool());
+    let size = result.size();
+    if size == 0 {
+        return result;
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+    let a_ptr = a.data_ptr();
+    let a_dtype = a.dtype();
+    let a_ops = a_dtype.ops();
+
+    for (i, offset) in a.iter_offsets().enumerate() {
+        let a_truthy = unsafe { a_ops.is_truthy(a_ptr, offset) };
+        unsafe { *result_ptr.add(i) = if f(a_truthy) { 1 } else { 0 }; }
+    }
+    result
+}
+
+/// Element-wise logical AND.
+pub fn logical_and(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_logical(a, b, |x, y| x && y)
+}
+
+/// Element-wise logical OR.
+pub fn logical_or(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_logical(a, b, |x, y| x || y)
+}
+
+/// Element-wise logical XOR.
+pub fn logical_xor(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_logical(a, b, |x, y| x != y)
+}
+
+/// Element-wise logical NOT.
+pub fn logical_not(a: &RumpyArray) -> RumpyArray {
+    map_unary_logical(a, |x| !x)
+}
+
+// ============================================================================
+// Comparison functions (element-wise, return bool array)
+// ============================================================================
+
+/// Element-wise equality test.
+pub fn equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| x == y)
+}
+
+/// Element-wise not-equal test.
+pub fn not_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| x != y)
+}
+
+/// Element-wise less-than test.
+pub fn less(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| x < y)
+}
+
+/// Element-wise less-than-or-equal test.
+pub fn less_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| x <= y)
+}
+
+/// Element-wise greater-than test.
+pub fn greater(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| x > y)
+}
+
+/// Element-wise greater-than-or-equal test.
+pub fn greater_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| x >= y)
+}
+
+/// Element-wise approximate equality test.
+pub fn isclose(a: &RumpyArray, b: &RumpyArray, rtol: f64, atol: f64) -> Option<RumpyArray> {
+    map_binary_to_bool(a, b, |x, y| {
+        (x - y).abs() <= atol + rtol * y.abs()
+    })
+}
+
+/// Test if all elements are approximately equal.
+pub fn allclose(a: &RumpyArray, b: &RumpyArray, rtol: f64, atol: f64) -> Option<bool> {
+    let close = isclose(a, b, rtol, atol)?;
+    Some(close.all())
+}
+
+/// Test if two arrays have the same shape and elements.
+pub fn array_equal(a: &RumpyArray, b: &RumpyArray) -> bool {
+    if a.shape() != b.shape() {
+        return false;
+    }
+    equal(a, b).map(|r| r.all()).unwrap_or(false)
+}
+
+// ============================================================================
+// Bitwise operations (integer-only)
+// ============================================================================
+
+/// Apply a binary function element-wise on integers, returning int64 array.
+fn map_binary_int<F>(a: &RumpyArray, b: &RumpyArray, f: F) -> Option<RumpyArray>
+where
+    F: Fn(i64, i64) -> i64,
+{
+    let (a_bc, b_bc, mut result, out_shape) = broadcast_binary_setup(a, b, DType::int64())?;
+    let size = result.size();
+    if size == 0 {
+        return Some(result);
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_slice = unsafe {
+        std::slice::from_raw_parts_mut(result_buffer.as_mut_ptr() as *mut i64, size)
+    };
+
+    let mut indices = vec![0usize; out_shape.len()];
+    for out in result_slice.iter_mut() {
+        let a_val = a_bc.get_element(&indices) as i64;
+        let b_val = b_bc.get_element(&indices) as i64;
+        *out = f(a_val, b_val);
+        increment_indices(&mut indices, &out_shape);
+    }
+    Some(result)
+}
+
+/// Apply a unary function element-wise on integers, returning int64 array.
+fn map_unary_int<F>(a: &RumpyArray, f: F) -> RumpyArray
+where
+    F: Fn(i64) -> i64,
+{
+    let mut result = RumpyArray::zeros(a.shape().to_vec(), DType::int64());
+    let size = result.size();
+    if size == 0 {
+        return result;
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_slice = unsafe {
+        std::slice::from_raw_parts_mut(result_buffer.as_mut_ptr() as *mut i64, size)
+    };
+
+    let mut indices = vec![0usize; a.shape().len()];
+    for out in result_slice.iter_mut() {
+        let a_val = a.get_element(&indices) as i64;
+        *out = f(a_val);
+        increment_indices(&mut indices, a.shape());
+    }
+    result
+}
+
+/// Element-wise bitwise AND.
+pub fn bitwise_and(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_int(a, b, |x, y| x & y)
+}
+
+/// Element-wise bitwise OR.
+pub fn bitwise_or(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_int(a, b, |x, y| x | y)
+}
+
+/// Element-wise bitwise XOR.
+pub fn bitwise_xor(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_int(a, b, |x, y| x ^ y)
+}
+
+/// Element-wise bitwise NOT (invert).
+pub fn bitwise_not(a: &RumpyArray) -> RumpyArray {
+    map_unary_int(a, |x| !x)
+}
+
+/// Element-wise left shift.
+pub fn left_shift(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_int(a, b, |x, y| x << (y as u32))
+}
+
+/// Element-wise right shift.
+pub fn right_shift(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    map_binary_int(a, b, |x, y| x >> (y as u32))
+}
