@@ -1466,6 +1466,274 @@ pub fn array_split(arr: &PyRumpyArray, num_sections: usize, axis: usize) -> PyRe
         })
 }
 
+// Stream 11: Array Manipulation Functions
+
+/// Split array horizontally (column-wise) along axis 1.
+/// For 1D arrays, splits along axis 0.
+#[pyfunction]
+pub fn hsplit(arr: &PyRumpyArray, num_sections: usize) -> PyResult<Vec<PyRumpyArray>> {
+    let axis = if arr.inner.ndim() == 1 { 0 } else { 1 };
+    crate::array::split(&arr.inner, num_sections, axis)
+        .map(|sections| sections.into_iter().map(PyRumpyArray::new).collect())
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("array split does not result in an equal division")
+        })
+}
+
+/// Split array vertically (row-wise) along axis 0.
+#[pyfunction]
+pub fn vsplit(arr: &PyRumpyArray, num_sections: usize) -> PyResult<Vec<PyRumpyArray>> {
+    if arr.inner.ndim() < 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "vsplit requires array with at least 2 dimensions"
+        ));
+    }
+    crate::array::split(&arr.inner, num_sections, 0)
+        .map(|sections| sections.into_iter().map(PyRumpyArray::new).collect())
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("array split does not result in an equal division")
+        })
+}
+
+/// Split array depth-wise (along axis 2).
+#[pyfunction]
+pub fn dsplit(arr: &PyRumpyArray, num_sections: usize) -> PyResult<Vec<PyRumpyArray>> {
+    if arr.inner.ndim() < 3 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "dsplit requires array with at least 3 dimensions"
+        ));
+    }
+    crate::array::split(&arr.inner, num_sections, 2)
+        .map(|sections| sections.into_iter().map(PyRumpyArray::new).collect())
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("array split does not result in an equal division")
+        })
+}
+
+/// Stack 1D arrays as columns into a 2D array.
+/// For 2D arrays, behaves like hstack.
+#[pyfunction]
+pub fn column_stack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
+    if arrays.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err("need at least one array"));
+    }
+
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        let arr = to_rumpy_array(&item)?;
+        // If 1D, reshape to column vector
+        let arr = if arr.ndim() == 1 {
+            arr.reshape(vec![arr.size(), 1]).unwrap_or(arr)
+        } else {
+            arr
+        };
+        inner_arrays.push(arr);
+    }
+
+    crate::array::concatenate(&inner_arrays, 1)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("arrays must have compatible shapes for column_stack")
+        })
+}
+
+/// Stack arrays row-wise (alias for vstack).
+#[pyfunction]
+pub fn row_stack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
+    vstack(arrays)
+}
+
+/// Stack arrays depth-wise (along axis 2).
+/// 1D arrays (N,) become (1, N, 1).
+/// 2D arrays (M, N) become (M, N, 1).
+#[pyfunction]
+pub fn dstack(arrays: &Bound<'_, PyList>) -> PyResult<PyRumpyArray> {
+    if arrays.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err("need at least one array"));
+    }
+
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        let arr = to_rumpy_array(&item)?;
+        // Promote to at least 3D
+        let arr = match arr.ndim() {
+            1 => {
+                // (N,) -> (1, N, 1)
+                let n = arr.size();
+                arr.reshape(vec![1, n, 1]).unwrap_or(arr)
+            }
+            2 => {
+                // (M, N) -> (M, N, 1)
+                let shape = arr.shape().to_vec();
+                arr.reshape(vec![shape[0], shape[1], 1]).unwrap_or(arr)
+            }
+            _ => arr,
+        };
+        inner_arrays.push(arr);
+    }
+
+    crate::array::concatenate(&inner_arrays, 2)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("arrays must have compatible shapes for dstack")
+        })
+}
+
+/// Repeat elements of an array.
+#[pyfunction]
+#[pyo3(signature = (arr, repeats, axis=None))]
+pub fn repeat(arr: &PyRumpyArray, repeats: usize, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    crate::array::repeat(&arr.inner, repeats, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("invalid axis for repeat")
+        })
+}
+
+/// Construct array by repeating input the given number of times.
+#[pyfunction]
+pub fn tile(arr: &PyRumpyArray, reps: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    // Parse reps as either a single int or a tuple
+    let reps_vec: Vec<usize> = if let Ok(n) = reps.extract::<usize>() {
+        vec![n]
+    } else if let Ok(tuple) = reps.downcast::<pyo3::types::PyTuple>() {
+        tuple.iter().map(|x| x.extract::<usize>()).collect::<PyResult<Vec<_>>>()?
+    } else if let Ok(list) = reps.downcast::<pyo3::types::PyList>() {
+        list.iter().map(|x| x.extract::<usize>()).collect::<PyResult<Vec<_>>>()?
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "reps must be an integer or sequence of integers"
+        ));
+    };
+
+    Ok(PyRumpyArray::new(crate::array::tile(&arr.inner, &reps_vec)))
+}
+
+/// Append values to the end of an array.
+#[pyfunction]
+#[pyo3(signature = (arr, values, axis=None))]
+pub fn append(arr: &PyRumpyArray, values: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    crate::array::append(&arr.inner, &values.inner, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("incompatible shapes for append")
+        })
+}
+
+/// Insert values into an array at specified index.
+#[pyfunction]
+#[pyo3(signature = (arr, index, values, axis=None))]
+pub fn insert(arr: &PyRumpyArray, index: isize, values: &Bound<'_, PyAny>, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    // Parse values - can be scalar or array
+    let values_arr = if let Ok(scalar) = values.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, arr.inner.dtype())
+    } else if let Ok(arr) = values.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(list) = values.downcast::<pyo3::types::PyList>() {
+        let data: Vec<f64> = list.iter().map(|x| x.extract::<f64>()).collect::<PyResult<Vec<_>>>()?;
+        RumpyArray::from_vec(data, arr.inner.dtype())
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "values must be scalar, array, or list"
+        ));
+    };
+
+    crate::array::insert(&arr.inner, index, &values_arr, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("invalid parameters for insert")
+        })
+}
+
+/// Delete elements from an array at specified index.
+#[pyfunction]
+#[pyo3(signature = (arr, index, axis=None))]
+pub fn delete(arr: &PyRumpyArray, index: isize, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    crate::array::delete(&arr.inner, index, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("invalid parameters for delete")
+        })
+}
+
+/// Pad an array.
+#[pyfunction]
+#[pyo3(signature = (arr, pad_width, mode="constant", constant_values=0.0))]
+pub fn pad(
+    arr: &PyRumpyArray,
+    pad_width: &Bound<'_, PyAny>,
+    mode: &str,
+    constant_values: f64,
+) -> PyResult<PyRumpyArray> {
+    // Parse pad_width - can be int, tuple, or list of tuples
+    let pad_spec: Vec<(usize, usize)> = if let Ok(n) = pad_width.extract::<usize>() {
+        // Scalar: apply to all axes
+        vec![(n, n); arr.inner.ndim()]
+    } else if let Ok(tuple) = pad_width.downcast::<pyo3::types::PyTuple>() {
+        if tuple.len() == 2 {
+            // (before, after) for all axes
+            let before = tuple.get_item(0)?.extract::<usize>()?;
+            let after = tuple.get_item(1)?.extract::<usize>()?;
+            vec![(before, after); arr.inner.ndim()]
+        } else {
+            // Per-axis specification
+            tuple.iter().map(|item| {
+                if let Ok(n) = item.extract::<usize>() {
+                    Ok((n, n))
+                } else if let Ok(inner) = item.downcast::<pyo3::types::PyTuple>() {
+                    let before = inner.get_item(0)?.extract::<usize>()?;
+                    let after = inner.get_item(1)?.extract::<usize>()?;
+                    Ok((before, after))
+                } else {
+                    Err(pyo3::exceptions::PyTypeError::new_err("invalid pad_width format"))
+                }
+            }).collect::<PyResult<Vec<_>>>()?
+        }
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "pad_width must be int or tuple"
+        ));
+    };
+
+    crate::array::pad(&arr.inner, &pad_spec, mode, constant_values)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("unsupported pad mode")
+        })
+}
+
+/// Roll array elements along a given axis.
+#[pyfunction]
+#[pyo3(signature = (arr, shift, axis=None))]
+pub fn roll(arr: &PyRumpyArray, shift: isize, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    Ok(PyRumpyArray::new(crate::array::roll(&arr.inner, shift, axis)))
+}
+
+/// Rotate an array by 90 degrees in the plane specified by axes.
+#[pyfunction]
+#[pyo3(signature = (arr, k=1, axes=(0, 1)))]
+pub fn rot90(arr: &PyRumpyArray, k: isize, axes: (isize, isize)) -> PyResult<PyRumpyArray> {
+    let ndim = arr.inner.ndim();
+    if ndim < 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "rot90 requires array with at least 2 dimensions"
+        ));
+    }
+
+    // Normalize axes
+    let ax0 = if axes.0 < 0 { (ndim as isize + axes.0) as usize } else { axes.0 as usize };
+    let ax1 = if axes.1 < 0 { (ndim as isize + axes.1) as usize } else { axes.1 as usize };
+
+    if ax0 >= ndim || ax1 >= ndim {
+        return Err(pyo3::exceptions::PyValueError::new_err("axes out of range"));
+    }
+    if ax0 == ax1 {
+        return Err(pyo3::exceptions::PyValueError::new_err("axes must be different"));
+    }
+
+    Ok(PyRumpyArray::new(crate::array::rot90(&arr.inner, k, ax0, ax1)))
+}
+
 /// Expand array dimensions at specified axis.
 #[pyfunction]
 pub fn expand_dims(arr: &PyRumpyArray, axis: isize) -> PyResult<PyRumpyArray> {
@@ -2839,6 +3107,21 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Splitting
     m.add_function(wrap_pyfunction!(split, m)?)?;
     m.add_function(wrap_pyfunction!(array_split, m)?)?;
+    // Stream 11: Array Manipulation
+    m.add_function(wrap_pyfunction!(hsplit, m)?)?;
+    m.add_function(wrap_pyfunction!(vsplit, m)?)?;
+    m.add_function(wrap_pyfunction!(dsplit, m)?)?;
+    m.add_function(wrap_pyfunction!(column_stack, m)?)?;
+    m.add_function(wrap_pyfunction!(row_stack, m)?)?;
+    m.add_function(wrap_pyfunction!(dstack, m)?)?;
+    m.add_function(wrap_pyfunction!(repeat, m)?)?;
+    m.add_function(wrap_pyfunction!(tile, m)?)?;
+    m.add_function(wrap_pyfunction!(append, m)?)?;
+    m.add_function(wrap_pyfunction!(insert, m)?)?;
+    m.add_function(wrap_pyfunction!(delete, m)?)?;
+    m.add_function(wrap_pyfunction!(pad, m)?)?;
+    m.add_function(wrap_pyfunction!(roll, m)?)?;
+    m.add_function(wrap_pyfunction!(rot90, m)?)?;
     // Sorting - sort and argsort are registered earlier with axis parameter
     m.add_function(wrap_pyfunction!(unique, m)?)?;
     m.add_function(wrap_pyfunction!(nonzero, m)?)?;

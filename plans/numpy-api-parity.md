@@ -227,33 +227,38 @@ Module-level versions of array methods + new functions.
 
 ---
 
-## Stream 11: Array Manipulation
+## Stream 11: Array Manipulation ✅ COMPLETE
 
 ### Tier 1 - Splitting
-- [ ] `hsplit` - horizontal split (along axis 1)
-- [ ] `vsplit` - vertical split (along axis 0)
-- [ ] `dsplit` - depth split (along axis 2)
+- [x] `hsplit` - horizontal split (along axis 1) - returns views
+- [x] `vsplit` - vertical split (along axis 0) - returns views
+- [x] `dsplit` - depth split (along axis 2) - returns views
 
 ### Tier 2 - Stacking
-- [ ] `column_stack` - stack 1D as columns
-- [ ] `row_stack` - alias for vstack
-- [ ] `dstack` - stack along third axis
+- [x] `column_stack` - stack 1D as columns
+- [x] `row_stack` - alias for vstack
+- [x] `dstack` - stack along third axis
 
 ### Tier 3 - Repetition
-- [ ] `repeat` - repeat elements
-- [ ] `tile` - tile array
+- [x] `repeat` - repeat elements
+- [x] `tile` - tile array (optimized memcpy for 1D)
 
 ### Tier 4 - Modification
-- [ ] `append` - append to array
-- [ ] `insert` - insert into array
-- [ ] `delete` - delete from array
-- [ ] `pad` - pad array
+- [x] `append` - append to array
+- [x] `insert` - insert into array
+- [x] `delete` - delete from array
+- [x] `pad` - pad array (constant, edge modes)
 
 ### Tier 5 - Rotation
-- [ ] `roll` - roll elements along axis
-- [ ] `rot90` - rotate 90 degrees
+- [x] `roll` - roll elements along axis (optimized memcpy for flat)
+- [x] `rot90` - rotate 90 degrees (returns views, O(1))
 
-**Files**: `src/python/mod.rs`, `tests/test_manipulation.py`
+**Performance Notes**:
+- `rot90`, `hsplit`, `vsplit`, `dsplit` return views (zero-copy, O(1))
+- `tile` 1D and `roll` flat use memcpy for near-numpy performance
+- Multi-dimensional operations still use element-by-element (room for optimization)
+
+**Files**: `src/array/mod.rs`, `src/python/mod.rs`, `tests/test_manipulation.py`
 
 ---
 

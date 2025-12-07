@@ -1138,14 +1138,14 @@ pub fn array_split(arr: &RumpyArray, num_sections: usize, axis: usize) -> Option
 }
 
 /// Helper to split array into sections with given sizes along axis.
+/// Returns views (no copy) like numpy.
 fn split_into_sizes(arr: &RumpyArray, sizes: &[usize], axis: usize) -> Vec<RumpyArray> {
     let mut result = Vec::with_capacity(sizes.len());
     let mut start = 0isize;
 
     for &size in sizes {
         let section = arr.slice_axis(axis, start, start + size as isize, 1);
-        // Make contiguous copy
-        result.push(section.copy());
+        result.push(section); // Return view, not copy
         start += size as isize;
     }
 
@@ -1734,4 +1734,523 @@ pub fn convolve(a: &RumpyArray, v: &RumpyArray, mode: &str) -> Option<RumpyArray
     }
 
     Some(result)
+}
+
+// Stream 11: Array Manipulation Functions
+
+/// Helper: compute linear index from multi-dimensional indices for C-contiguous array.
+fn linear_index(indices: &[usize], shape: &[usize]) -> usize {
+    let mut idx = 0;
+    let mut stride = 1;
+    for i in (0..indices.len()).rev() {
+        idx += indices[i] * stride;
+        stride *= shape[i];
+    }
+    idx
+}
+
+/// Repeat elements of an array.
+/// If axis is None, flatten and repeat. Otherwise repeat along axis.
+pub fn repeat(arr: &RumpyArray, repeats: usize, axis: Option<isize>) -> Option<RumpyArray> {
+    if repeats == 0 {
+        return Some(RumpyArray::zeros(vec![0], arr.dtype()));
+    }
+
+    match axis {
+        None => {
+            // Flatten and repeat each element
+            let size = arr.size();
+            let new_size = size * repeats;
+            let src_dtype = arr.dtype();
+            let mut result = RumpyArray::zeros(vec![new_size], src_dtype.clone());
+
+            let src_ptr = arr.data_ptr();
+            let src_ops = src_dtype.ops();
+            let dst_dtype = result.dtype();
+            let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+            let dst_ptr = buffer.as_mut_ptr();
+            let dst_ops = dst_dtype.ops();
+
+            let mut dst_idx = 0;
+            for offset in arr.iter_offsets() {
+                let val = unsafe { src_ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
+                for _ in 0..repeats {
+                    unsafe { dst_ops.write_f64(dst_ptr, dst_idx, val); }
+                    dst_idx += 1;
+                }
+            }
+            Some(result)
+        }
+        Some(ax) => {
+            let ndim = arr.ndim();
+            let axis = if ax < 0 { (ndim as isize + ax) as usize } else { ax as usize };
+            if axis >= ndim {
+                return None;
+            }
+
+            // New shape with axis dimension multiplied by repeats
+            let mut new_shape = arr.shape().to_vec();
+            new_shape[axis] *= repeats;
+            let src_dtype = arr.dtype();
+            let mut result = RumpyArray::zeros(new_shape.clone(), src_dtype.clone());
+
+            let src_ptr = arr.data_ptr();
+            let src_ops = src_dtype.ops();
+            let dst_dtype = result.dtype();
+            let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+            let dst_ptr = buffer.as_mut_ptr();
+            let dst_ops = dst_dtype.ops();
+
+            // Iterate through source indices and write repeated values
+            let src_shape = arr.shape();
+            let mut src_indices = vec![0usize; ndim];
+            let mut dst_indices = vec![0usize; ndim];
+
+            let size = arr.size();
+            for _ in 0..size {
+                let src_offset = arr.byte_offset_for(&src_indices);
+                let val = unsafe { src_ops.read_f64(src_ptr, src_offset) }.unwrap_or(0.0);
+
+                // Write this value `repeats` times along the axis
+                dst_indices.copy_from_slice(&src_indices);
+                let base_axis_idx = src_indices[axis] * repeats;
+                for r in 0..repeats {
+                    dst_indices[axis] = base_axis_idx + r;
+                    let dst_offset = linear_index(&dst_indices, &new_shape);
+                    unsafe { dst_ops.write_f64(dst_ptr, dst_offset, val); }
+                }
+
+                increment_indices(&mut src_indices, src_shape);
+            }
+
+            Some(result)
+        }
+    }
+}
+
+/// Construct array by repeating input array by given reps.
+pub fn tile(arr: &RumpyArray, reps: &[usize]) -> RumpyArray {
+    if reps.is_empty() || reps.iter().all(|&r| r == 1) {
+        return arr.copy();
+    }
+
+    // Extend reps to match dimensions if needed
+    let arr_ndim = arr.ndim();
+    let reps_len = reps.len();
+    let max_ndim = arr_ndim.max(reps_len);
+
+    // Pad reps with 1s on the left
+    let mut full_reps = vec![1usize; max_ndim];
+    for (i, &r) in reps.iter().enumerate() {
+        full_reps[max_ndim - reps_len + i] = r;
+    }
+
+    // Pad shape with 1s on the left
+    let src_shape = arr.shape();
+    let mut padded_shape = vec![1usize; max_ndim];
+    for (i, &s) in src_shape.iter().enumerate() {
+        padded_shape[max_ndim - arr_ndim + i] = s;
+    }
+
+    // New shape
+    let new_shape: Vec<usize> = padded_shape.iter().zip(full_reps.iter()).map(|(&s, &r)| s * r).collect();
+    let src_dtype = arr.dtype();
+    let mut result = RumpyArray::zeros(new_shape.clone(), src_dtype.clone());
+
+    // Fast path: 1D contiguous array - use memcpy
+    if arr_ndim == 1 && reps_len == 1 && arr.is_c_contiguous() {
+        let src_size = arr.size();
+        let itemsize = arr.itemsize();
+        let nbytes = src_size * itemsize;
+        let src_ptr = arr.data_ptr();
+        let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let dst_ptr = buffer.as_mut_ptr();
+
+        for i in 0..reps[0] {
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    src_ptr,
+                    dst_ptr.add(i * nbytes),
+                    nbytes
+                );
+            }
+        }
+        return result;
+    }
+
+    let src_ptr = arr.data_ptr();
+    let src_ops = src_dtype.ops();
+    let dst_dtype = result.dtype();
+    let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+    let dst_ptr = buffer.as_mut_ptr();
+    let dst_ops = dst_dtype.ops();
+
+    // Iterate through destination indices
+    let mut dst_indices = vec![0usize; max_ndim];
+    let dst_size: usize = new_shape.iter().product();
+
+    for i in 0..dst_size {
+        // Map destination index to source index (modulo)
+        let src_indices: Vec<usize> = dst_indices.iter()
+            .zip(padded_shape.iter())
+            .map(|(&di, &ps)| di % ps)
+            .collect();
+
+        // Get source offset (for original array shape)
+        let actual_src_indices: Vec<usize> = if arr_ndim < max_ndim {
+            // Use only the rightmost dimensions
+            src_indices[max_ndim - arr_ndim..].to_vec()
+        } else {
+            src_indices
+        };
+        let src_byte_offset = arr.byte_offset_for(&actual_src_indices);
+        let val = unsafe { src_ops.read_f64(src_ptr, src_byte_offset) }.unwrap_or(0.0);
+
+        // Destination offset (result is C-contiguous, so use linear index)
+        let dst_offset = linear_index(&dst_indices, &new_shape);
+        unsafe { dst_ops.write_f64(dst_ptr, dst_offset, val); }
+
+        // Increment destination indices
+        if i + 1 < dst_size {
+            increment_indices(&mut dst_indices, &new_shape);
+        }
+    }
+
+    result
+}
+
+/// Helper: flatten array to 1D (always copies).
+fn ravel_arr(arr: &RumpyArray) -> RumpyArray {
+    let size = arr.size();
+    if let Some(view) = arr.reshape(vec![size]) {
+        view
+    } else {
+        arr.copy().reshape(vec![size]).unwrap()
+    }
+}
+
+/// Append values to end of array.
+/// If axis is None, both arrays are flattened before concatenation.
+pub fn append(arr: &RumpyArray, values: &RumpyArray, axis: Option<isize>) -> Option<RumpyArray> {
+    match axis {
+        None => {
+            // Flatten both and concatenate
+            let flat_arr = ravel_arr(arr);
+            let flat_vals = ravel_arr(values);
+            concatenate(&[flat_arr, flat_vals], 0)
+        }
+        Some(ax) => {
+            let ndim = arr.ndim();
+            let axis = if ax < 0 { (ndim as isize + ax) as usize } else { ax as usize };
+            concatenate(&[arr.clone(), values.clone()], axis)
+        }
+    }
+}
+
+/// Insert values into array at given index.
+/// If axis is None, flatten first.
+pub fn insert(arr: &RumpyArray, index: isize, values: &RumpyArray, axis: Option<isize>) -> Option<RumpyArray> {
+    match axis {
+        None => {
+            // Flatten
+            let flat = ravel_arr(arr);
+            let size = flat.size();
+            let idx = if index < 0 { (size as isize + index + 1).max(0) as usize } else { index as usize };
+            let idx = idx.min(size);
+
+            // Split at index, insert, concatenate
+            let before = if idx > 0 { flat.slice_axis(0, 0, idx as isize, 1) } else { RumpyArray::zeros(vec![0], arr.dtype()) };
+            let after = if idx < size { flat.slice_axis(0, idx as isize, size as isize, 1) } else { RumpyArray::zeros(vec![0], arr.dtype()) };
+            let flat_vals = ravel_arr(values);
+
+            concatenate(&[before, flat_vals, after], 0)
+        }
+        Some(ax) => {
+            let ndim = arr.ndim();
+            let axis = if ax < 0 { (ndim as isize + ax) as usize } else { ax as usize };
+            if axis >= ndim {
+                return None;
+            }
+
+            let axis_len = arr.shape()[axis];
+            let idx = if index < 0 { (axis_len as isize + index + 1).max(0) as usize } else { index as usize };
+            let idx = idx.min(axis_len);
+
+            let before = arr.slice_axis(axis, 0, idx as isize, 1);
+            let after = arr.slice_axis(axis, idx as isize, axis_len as isize, 1);
+
+            // Values need to be reshaped to match
+            let mut val_shape = arr.shape().to_vec();
+            val_shape[axis] = values.size() / (arr.size() / axis_len).max(1);
+            let vals_reshaped = values.reshape(val_shape).unwrap_or_else(|| values.clone());
+
+            concatenate(&[before, vals_reshaped, after], axis)
+        }
+    }
+}
+
+/// Delete elements from array at given index.
+/// If axis is None, flatten first.
+pub fn delete(arr: &RumpyArray, index: isize, axis: Option<isize>) -> Option<RumpyArray> {
+    match axis {
+        None => {
+            let flat = ravel_arr(arr);
+            let size = flat.size();
+            if size == 0 {
+                return Some(flat);
+            }
+            let idx = if index < 0 { (size as isize + index).max(0) as usize } else { index as usize };
+            if idx >= size {
+                return Some(flat);
+            }
+
+            let before = if idx > 0 { flat.slice_axis(0, 0, idx as isize, 1) } else { RumpyArray::zeros(vec![0], arr.dtype()) };
+            let after = if idx + 1 < size { flat.slice_axis(0, (idx + 1) as isize, size as isize, 1) } else { RumpyArray::zeros(vec![0], arr.dtype()) };
+
+            concatenate(&[before, after], 0)
+        }
+        Some(ax) => {
+            let ndim = arr.ndim();
+            let axis = if ax < 0 { (ndim as isize + ax) as usize } else { ax as usize };
+            if axis >= ndim {
+                return None;
+            }
+
+            let axis_len = arr.shape()[axis];
+            if axis_len == 0 {
+                return Some(arr.clone());
+            }
+            let idx = if index < 0 { (axis_len as isize + index).max(0) as usize } else { index as usize };
+            if idx >= axis_len {
+                return Some(arr.clone());
+            }
+
+            let before = arr.slice_axis(axis, 0, idx as isize, 1);
+            let after = arr.slice_axis(axis, (idx + 1) as isize, axis_len as isize, 1);
+
+            concatenate(&[before, after], axis)
+        }
+    }
+}
+
+/// Pad an array.
+/// pad_width is a slice of (before, after) tuples for each dimension.
+pub fn pad(arr: &RumpyArray, pad_width: &[(usize, usize)], mode: &str, constant_value: f64) -> Option<RumpyArray> {
+    let ndim = arr.ndim();
+    if pad_width.len() != ndim {
+        return None;
+    }
+
+    // Calculate new shape
+    let new_shape: Vec<usize> = arr.shape().iter()
+        .zip(pad_width.iter())
+        .map(|(&s, &(b, a))| s + b + a)
+        .collect();
+
+    match mode {
+        "constant" => {
+            let mut result = RumpyArray::full(new_shape.clone(), constant_value, arr.dtype());
+            copy_region(arr, &mut result, pad_width, &new_shape);
+            Some(result)
+        }
+        "edge" => {
+            let src_dtype = arr.dtype();
+            let mut result = RumpyArray::zeros(new_shape.clone(), src_dtype.clone());
+            let src_ops = src_dtype.ops();
+            let dst_dtype = result.dtype();
+            let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+            let dst_ptr = buffer.as_mut_ptr();
+            let dst_ops = dst_dtype.ops();
+
+            let mut dst_indices = vec![0usize; ndim];
+            let dst_size: usize = new_shape.iter().product();
+            let src_ptr = arr.data_ptr();
+
+            // Fill all cells with edge-clamped values
+            for _ in 0..dst_size {
+                let src_indices: Vec<usize> = dst_indices.iter()
+                    .zip(pad_width.iter())
+                    .zip(arr.shape().iter())
+                    .map(|((&di, &(b, _)), &s)| {
+                        if di < b { 0 }
+                        else if di >= b + s { s.saturating_sub(1) }
+                        else { di - b }
+                    })
+                    .collect();
+
+                let src_byte_offset = arr.byte_offset_for(&src_indices);
+                let val = unsafe { src_ops.read_f64(src_ptr, src_byte_offset) }.unwrap_or(0.0);
+                let dst_offset = linear_index(&dst_indices, &new_shape);
+                unsafe { dst_ops.write_f64(dst_ptr, dst_offset, val); }
+
+                increment_indices(&mut dst_indices, &new_shape);
+            }
+
+            Some(result)
+        }
+        _ => None,
+    }
+}
+
+/// Helper to copy source array into a padded destination.
+fn copy_region(src: &RumpyArray, dst: &mut RumpyArray, pad_width: &[(usize, usize)], dst_shape: &[usize]) {
+    let ndim = src.ndim();
+    let src_shape = src.shape();
+
+    let src_ptr = src.data_ptr();
+    let src_dtype = src.dtype();
+    let src_ops = src_dtype.ops();
+    let dst_dtype = dst.dtype();
+    let buffer = Arc::get_mut(dst.buffer_mut()).expect("unique");
+    let dst_ptr = buffer.as_mut_ptr();
+    let dst_ops = dst_dtype.ops();
+
+    let mut src_indices = vec![0usize; ndim];
+    let src_size = src.size();
+
+    for _ in 0..src_size {
+        // Calculate destination indices by adding padding
+        let dst_indices: Vec<usize> = src_indices.iter()
+            .zip(pad_width.iter())
+            .map(|(&si, &(b, _))| si + b)
+            .collect();
+
+        let src_byte_offset = src.byte_offset_for(&src_indices);
+        let val = unsafe { src_ops.read_f64(src_ptr, src_byte_offset) }.unwrap_or(0.0);
+
+        let dst_offset = linear_index(&dst_indices, dst_shape);
+        unsafe { dst_ops.write_f64(dst_ptr, dst_offset, val); }
+
+        increment_indices(&mut src_indices, src_shape);
+    }
+}
+
+/// Roll array elements along given axis.
+/// If axis is None, rolls over flattened array but preserves original shape.
+pub fn roll(arr: &RumpyArray, shift: isize, axis: Option<isize>) -> RumpyArray {
+    match axis {
+        None => {
+            // Flatten, roll, reshape back to original shape
+            let original_shape = arr.shape().to_vec();
+            let flat = ravel_arr(arr);
+            let size = flat.size();
+            if size == 0 {
+                return arr.copy();
+            }
+
+            // Normalize shift
+            let shift = ((shift % size as isize) + size as isize) as usize % size;
+            if shift == 0 {
+                return arr.copy();
+            }
+
+            let src_dtype = flat.dtype();
+            let mut result = RumpyArray::zeros(original_shape.clone(), src_dtype.clone());
+            let src_ptr = flat.data_ptr();
+            let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+            let dst_ptr = buffer.as_mut_ptr();
+
+            // Fast path: use memcpy for the two parts
+            // Result: [src[size-shift:], src[:size-shift]]
+            let itemsize = src_dtype.itemsize();
+            let split_point = size - shift; // Elements from this index go to the front
+            let bytes_part1 = shift * itemsize;       // Elements shift..size go to dst[0..shift]
+            let bytes_part2 = split_point * itemsize; // Elements 0..split_point go to dst[shift..]
+
+            unsafe {
+                // Copy elements [split_point..] to [0..shift]
+                std::ptr::copy_nonoverlapping(
+                    src_ptr.add(split_point * itemsize),
+                    dst_ptr,
+                    bytes_part1,
+                );
+                // Copy elements [0..split_point] to [shift..]
+                std::ptr::copy_nonoverlapping(
+                    src_ptr,
+                    dst_ptr.add(bytes_part1),
+                    bytes_part2,
+                );
+            }
+
+            result
+        }
+        Some(ax) => {
+            let ndim = arr.ndim();
+            let axis = if ax < 0 { (ndim as isize + ax) as usize } else { ax as usize };
+            if axis >= ndim {
+                return arr.copy();
+            }
+
+            let axis_len = arr.shape()[axis];
+            if axis_len == 0 {
+                return arr.copy();
+            }
+
+            // Normalize shift
+            let shift = ((shift % axis_len as isize) + axis_len as isize) as usize % axis_len;
+            if shift == 0 {
+                return arr.copy();
+            }
+
+            let result_shape = arr.shape().to_vec();
+            let src_dtype = arr.dtype();
+            let mut result = RumpyArray::zeros(result_shape.clone(), src_dtype.clone());
+            let src_ptr = arr.data_ptr();
+            let src_ops = src_dtype.ops();
+            let dst_dtype = result.dtype();
+            let buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+            let dst_ptr = buffer.as_mut_ptr();
+            let dst_ops = dst_dtype.ops();
+
+            let mut dst_indices = vec![0usize; ndim];
+            let size = arr.size();
+
+            for _ in 0..size {
+                // Source index: roll along axis
+                let mut src_indices = dst_indices.clone();
+                src_indices[axis] = (dst_indices[axis] + axis_len - shift) % axis_len;
+
+                let src_byte_offset = arr.byte_offset_for(&src_indices);
+                let val = unsafe { src_ops.read_f64(src_ptr, src_byte_offset) }.unwrap_or(0.0);
+
+                let dst_offset = linear_index(&dst_indices, &result_shape);
+                unsafe { dst_ops.write_f64(dst_ptr, dst_offset, val); }
+
+                increment_indices(&mut dst_indices, arr.shape());
+            }
+
+            result
+        }
+    }
+}
+
+/// Rotate array 90 degrees k times in the plane specified by axes.
+/// Returns a view (no copy) like numpy.
+pub fn rot90(arr: &RumpyArray, k: isize, axis0: usize, axis1: usize) -> RumpyArray {
+    // Normalize k to 0-3
+    let k = ((k % 4) + 4) as usize % 4;
+
+    let ndim = arr.ndim();
+    let mut axes: Vec<usize> = (0..ndim).collect();
+    axes.swap(axis0, axis1);
+
+    match k {
+        0 => arr.clone(),
+        1 => {
+            // k=1: flip axis1, then transpose
+            let flipped = arr.flip(axis1).unwrap();
+            flipped.transpose_axes(&axes)
+        }
+        2 => {
+            // k=2: flip both axes (180 degree rotation), no transpose
+            let f1 = arr.flip(axis0).unwrap();
+            f1.flip(axis1).unwrap()
+        }
+        3 => {
+            // k=3 = k=-1: flip axis0, then transpose
+            let flipped = arr.flip(axis0).unwrap();
+            flipped.transpose_axes(&axes)
+        }
+        _ => unreachable!()
+    }
 }

@@ -540,3 +540,300 @@ class TestDiff:
         n = np.array([1, 3, 6, 10])
         r = rumpy.asarray(n)
         assert_eq(rumpy.diff(r), np.diff(n))
+
+
+# Stream 11: Array Manipulation Functions
+
+
+class TestHsplit:
+    """Test hsplit() function."""
+
+    def test_hsplit_2d(self):
+        n = np.arange(12).reshape(2, 6)
+        r = rumpy.asarray(n)
+        r_parts = rumpy.hsplit(r, 3)
+        n_parts = np.hsplit(n, 3)
+        assert len(r_parts) == 3
+        for rp, np_ in zip(r_parts, n_parts):
+            assert_eq(rp, np_)
+
+    def test_hsplit_1d(self):
+        n = np.arange(6)
+        r = rumpy.asarray(n)
+        r_parts = rumpy.hsplit(r, 3)
+        n_parts = np.hsplit(n, 3)
+        assert len(r_parts) == 3
+        for rp, np_ in zip(r_parts, n_parts):
+            assert_eq(rp, np_)
+
+
+class TestVsplit:
+    """Test vsplit() function."""
+
+    def test_vsplit_2d(self):
+        n = np.arange(12).reshape(4, 3)
+        r = rumpy.asarray(n)
+        r_parts = rumpy.vsplit(r, 2)
+        n_parts = np.vsplit(n, 2)
+        assert len(r_parts) == 2
+        for rp, np_ in zip(r_parts, n_parts):
+            assert_eq(rp, np_)
+
+
+class TestDsplit:
+    """Test dsplit() function."""
+
+    def test_dsplit_3d(self):
+        n = np.arange(24).reshape(2, 3, 4)
+        r = rumpy.asarray(n)
+        r_parts = rumpy.dsplit(r, 2)
+        n_parts = np.dsplit(n, 2)
+        assert len(r_parts) == 2
+        for rp, np_ in zip(r_parts, n_parts):
+            assert_eq(rp, np_)
+
+
+class TestColumnStack:
+    """Test column_stack() function."""
+
+    def test_column_stack_1d(self):
+        a = np.arange(3)
+        b = np.arange(3, 6)
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        r = rumpy.column_stack([r_a, r_b])
+        n = np.column_stack([a, b])
+        assert_eq(r, n)
+
+    def test_column_stack_2d(self):
+        a = np.arange(6).reshape(3, 2)
+        b = np.arange(6, 12).reshape(3, 2)
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        r = rumpy.column_stack([r_a, r_b])
+        n = np.column_stack([a, b])
+        assert_eq(r, n)
+
+
+class TestRowStack:
+    """Test row_stack() function (alias for vstack)."""
+
+    def test_row_stack_1d(self):
+        a = np.arange(3)
+        b = np.arange(3)
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        r = rumpy.row_stack([r_a, r_b])
+        n = np.row_stack([a, b])
+        assert_eq(r, n)
+
+    def test_row_stack_2d(self):
+        a = np.arange(6).reshape(2, 3)
+        b = np.arange(6).reshape(2, 3)
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        r = rumpy.row_stack([r_a, r_b])
+        n = np.row_stack([a, b])
+        assert_eq(r, n)
+
+
+class TestDstack:
+    """Test dstack() function."""
+
+    def test_dstack_1d(self):
+        a = np.arange(3)
+        b = np.arange(3, 6)
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        r = rumpy.dstack([r_a, r_b])
+        n = np.dstack([a, b])
+        assert_eq(r, n)
+
+    def test_dstack_2d(self):
+        a = np.arange(6).reshape(2, 3)
+        b = np.arange(6, 12).reshape(2, 3)
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        r = rumpy.dstack([r_a, r_b])
+        n = np.dstack([a, b])
+        assert_eq(r, n)
+
+
+class TestRepeat:
+    """Test repeat() function."""
+
+    def test_repeat_1d(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.repeat(r, 3), np.repeat(n, 3))
+
+    def test_repeat_2d_flat(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.repeat(r, 2), np.repeat(n, 2))
+
+    def test_repeat_2d_axis0(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.repeat(r, 2, axis=0), np.repeat(n, 2, axis=0))
+
+    def test_repeat_2d_axis1(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.repeat(r, 2, axis=1), np.repeat(n, 2, axis=1))
+
+
+class TestTile:
+    """Test tile() function."""
+
+    def test_tile_1d_scalar(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.tile(r, 2), np.tile(n, 2))
+
+    def test_tile_1d_tuple(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.tile(r, (2, 3)), np.tile(n, (2, 3)))
+
+    def test_tile_2d(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.tile(r, (2, 3)), np.tile(n, (2, 3)))
+
+
+class TestAppend:
+    """Test append() function."""
+
+    def test_append_1d(self):
+        a = np.array([1.0, 2.0, 3.0])
+        b = np.array([4.0, 5.0])
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        assert_eq(rumpy.append(r_a, r_b), np.append(a, b))
+
+    def test_append_2d_flat(self):
+        a = np.array([[1.0, 2.0], [3.0, 4.0]])
+        b = np.array([[5.0, 6.0]])
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        assert_eq(rumpy.append(r_a, r_b), np.append(a, b))
+
+    def test_append_2d_axis0(self):
+        a = np.array([[1.0, 2.0], [3.0, 4.0]])
+        b = np.array([[5.0, 6.0]])
+        r_a, r_b = rumpy.asarray(a), rumpy.asarray(b)
+        assert_eq(rumpy.append(r_a, r_b, axis=0), np.append(a, b, axis=0))
+
+
+class TestInsert:
+    """Test insert() function."""
+
+    def test_insert_1d(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.insert(r, 1, 99.0), np.insert(n, 1, 99.0))
+
+    def test_insert_2d_flat(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.insert(r, 2, 99.0), np.insert(n, 2, 99.0))
+
+    def test_insert_2d_axis0(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.insert(r, 1, [5.0, 6.0], axis=0), np.insert(n, 1, [5.0, 6.0], axis=0))
+
+
+class TestDelete:
+    """Test delete() function."""
+
+    def test_delete_1d(self):
+        n = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.delete(r, 2), np.delete(n, 2))
+
+    def test_delete_2d_flat(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.delete(r, 1), np.delete(n, 1))
+
+    def test_delete_2d_axis0(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.delete(r, 1, axis=0), np.delete(n, 1, axis=0))
+
+
+class TestPad:
+    """Test pad() function."""
+
+    def test_pad_1d_constant(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.pad(r, 2, mode='constant'), np.pad(n, 2, mode='constant'))
+
+    def test_pad_2d_constant(self):
+        n = np.array([[1.0, 2.0], [3.0, 4.0]])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.pad(r, 1, mode='constant'), np.pad(n, 1, mode='constant'))
+
+    def test_pad_asymmetric(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.pad(r, (1, 2), mode='constant'), np.pad(n, (1, 2), mode='constant'))
+
+    def test_pad_edge(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.pad(r, 2, mode='edge'), np.pad(n, 2, mode='edge'))
+
+
+class TestRoll:
+    """Test roll() function."""
+
+    def test_roll_1d(self):
+        n = np.arange(5, dtype=np.float64)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.roll(r, 2), np.roll(n, 2))
+
+    def test_roll_1d_negative(self):
+        n = np.arange(5, dtype=np.float64)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.roll(r, -2), np.roll(n, -2))
+
+    def test_roll_2d_flat(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.roll(r, 3), np.roll(n, 3))
+
+    def test_roll_2d_axis0(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.roll(r, 1, axis=0), np.roll(n, 1, axis=0))
+
+    def test_roll_2d_axis1(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.roll(r, 1, axis=1), np.roll(n, 1, axis=1))
+
+
+class TestRot90:
+    """Test rot90() function."""
+
+    def test_rot90_default(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.rot90(r), np.rot90(n))
+
+    def test_rot90_k2(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.rot90(r, k=2), np.rot90(n, k=2))
+
+    def test_rot90_k3(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.rot90(r, k=3), np.rot90(n, k=3))
+
+    def test_rot90_negative(self):
+        n = np.arange(6, dtype=np.float64).reshape(2, 3)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.rot90(r, k=-1), np.rot90(n, k=-1))
+
+    def test_rot90_3d(self):
+        n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        r = rumpy.asarray(n)
+        assert_eq(rumpy.rot90(r), np.rot90(n))
+        assert_eq(rumpy.rot90(r, axes=(0, 2)), np.rot90(n, axes=(0, 2)))
