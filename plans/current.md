@@ -106,19 +106,23 @@ Split `src/array/mod.rs` from 2321 lines to 501 lines (78% reduction).
 - Struct fields made `pub(crate)` for submodule access
 - Helper functions `is_c_contiguous`, `is_f_contiguous`, `increment_indices` made `pub(crate)`
 
-## Next: More File Refactoring
+## Completed: pyarray.rs Refactoring
 
-### `src/python/pyarray.rs` (1796 lines)
-Split into `src/python/pyarray/` submodules:
+Split `src/python/pyarray.rs` from 1796 lines to 1223 lines (32% reduction in main file).
 
-| Target File | Contents |
-|-------------|----------|
-| `dunder_ops.rs` | __add__, __sub__, __mul__, __truediv__, __pow__, __mod__, __neg__, __matmul__ |
-| `dunder_cmp.rs` | __eq__, __ne__, __lt__, __le__, __gt__, __ge__ |
-| `dunder_item.rs` | __getitem__, __setitem__ |
-| `reductions.rs` | sum, mean, std, var, min, max, argmin, argmax, all, any |
+### `src/python/pyarray/` Structure
 
-Keep in `mod.rs` (rename to pyarray.rs): struct, properties, simple methods
+| File | Lines | Contents |
+|------|-------|----------|
+| `mod.rs` | 1223 | PyRumpyArray struct, properties, methods, helper functions |
+| `dunder_ops.rs` | 211 | __add__, __sub__, __mul__, etc. + comparison + bitwise |
+| `dunder_item.rs` | 269 | __getitem__, __setitem__ |
+| `methods_reductions.rs` | 285 | sum, mean, var, std, argmax, all, any |
+
+### Pattern
+- Uses PyO3's `multiple-pymethods` feature to allow multiple `#[pymethods]` impl blocks
+- Helper functions remain in `mod.rs`, imported by submodules via `super::`
+- Each submodule adds a `#[pymethods] impl PyRumpyArray { ... }` block
 
 ## Future Work
 

@@ -74,10 +74,14 @@ src/
 │
 ├── python/                   # PyO3 bindings (thin wrappers)
 │   ├── mod.rs                # register_module, re-exports
-│   ├── pyarray.rs            # PyRumpyArray class, dunder methods
+│   ├── pyarray/              # PyRumpyArray class (split for maintainability)
+│   │   ├── mod.rs            # struct, properties, misc methods, helpers
+│   │   ├── dunder_ops.rs     # __add__, __sub__, __eq__, __and__, etc.
+│   │   ├── dunder_item.rs    # __getitem__, __setitem__
+│   │   └── methods_reductions.rs  # sum, mean, var, std, argmax, all, any
 │   ├── creation.rs           # zeros, ones, arange, linspace, eye, full
 │   ├── ufuncs.rs             # sqrt, sin, cos, add, multiply (math ops)
-│   ├── reductions.rs         # sum, mean, std, nansum, nanmean
+│   ├── reductions.rs         # sum, mean, std, nansum, nanmean (module functions)
 │   ├── shape.rs              # reshape, transpose, stack, split, flip
 │   ├── indexing.rs           # take, put, searchsorted, compress
 │   ├── random.rs             # Generator class, default_rng (submodule)
@@ -113,9 +117,10 @@ The `src/python/` directory is organized by category to minimize context needed 
 | `reductions.rs` | `sum`, `mean`, `std`, `nansum`, `argmax` | Calls `inner.reduce_*` methods |
 | `shape.rs` | `reshape`, `transpose`, `stack`, `split`, `flip` | Shape manipulation wrappers |
 | `indexing.rs` | `take`, `put`, `searchsorted`, `where` | Index-based operations |
-| `pyarray.rs` | `PyRumpyArray` class, `__add__`, `__getitem__` | Array methods, not module functions |
+| `pyarray/` | `PyRumpyArray` class with `#[pymethods]` | Array methods, split into submodules |
 
 To add a new function: find the right category file, add the `#[pyfunction]`, then register in `mod.rs`.
+To add array methods: add to appropriate `pyarray/*.rs` submodule with `#[pymethods]` impl block.
 
 ## Before Starting Work
 
@@ -173,7 +178,7 @@ pub fn sum_axis(&self, axis: usize) -> RumpyArray {
 The registry in `src/ops/registry.rs` provides optimized type-specific loops.
 To add a new operation, add the enum variant and register loops for each dtype.
 
-Then add Python bindings in `pyarray.rs` and tests.
+Then add Python bindings in `pyarray/` and tests.
 
 ## Common Pitfalls
 
@@ -185,7 +190,7 @@ Then add Python bindings in `pyarray.rs` and tests.
 ## Adding New Features
 
 1. Add Rust implementation in `src/ops/` (operations) or `src/array/` (core)
-2. Add Python bindings in `src/python/pyarray.rs`
+2. Add Python bindings in `src/python/pyarray/` (array methods) or category file (module functions)
 3. Export from `src/python/mod.rs` if module-level function
 4. Add tests comparing against numpy
 5. Update `plans/current.md`
