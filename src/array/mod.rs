@@ -675,6 +675,23 @@ impl RumpyArray {
         let src_ptr = self.data_ptr();
         let src_ops = self.dtype.ops();
 
+        // Fast path: contiguous same-dtype copy
+        if self.dtype == new_dtype && self.is_c_contiguous() {
+            let nbytes = size * self.itemsize();
+            unsafe { std::ptr::copy_nonoverlapping(src_ptr, result_ptr, nbytes); }
+            return result;
+        }
+
+        // Fast path for broadcast copy (common in meshgrid/indices)
+        if self.dtype == new_dtype && new_dtype == DType::float64() {
+            self.copy_broadcast_typed::<f64>(result_ptr as *mut f64);
+            return result;
+        }
+        if self.dtype == new_dtype && new_dtype == DType::int64() {
+            self.copy_broadcast_typed::<i64>(result_ptr as *mut i64);
+            return result;
+        }
+
         if self.dtype == new_dtype {
             // Same dtype: copy elements directly
             for (i, offset) in self.iter_offsets().enumerate() {
@@ -688,6 +705,60 @@ impl RumpyArray {
             }
         }
         result
+    }
+
+    /// Efficient copy for broadcast arrays - exploits zero strides.
+    fn copy_broadcast_typed<T: Copy>(&self, dst: *mut T) {
+        let shape = self.shape();
+        let strides = self.strides();
+        let src = self.data_ptr() as *const T;
+        let ndim = shape.len();
+        let size = self.size();
+        let elem_size = std::mem::size_of::<T>() as isize;
+
+        if size == 0 {
+            return;
+        }
+
+        // For 2D broadcast (common case: meshgrid), use optimized path
+        if ndim == 2 {
+            let (n0, n1) = (shape[0], shape[1]);
+            let (s0, s1) = (strides[0], strides[1]);
+
+            if s0 == 0 && s1 != 0 {
+                // Row broadcasts: same row repeated n0 times
+                // First fill row 0, then memcpy to other rows
+                let s1_elems = s1 / elem_size;
+                for j in 0..n1 {
+                    unsafe { *dst.add(j) = *src.offset(s1_elems * j as isize); }
+                }
+                for i in 1..n0 {
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(dst, dst.add(i * n1), n1);
+                    }
+                }
+                return;
+            }
+
+            if s0 != 0 && s1 == 0 {
+                // Column broadcasts: same column repeated n1 times
+                let s0_elems = s0 / elem_size;
+                for i in 0..n0 {
+                    let val = unsafe { *src.offset(s0_elems * i as isize) };
+                    let row_start = i * n1;
+                    for j in 0..n1 {
+                        unsafe { *dst.add(row_start + j) = val; }
+                    }
+                }
+                return;
+            }
+        }
+
+        // Fallback: iterate with offset calculation
+        for (i, offset) in self.iter_offsets().enumerate() {
+            let byte_offset = offset / elem_size;
+            unsafe { *dst.add(i) = *src.offset(byte_offset); }
+        }
     }
 
     // === Formatting for repr/str ===
@@ -1283,6 +1354,317 @@ fn interpolate_percentile(sorted: &[f64], pct: f64) -> f64 {
         let frac = idx - lo as f64;
         sorted[lo] * (1.0 - frac) + sorted[hi] * frac
     }
+}
+
+/// Create logarithmically spaced array.
+/// Returns base^linspace(start, stop, num).
+pub fn logspace(start: f64, stop: f64, num: usize, base: f64, dtype: DType) -> RumpyArray {
+    let mut arr = RumpyArray::zeros(vec![num], dtype);
+    if num == 0 {
+        return arr;
+    }
+
+    let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+    let ptr = buffer.as_mut_ptr();
+    let ops = arr.dtype.ops();
+
+    let step = if num > 1 { (stop - start) / (num - 1) as f64 } else { 0.0 };
+
+    for i in 0..num {
+        let exponent = start + (i as f64) * step;
+        let val = base.powf(exponent);
+        unsafe { ops.write_f64(ptr, i, val); }
+    }
+    arr
+}
+
+/// Create geometrically spaced array.
+/// Returns numbers spaced evenly on a log scale between start and stop.
+pub fn geomspace(start: f64, stop: f64, num: usize, dtype: DType) -> Option<RumpyArray> {
+    // start and stop must have same sign (and not zero)
+    if start * stop <= 0.0 {
+        return None;
+    }
+
+    let mut arr = RumpyArray::zeros(vec![num], dtype);
+    if num == 0 {
+        return Some(arr);
+    }
+
+    let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+    let ptr = buffer.as_mut_ptr();
+    let ops = arr.dtype.ops();
+
+    // Handle negative values by using absolute values and restoring sign
+    let sign = if start < 0.0 { -1.0 } else { 1.0 };
+    let log_start = start.abs().ln();
+    let log_stop = stop.abs().ln();
+    let step = if num > 1 { (log_stop - log_start) / (num - 1) as f64 } else { 0.0 };
+
+    for i in 0..num {
+        let val = sign * (log_start + (i as f64) * step).exp();
+        unsafe { ops.write_f64(ptr, i, val); }
+    }
+    Some(arr)
+}
+
+/// Create a triangular matrix of ones.
+/// k: diagonal offset (0 = main diagonal, positive = above, negative = below)
+pub fn tri(n: usize, m: usize, k: isize, dtype: DType) -> RumpyArray {
+    let mut arr = RumpyArray::zeros(vec![n, m], dtype);
+    if n == 0 || m == 0 {
+        return arr;
+    }
+
+    let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+    let ptr = buffer.as_mut_ptr();
+    let ops = arr.dtype.ops();
+
+    for i in 0..n {
+        for j in 0..m {
+            // Element is 1 if j <= i + k
+            if (j as isize) <= (i as isize) + k {
+                let idx = i * m + j;
+                unsafe { ops.write_one(ptr, idx); }
+            }
+        }
+    }
+    arr
+}
+
+/// Helper for tril/triu - extract triangle from 2D array.
+fn extract_triangle(arr: &RumpyArray, k: isize, lower: bool) -> Option<RumpyArray> {
+    if arr.ndim() != 2 {
+        return None;
+    }
+
+    let shape = arr.shape();
+    let n = shape[0];
+    let m = shape[1];
+    let mut result = RumpyArray::zeros(shape.to_vec(), arr.dtype());
+
+    if n == 0 || m == 0 {
+        return Some(result);
+    }
+
+    let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+    let itemsize = arr.itemsize();
+
+    // Fast path: contiguous source array - use memcpy for row segments
+    if arr.is_c_contiguous() {
+        let src_ptr = arr.data_ptr();
+        for i in 0..n {
+            // Calculate range of columns to copy for this row
+            let (start_col, end_col) = if lower {
+                // Lower triangle: copy columns 0..min(i+k+1, m)
+                let end = ((i as isize + k + 1).max(0) as usize).min(m);
+                (0, end)
+            } else {
+                // Upper triangle: copy columns max(i+k, 0)..m
+                let start = ((i as isize + k).max(0) as usize).min(m);
+                (start, m)
+            };
+
+            if end_col > start_col {
+                let src_row = unsafe { src_ptr.add(i * m * itemsize + start_col * itemsize) };
+                let dst_row = unsafe { result_ptr.add(i * m * itemsize + start_col * itemsize) };
+                let copy_bytes = (end_col - start_col) * itemsize;
+                unsafe { std::ptr::copy_nonoverlapping(src_row, dst_row, copy_bytes); }
+            }
+        }
+        return Some(result);
+    }
+
+    // Slow path: strided array - element by element
+    let ops = result.dtype.ops();
+    let src_ptr = arr.data_ptr();
+
+    for i in 0..n {
+        for j in 0..m {
+            let include = if lower {
+                (j as isize) <= (i as isize) + k
+            } else {
+                (j as isize) >= (i as isize) + k
+            };
+            if include {
+                let offset = arr.byte_offset_for(&[i, j]);
+                let idx = i * m + j;
+                unsafe { ops.copy_element(src_ptr, offset, result_ptr, idx); }
+            }
+        }
+    }
+    Some(result)
+}
+
+/// Return lower triangle of an array.
+pub fn tril(arr: &RumpyArray, k: isize) -> Option<RumpyArray> {
+    extract_triangle(arr, k, true)
+}
+
+/// Return upper triangle of an array.
+pub fn triu(arr: &RumpyArray, k: isize) -> Option<RumpyArray> {
+    extract_triangle(arr, k, false)
+}
+
+/// Create a 2D array with flattened input as diagonal.
+/// k: diagonal offset (0 = main diagonal)
+pub fn diagflat(v: &RumpyArray, k: isize) -> RumpyArray {
+    // Flatten input
+    let size = v.size();
+    let n = size + k.unsigned_abs();
+
+    let mut result = RumpyArray::zeros(vec![n, n], v.dtype());
+    if size == 0 {
+        return result;
+    }
+
+    let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+    let ops = result.dtype.ops();
+    let src_ptr = v.data_ptr();
+
+    for (i, offset) in v.iter_offsets().enumerate() {
+        let (row, col) = if k >= 0 {
+            (i, i + k as usize)
+        } else {
+            (i + (-k) as usize, i)
+        };
+        let idx = row * n + col;
+        unsafe { ops.copy_element(src_ptr, offset, result_ptr, idx); }
+    }
+    result
+}
+
+/// Return coordinate matrices from coordinate vectors.
+/// indexing: "xy" (Cartesian) or "ij" (matrix)
+pub fn meshgrid(arrays: &[RumpyArray], indexing: &str) -> Option<Vec<RumpyArray>> {
+    if arrays.is_empty() {
+        return Some(Vec::new());
+    }
+
+    // All inputs must be 1D
+    for arr in arrays {
+        if arr.ndim() != 1 {
+            return None;
+        }
+    }
+
+    let ndim = arrays.len();
+    let sizes: Vec<usize> = arrays.iter().map(|a| a.size()).collect();
+
+    // Output shape depends on indexing mode
+    let output_shape: Vec<usize> = if indexing == "xy" && ndim >= 2 {
+        let mut shape = sizes.clone();
+        shape.swap(0, 1);
+        shape
+    } else {
+        sizes.clone()
+    };
+
+    let mut result = Vec::with_capacity(ndim);
+
+    for (dim, arr) in arrays.iter().enumerate() {
+        // The dimension this array varies along in output
+        let vary_dim = if indexing == "xy" && ndim >= 2 {
+            if dim == 0 { 1 } else if dim == 1 { 0 } else { dim }
+        } else {
+            dim
+        };
+
+        // Create broadcast shape: all 1s except for vary_dim
+        let mut bc_shape = vec![1usize; ndim];
+        bc_shape[vary_dim] = arr.size();
+
+        // Reshape to broadcast shape, then broadcast to output shape
+        let reshaped = arr.reshape(bc_shape)?;
+        let broadcast = reshaped.broadcast_to(&output_shape)?;
+
+        // Copy to contiguous
+        result.push(broadcast.copy());
+    }
+
+    Some(result)
+}
+
+/// Return an array representing indices of a grid.
+/// Result shape is (len(dimensions),) + dimensions.
+pub fn indices(dimensions: &[usize], dtype: DType) -> RumpyArray {
+    let ndim = dimensions.len();
+    if ndim == 0 {
+        return RumpyArray::zeros(vec![0], dtype);
+    }
+
+    let mut shape = vec![ndim];
+    shape.extend_from_slice(dimensions);
+
+    let mut result = RumpyArray::zeros(shape.clone(), dtype.clone());
+    let total_per_dim: usize = dimensions.iter().product();
+
+    if total_per_dim == 0 {
+        return result;
+    }
+
+    let buffer = Arc::get_mut(&mut result.buffer).expect("buffer must be unique");
+    let ptr = buffer.as_mut_ptr();
+
+    // Fast path for int64 (default dtype for indices)
+    if dtype == DType::int64() {
+        let dst = ptr as *mut i64;
+
+        for dim in 0..ndim {
+            let base = dim * total_per_dim;
+            // For dimension dim, the index repeats with period = product of dims after it
+            // and increments after every (product of dims after it) elements
+            let stride: usize = dimensions[dim + 1..].iter().product();
+            let repeat: usize = dimensions[..dim].iter().product();
+            let dim_size = dimensions[dim];
+
+            for r in 0..repeat {
+                let r_base = r * dim_size * stride;
+                for idx in 0..dim_size {
+                    let val = idx as i64;
+                    for s in 0..stride {
+                        unsafe { *dst.add(base + r_base + idx * stride + s) = val; }
+                    }
+                }
+            }
+        }
+    } else if dtype == DType::float64() {
+        let dst = ptr as *mut f64;
+
+        for dim in 0..ndim {
+            let base = dim * total_per_dim;
+            let stride: usize = dimensions[dim + 1..].iter().product();
+            let repeat: usize = dimensions[..dim].iter().product();
+            let dim_size = dimensions[dim];
+
+            for r in 0..repeat {
+                let r_base = r * dim_size * stride;
+                for idx in 0..dim_size {
+                    let val = idx as f64;
+                    for s in 0..stride {
+                        unsafe { *dst.add(base + r_base + idx * stride + s) = val; }
+                    }
+                }
+            }
+        }
+    } else {
+        // Fallback for other dtypes
+        let ops = result.dtype.ops();
+        for dim in 0..ndim {
+            let base_offset = dim * total_per_dim;
+            let mut idx_vec = vec![0usize; ndim];
+
+            for i in 0..total_per_dim {
+                let val = idx_vec[dim] as f64;
+                unsafe { ops.write_f64(ptr, base_offset + i, val); }
+                increment_indices(&mut idx_vec, dimensions);
+            }
+        }
+    }
+
+    result
 }
 
 /// 1D discrete convolution.

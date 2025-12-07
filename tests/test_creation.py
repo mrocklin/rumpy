@@ -271,3 +271,267 @@ class TestDtypeConstants:
         dtype_const = getattr(rp, attr)
         arr = rp.zeros(5, dtype=dtype_const)
         assert arr.dtype == expected
+
+
+class TestFullLike:
+    """Test rp.full_like against np.full_like."""
+
+    def test_basic(self):
+        arr = rp.zeros((3, 4))
+        r = rp.full_like(arr, 7.0)
+        n = np.full_like(np.zeros((3, 4)), 7.0)
+        assert_eq(r, n)
+
+    def test_preserves_dtype(self):
+        arr = rp.zeros((3, 4), dtype="float32")
+        r = rp.full_like(arr, 5.0)
+        assert r.dtype == "float32"
+        assert r.shape == (3, 4)
+
+    def test_override_dtype(self):
+        arr = rp.zeros((3, 4), dtype="float32")
+        r = rp.full_like(arr, 5.0, dtype="float64")
+        assert r.dtype == "float64"
+
+
+class TestIdentity:
+    """Test rp.identity against np.identity."""
+
+    def test_basic(self):
+        r = rp.identity(3)
+        n = np.identity(3)
+        assert_eq(r, n)
+
+    def test_dtype(self):
+        r = rp.identity(4, dtype="float32")
+        n = np.identity(4, dtype=np.float32)
+        assert_eq(r, n)
+
+    def test_empty(self):
+        r = rp.identity(0)
+        n = np.identity(0)
+        assert r.shape == n.shape
+
+
+class TestLogspace:
+    """Test rp.logspace against np.logspace."""
+
+    def test_basic(self):
+        r = rp.logspace(0, 2, num=5)
+        n = np.logspace(0, 2, num=5)
+        assert_eq(r, n)
+
+    def test_with_base(self):
+        r = rp.logspace(0, 3, num=4, base=2.0)
+        n = np.logspace(0, 3, num=4, base=2.0)
+        assert_eq(r, n)
+
+    def test_single_point(self):
+        r = rp.logspace(0, 2, num=1)
+        n = np.logspace(0, 2, num=1)
+        assert_eq(r, n)
+
+    def test_empty(self):
+        r = rp.logspace(0, 2, num=0)
+        n = np.logspace(0, 2, num=0)
+        assert r.shape == n.shape
+
+
+class TestGeomspace:
+    """Test rp.geomspace against np.geomspace."""
+
+    def test_basic(self):
+        r = rp.geomspace(1, 1000, num=4)
+        n = np.geomspace(1, 1000, num=4)
+        assert_eq(r, n)
+
+    def test_negative(self):
+        r = rp.geomspace(-1, -1000, num=4)
+        n = np.geomspace(-1, -1000, num=4)
+        assert_eq(r, n)
+
+    def test_single_point(self):
+        r = rp.geomspace(1, 100, num=1)
+        n = np.geomspace(1, 100, num=1)
+        assert_eq(r, n)
+
+    def test_invalid_signs(self):
+        with pytest.raises(ValueError):
+            rp.geomspace(-1, 100, num=4)
+
+
+class TestTri:
+    """Test rp.tri against np.tri."""
+
+    def test_basic(self):
+        r = rp.tri(3)
+        n = np.tri(3)
+        assert_eq(r, n)
+
+    def test_rectangular(self):
+        r = rp.tri(3, 4)
+        n = np.tri(3, 4)
+        assert_eq(r, n)
+
+    def test_with_k(self):
+        r = rp.tri(3, 4, k=1)
+        n = np.tri(3, 4, k=1)
+        assert_eq(r, n)
+
+    def test_with_negative_k(self):
+        r = rp.tri(4, 4, k=-1)
+        n = np.tri(4, 4, k=-1)
+        assert_eq(r, n)
+
+
+class TestTril:
+    """Test rp.tril against np.tril."""
+
+    def test_basic(self):
+        arr = rp.arange(12).reshape(3, 4)
+        r = rp.tril(arr)
+        n = np.tril(np.arange(12, dtype=np.float64).reshape(3, 4))
+        assert_eq(r, n)
+
+    def test_with_k(self):
+        arr = rp.arange(12).reshape(3, 4)
+        r = rp.tril(arr, k=1)
+        n = np.tril(np.arange(12, dtype=np.float64).reshape(3, 4), k=1)
+        assert_eq(r, n)
+
+    def test_with_negative_k(self):
+        arr = rp.arange(16).reshape(4, 4)
+        r = rp.tril(arr, k=-1)
+        n = np.tril(np.arange(16, dtype=np.float64).reshape(4, 4), k=-1)
+        assert_eq(r, n)
+
+
+class TestTriu:
+    """Test rp.triu against np.triu."""
+
+    def test_basic(self):
+        arr = rp.arange(12).reshape(3, 4)
+        r = rp.triu(arr)
+        n = np.triu(np.arange(12, dtype=np.float64).reshape(3, 4))
+        assert_eq(r, n)
+
+    def test_with_k(self):
+        arr = rp.arange(12).reshape(3, 4)
+        r = rp.triu(arr, k=1)
+        n = np.triu(np.arange(12, dtype=np.float64).reshape(3, 4), k=1)
+        assert_eq(r, n)
+
+    def test_with_negative_k(self):
+        arr = rp.arange(16).reshape(4, 4)
+        r = rp.triu(arr, k=-1)
+        n = np.triu(np.arange(16, dtype=np.float64).reshape(4, 4), k=-1)
+        assert_eq(r, n)
+
+
+class TestDiagflat:
+    """Test rp.diagflat against np.diagflat."""
+
+    def test_basic(self):
+        arr = rp.array([1, 2, 3])
+        r = rp.diagflat(arr)
+        n = np.diagflat(np.array([1, 2, 3], dtype=np.float64))
+        assert_eq(r, n)
+
+    def test_with_positive_k(self):
+        arr = rp.array([1, 2, 3])
+        r = rp.diagflat(arr, k=1)
+        n = np.diagflat(np.array([1, 2, 3], dtype=np.float64), k=1)
+        assert_eq(r, n)
+
+    def test_with_negative_k(self):
+        arr = rp.array([1, 2, 3])
+        r = rp.diagflat(arr, k=-1)
+        n = np.diagflat(np.array([1, 2, 3], dtype=np.float64), k=-1)
+        assert_eq(r, n)
+
+    def test_2d_input(self):
+        """diagflat flattens input first."""
+        arr = rp.arange(4).reshape(2, 2)
+        r = rp.diagflat(arr)
+        n = np.diagflat(np.arange(4, dtype=np.float64).reshape(2, 2))
+        assert_eq(r, n)
+
+
+class TestMeshgrid:
+    """Test rp.meshgrid against np.meshgrid."""
+
+    def test_basic_xy(self):
+        x = rp.array([1, 2, 3])
+        y = rp.array([4, 5])
+        rx, ry = rp.meshgrid(x, y)
+        nx, ny = np.meshgrid(np.array([1, 2, 3], dtype=np.float64),
+                              np.array([4, 5], dtype=np.float64))
+        assert_eq(rx, nx)
+        assert_eq(ry, ny)
+
+    def test_indexing_ij(self):
+        x = rp.array([1, 2, 3])
+        y = rp.array([4, 5])
+        rx, ry = rp.meshgrid(x, y, indexing="ij")
+        nx, ny = np.meshgrid(np.array([1, 2, 3], dtype=np.float64),
+                              np.array([4, 5], dtype=np.float64),
+                              indexing="ij")
+        assert_eq(rx, nx)
+        assert_eq(ry, ny)
+
+    def test_3d(self):
+        x = rp.array([1, 2])
+        y = rp.array([3, 4, 5])
+        z = rp.array([6, 7])
+        rx, ry, rz = rp.meshgrid(x, y, z, indexing="ij")
+        nx, ny, nz = np.meshgrid(np.array([1, 2], dtype=np.float64),
+                                  np.array([3, 4, 5], dtype=np.float64),
+                                  np.array([6, 7], dtype=np.float64),
+                                  indexing="ij")
+        assert_eq(rx, nx)
+        assert_eq(ry, ny)
+        assert_eq(rz, nz)
+
+
+class TestIndices:
+    """Test rp.indices against np.indices."""
+
+    def test_basic_2d(self):
+        r = rp.indices([2, 3])
+        n = np.indices([2, 3])
+        assert_eq(r, n)
+
+    def test_3d(self):
+        r = rp.indices([2, 3, 4])
+        n = np.indices([2, 3, 4])
+        assert_eq(r, n)
+
+    def test_1d(self):
+        r = rp.indices([5])
+        n = np.indices([5])
+        assert_eq(r, n)
+
+
+class TestFromfunction:
+    """Test rp.fromfunction against np.fromfunction."""
+
+    def test_basic_2d(self):
+        def f(i, j):
+            return i + j
+        r = rp.fromfunction([3, 4], f)
+        n = np.fromfunction(f, (3, 4))
+        assert_eq(r, n)
+
+    def test_multiply(self):
+        def f(i, j):
+            return i * j
+        r = rp.fromfunction([3, 3], f)
+        n = np.fromfunction(f, (3, 3))
+        assert_eq(r, n)
+
+    def test_3d(self):
+        def f(i, j, k):
+            return i + j + k
+        r = rp.fromfunction([2, 3, 2], f)
+        n = np.fromfunction(f, (2, 3, 2))
+        assert_eq(r, n)

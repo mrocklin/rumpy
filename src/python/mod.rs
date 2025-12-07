@@ -122,6 +122,168 @@ pub fn empty_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArra
     Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
 }
 
+/// Create array filled with given value, with same shape and dtype as input.
+#[pyfunction]
+#[pyo3(signature = (a, fill_value, dtype=None))]
+pub fn full_like(a: &PyRumpyArray, fill_value: f64, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let shape = a.inner.shape().to_vec();
+    let dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+    Ok(PyRumpyArray::new(RumpyArray::full(shape, fill_value, dtype)))
+}
+
+/// Create an n x n identity matrix.
+#[pyfunction]
+#[pyo3(signature = (n, dtype=None))]
+pub fn identity(n: usize, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    Ok(PyRumpyArray::new(RumpyArray::eye(n, dtype)))
+}
+
+/// Create logarithmically spaced array.
+#[pyfunction]
+#[pyo3(signature = (start, stop, num=50, base=10.0, dtype=None))]
+pub fn logspace(
+    start: f64,
+    stop: f64,
+    num: usize,
+    base: f64,
+    dtype: Option<&str>,
+) -> PyResult<PyRumpyArray> {
+    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    Ok(PyRumpyArray::new(crate::array::logspace(start, stop, num, base, dtype)))
+}
+
+/// Create geometrically spaced array.
+#[pyfunction]
+#[pyo3(signature = (start, stop, num=50, dtype=None))]
+pub fn geomspace(
+    start: f64,
+    stop: f64,
+    num: usize,
+    dtype: Option<&str>,
+) -> PyResult<PyRumpyArray> {
+    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    crate::array::geomspace(start, stop, num, dtype)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("geomspace requires start and stop to have same sign")
+        })
+}
+
+/// Create a triangular matrix of ones.
+#[pyfunction]
+#[pyo3(signature = (n, m=None, k=0, dtype=None))]
+pub fn tri(n: usize, m: Option<usize>, k: isize, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let m = m.unwrap_or(n);
+    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    Ok(PyRumpyArray::new(crate::array::tri(n, m, k, dtype)))
+}
+
+/// Return lower triangle of an array.
+#[pyfunction]
+#[pyo3(signature = (m, k=0))]
+pub fn tril(m: &PyRumpyArray, k: isize) -> PyResult<PyRumpyArray> {
+    crate::array::tril(&m.inner, k)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("tril requires 2D array"))
+}
+
+/// Return upper triangle of an array.
+#[pyfunction]
+#[pyo3(signature = (m, k=0))]
+pub fn triu(m: &PyRumpyArray, k: isize) -> PyResult<PyRumpyArray> {
+    crate::array::triu(&m.inner, k)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("triu requires 2D array"))
+}
+
+/// Create a 2D array with flattened input as diagonal.
+#[pyfunction]
+#[pyo3(signature = (v, k=0))]
+pub fn diagflat(v: &PyRumpyArray, k: isize) -> PyRumpyArray {
+    PyRumpyArray::new(crate::array::diagflat(&v.inner, k))
+}
+
+/// Return coordinate matrices from coordinate vectors.
+#[pyfunction]
+#[pyo3(signature = (*xi, indexing="xy"))]
+pub fn meshgrid(xi: &Bound<'_, pyo3::types::PyTuple>, indexing: &str) -> PyResult<Vec<PyRumpyArray>> {
+    let mut arrays: Vec<RumpyArray> = Vec::with_capacity(xi.len());
+    for item in xi.iter() {
+        let arr = if let Ok(arr) = item.extract::<PyRef<'_, PyRumpyArray>>() {
+            arr.inner.clone()
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err("meshgrid requires array arguments"));
+        };
+        arrays.push(arr);
+    }
+
+    crate::array::meshgrid(&arrays, indexing)
+        .map(|arrs| arrs.into_iter().map(PyRumpyArray::new).collect())
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("meshgrid failed"))
+}
+
+/// Return an array representing indices of a grid.
+#[pyfunction]
+#[pyo3(signature = (dimensions, dtype=None))]
+pub fn indices(dimensions: Vec<usize>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let dtype = parse_dtype(dtype.unwrap_or("int64"))?;
+    Ok(PyRumpyArray::new(crate::array::indices(&dimensions, dtype)))
+}
+
+/// Construct an array by executing a function over each coordinate.
+#[pyfunction]
+#[pyo3(signature = (shape, function, dtype=None))]
+pub fn fromfunction(
+    py: Python<'_>,
+    shape: Vec<usize>,
+    function: &Bound<'_, pyo3::PyAny>,
+    dtype: Option<&str>,
+) -> PyResult<PyRumpyArray> {
+    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let ndim = shape.len();
+    let size: usize = shape.iter().product();
+
+    if size == 0 {
+        let result = RumpyArray::zeros(shape.clone(), dtype);
+        return Ok(PyRumpyArray::new(result));
+    }
+
+    // Create index arrays for each dimension
+    let index_arrays: Vec<PyRumpyArray> = (0..ndim)
+        .map(|dim| {
+            let mut arr = RumpyArray::zeros(shape.clone(), DType::float64());
+            let buffer = std::sync::Arc::get_mut(arr.buffer_mut()).expect("unique");
+            let ptr = buffer.as_mut_ptr() as *mut f64;
+
+            let mut indices = vec![0usize; ndim];
+            for i in 0..size {
+                unsafe { *ptr.add(i) = indices[dim] as f64; }
+                crate::array::increment_indices(&mut indices, &shape);
+            }
+            PyRumpyArray::new(arr)
+        })
+        .collect();
+
+    // Convert to Python tuple of arrays
+    let args = pyo3::types::PyTuple::new(py, index_arrays)?;
+
+    // Call the function
+    let result_obj = function.call1(args)?;
+
+    // Extract result
+    if let Ok(arr) = result_obj.extract::<PyRef<'_, PyRumpyArray>>() {
+        return Ok(PyRumpyArray::new(arr.inner.astype(dtype)));
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "fromfunction callback must return an array",
+    ))
+}
+
 /// Return a contiguous copy of the array.
 #[pyfunction]
 pub fn copy(a: &PyRumpyArray) -> PyRumpyArray {
@@ -2321,6 +2483,17 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(zeros_like, m)?)?;
     m.add_function(wrap_pyfunction!(ones_like, m)?)?;
     m.add_function(wrap_pyfunction!(empty_like, m)?)?;
+    m.add_function(wrap_pyfunction!(full_like, m)?)?;
+    m.add_function(wrap_pyfunction!(identity, m)?)?;
+    m.add_function(wrap_pyfunction!(logspace, m)?)?;
+    m.add_function(wrap_pyfunction!(geomspace, m)?)?;
+    m.add_function(wrap_pyfunction!(tri, m)?)?;
+    m.add_function(wrap_pyfunction!(tril, m)?)?;
+    m.add_function(wrap_pyfunction!(triu, m)?)?;
+    m.add_function(wrap_pyfunction!(diagflat, m)?)?;
+    m.add_function(wrap_pyfunction!(meshgrid, m)?)?;
+    m.add_function(wrap_pyfunction!(indices, m)?)?;
+    m.add_function(wrap_pyfunction!(fromfunction, m)?)?;
     m.add_function(wrap_pyfunction!(copy, m)?)?;
     m.add_function(wrap_pyfunction!(asarray, m)?)?;
     m.add_function(wrap_pyfunction!(array, m)?)?;
