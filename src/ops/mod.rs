@@ -2667,44 +2667,53 @@ pub fn logical_not(a: &RumpyArray) -> RumpyArray {
 
 /// Element-wise equality test.
 pub fn equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    map_binary_to_bool(a, b, |x, y| x == y)
+    map_compare_op(a, b, ComparisonOp::Eq)
 }
 
 /// Element-wise not-equal test.
 pub fn not_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    map_binary_to_bool(a, b, |x, y| x != y)
+    map_compare_op(a, b, ComparisonOp::Ne)
 }
 
 /// Element-wise less-than test.
 pub fn less(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    map_binary_to_bool(a, b, |x, y| x < y)
+    map_compare_op(a, b, ComparisonOp::Lt)
 }
 
 /// Element-wise less-than-or-equal test.
 pub fn less_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    map_binary_to_bool(a, b, |x, y| x <= y)
+    map_compare_op(a, b, ComparisonOp::Le)
 }
 
 /// Element-wise greater-than test.
 pub fn greater(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    map_binary_to_bool(a, b, |x, y| x > y)
+    map_compare_op(a, b, ComparisonOp::Gt)
 }
 
 /// Element-wise greater-than-or-equal test.
 pub fn greater_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    map_binary_to_bool(a, b, |x, y| x >= y)
+    map_compare_op(a, b, ComparisonOp::Ge)
 }
 
-/// Element-wise approximate equality test.
-pub fn isclose(a: &RumpyArray, b: &RumpyArray, rtol: f64, atol: f64) -> Option<RumpyArray> {
+/// Element-wise approximate equality test: |a - b| <= atol + rtol * |b|.
+/// Handles NaN and infinity according to NumPy semantics.
+pub fn isclose(a: &RumpyArray, b: &RumpyArray, rtol: f64, atol: f64, equal_nan: bool) -> Option<RumpyArray> {
     map_binary_to_bool(a, b, |x, y| {
-        (x - y).abs() <= atol + rtol * y.abs()
+        if x.is_nan() && y.is_nan() {
+            equal_nan
+        } else if x.is_nan() || y.is_nan() {
+            false
+        } else if x.is_infinite() || y.is_infinite() {
+            x == y  // Both must be same infinity
+        } else {
+            (x - y).abs() <= atol + rtol * y.abs()
+        }
     })
 }
 
 /// Test if all elements are approximately equal.
-pub fn allclose(a: &RumpyArray, b: &RumpyArray, rtol: f64, atol: f64) -> Option<bool> {
-    let close = isclose(a, b, rtol, atol)?;
+pub fn allclose(a: &RumpyArray, b: &RumpyArray, rtol: f64, atol: f64, equal_nan: bool) -> Option<bool> {
+    let close = isclose(a, b, rtol, atol, equal_nan)?;
     Some(close.all())
 }
 

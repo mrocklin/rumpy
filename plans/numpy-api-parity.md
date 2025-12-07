@@ -438,12 +438,6 @@ numpy-parity/stream-03-comparisons
 ...
 ```
 
-### Commit Conventions
-```
-feat(stream-01): add square, negative, positive
-feat(stream-03): add equal, not_equal comparisons
-```
-
 ### Merge Order
 Streams with no dependencies can merge independently. Suggested order:
 1. Streams 1-2 (math ops) - foundational
