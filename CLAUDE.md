@@ -32,33 +32,84 @@ def test_feature():
 ## File Structure
 
 ```
-src/array/          # Core Rust types
-  mod.rs            # RumpyArray struct, constructors, views, broadcast
-  dtype/            # DType system with macro-generated implementations
-    mod.rs          # DType wrapper, DTypeOps trait, type promotion
-    macros.rs       # impl_float_dtype!, impl_signed_int_dtype!, etc.
-  buffer.rs         # ArrayBuffer (Arc-wrapped memory)
-  flags.rs          # ArrayFlags (contiguity, writeable)
+src/
+├── lib.rs                    # Crate root, PyO3 module entry point
+├── array/                    # Core array types
+│   ├── mod.rs                # RumpyArray struct, constructors, shape ops
+│   ├── buffer.rs             # ArrayBuffer (Arc-wrapped memory)
+│   ├── flags.rs              # ArrayFlags (contiguity, writeable)
+│   ├── iter.rs               # StridedIter, AxisOffsetIter
+│   └── dtype/                # DType system
+│       ├── mod.rs            # DType wrapper, DTypeOps trait, promotion
+│       ├── macros.rs         # impl_float_dtype!, impl_signed_int_dtype!
+│       ├── float32.rs        # Float32 implementation
+│       ├── float64.rs        # Float64 implementation
+│       ├── int*.rs           # Integer type implementations
+│       ├── bool.rs           # Boolean implementation
+│       └── complex*.rs       # Complex number implementations
+│
+├── ops/                      # Operations (Rust implementation)
+│   ├── mod.rs                # RumpyArray methods, re-exports
+│   ├── ufunc.rs              # Core: map_unary_op, map_binary_op, reduce_axis_op
+│   ├── registry.rs           # Type-specific optimized loops (SIMD)
+│   ├── comparison.rs         # logical_and/or/xor/not, equal, isclose
+│   ├── bitwise.rs            # bitwise_and/or/xor/not, shifts
+│   ├── statistics.rs         # histogram, cov, corrcoef, median
+│   ├── numerical.rs          # gradient, trapezoid, interp, correlate
+│   ├── poly.rs               # polyfit, polyval, polyder, polyint, roots
+│   ├── set_ops.rs            # isin, intersect1d, union1d, setdiff1d
+│   ├── indexing.rs           # take, put, searchsorted, compress
+│   ├── linalg.rs             # eig, svd, lstsq, pinv, matrix_rank
+│   ├── fft.rs                # FFT operations
+│   ├── matmul.rs             # Matrix multiplication
+│   ├── dot.rs, inner.rs      # Dot and inner products
+│   ├── outer.rs              # Outer product
+│   └── solve.rs              # Linear system solving
+│
+├── python/                   # PyO3 bindings (thin wrappers)
+│   ├── mod.rs                # register_module, re-exports
+│   ├── pyarray.rs            # PyRumpyArray class, dunder methods
+│   ├── creation.rs           # zeros, ones, arange, linspace, eye, full
+│   ├── ufuncs.rs             # sqrt, sin, cos, add, multiply (math ops)
+│   ├── reductions.rs         # sum, mean, std, nansum, nanmean
+│   ├── shape.rs              # reshape, transpose, stack, split, flip
+│   ├── indexing.rs           # take, put, searchsorted, compress
+│   ├── random.rs             # Generator class, default_rng (submodule)
+│   ├── linalg.rs             # linalg submodule bindings
+│   └── fft.rs                # fft submodule bindings
+│
+└── random/                   # Random number generation (Rust)
+    ├── mod.rs                # Generator struct
+    └── pcg64.rs              # PCG64DXSM implementation
 
-src/ops/            # Operations (ufunc-style)
-  mod.rs            # RumpyArray methods, error types, re-exports
-  ufunc.rs          # Core: map_unary_op, map_binary_op, reduce_axis_op
-  registry.rs       # Type-specific optimized loops (SIMD fast paths)
-  statistics.rs     # histogram, cov, corrcoef, median, ptp, average
-  comparison.rs     # logical_and/or/xor/not, equal, isclose, etc.
-  bitwise.rs        # bitwise_and/or/xor/not, left_shift, right_shift
+tests/                        # pytest tests (compare against numpy)
+├── helpers.py                # assert_eq utility
+├── test_creation.py          # Array creation tests
+├── test_math.py              # Unary/binary math ops
+├── test_reductions.py        # sum, mean, std, etc.
+├── test_shape.py             # reshape, transpose, stack
+├── test_linalg.py            # Linear algebra
+├── test_random.py            # Random number generation
+└── ...
 
-src/python/         # PyO3 bindings
-  mod.rs            # Module-level functions (zeros, ones, arange)
-  pyarray.rs        # PyRumpyArray class, __add__, reductions
-
-tests/              # pytest tests
-  helpers.py        # assert_eq utility
-  test_*.py         # Test files
-
-designs/            # Architecture docs (why)
-plans/              # Work status (what's next)
+designs/                      # Architecture docs (why decisions were made)
+plans/                        # Work tracking (what's done, what's next)
 ```
+
+### Python Bindings Organization
+
+The `src/python/` directory is organized by category to minimize context needed when adding new functions:
+
+| File | Contains | Pattern |
+|------|----------|---------|
+| `creation.rs` | `zeros`, `ones`, `arange`, `linspace`, `eye`, `full`, `empty`, `*_like` | Thin wrapper calling `RumpyArray::*` |
+| `ufuncs.rs` | `sqrt`, `sin`, `add`, `multiply`, `maximum`, `arctan2` | Calls `inner.unary_op()` or `map_binary_op` |
+| `reductions.rs` | `sum`, `mean`, `std`, `nansum`, `argmax` | Calls `inner.reduce_*` methods |
+| `shape.rs` | `reshape`, `transpose`, `stack`, `split`, `flip` | Shape manipulation wrappers |
+| `indexing.rs` | `take`, `put`, `searchsorted`, `where` | Index-based operations |
+| `pyarray.rs` | `PyRumpyArray` class, `__add__`, `__getitem__` | Array methods, not module functions |
+
+To add a new function: find the right category file, add the `#[pyfunction]`, then register in `mod.rs`.
 
 ## Before Starting Work
 

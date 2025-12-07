@@ -1,7 +1,12 @@
+pub mod creation;
 pub mod fft;
+pub mod indexing;
 pub mod linalg;
 pub mod pyarray;
 pub mod random;
+pub mod reductions;
+pub mod shape;
+pub mod ufuncs;
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
