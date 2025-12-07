@@ -550,10 +550,71 @@ If working alone, prioritize by user impact:
 ## Validation Checklist
 
 Before marking stream complete:
-- [ ] All functions implemented
-- [ ] Tests compare against NumPy
-- [ ] Tests cover multiple dtypes
-- [ ] Tests cover edge cases (empty, NaN, broadcasting)
-- [ ] `cargo clippy` passes
-- [ ] `pytest tests/ -v` passes
-- [ ] No conflicts with main branch
+- [x] All functions implemented
+- [x] Tests compare against NumPy
+- [x] Tests cover multiple dtypes
+- [x] Tests cover edge cases (empty, NaN, broadcasting)
+- [x] `cargo clippy` passes
+- [x] `pytest tests/ -v` passes (2178 tests)
+- [x] No conflicts with main branch
+
+---
+
+## Code Quality Issues
+
+Post-implementation cleanup opportunities identified during review.
+
+### 1. Large Files
+
+| File | Lines | Issue |
+|------|-------|-------|
+| `src/python/mod.rs` | 3433 | All Python bindings in one file |
+| `src/ops/mod.rs` | 2405 | Many array methods mixed with module setup |
+| `src/array/mod.rs` | 2321 | Core array + creation + manipulation |
+
+**Potential refactoring:**
+- [ ] Split `src/python/mod.rs` by category (creation, math, shape, etc.)
+- [ ] Extract array methods from `src/ops/mod.rs` into focused submodules
+- [ ] Consider `src/array/creation.rs` for array factory functions
+
+**Trade-off:** More files vs. easier navigation. Current structure works but may become unwieldy.
+
+### 2. Duplicate Test Files
+
+- `tests/test_statistics.py` - Stream 7 (median, average, ptp, histogram, cov, corrcoef)
+- `tests/test_stats.py` - var, std, argmin, argmax, sort, unique
+
+**Action:**
+- [ ] Consolidate into `test_statistics.py` or rename to clarify scope
+
+### 3. Open TODOs in Code
+
+| Location | TODO |
+|----------|------|
+| `src/array/mod.rs:1055` | dtype promotion for concatenate |
+| `src/python/mod.rs:312` | dtype conversion in astype |
+| `src/python/pyarray.rs:1603` | scalar op elision |
+| `src/python/linalg.rs:30` | full_matrices support in SVD |
+
+**Priority:**
+- [ ] dtype promotion - affects correctness when concatenating mixed types
+- [ ] full_matrices SVD - NumPy parity gap
+- [ ] Others are optimizations, lower priority
+
+### 4. Deprecation Warnings
+
+Functions that NumPy has deprecated:
+- `row_stack` - NumPy says use `vstack`
+- `in1d` - NumPy says use `isin`
+
+**Action:**
+- [ ] Add deprecation warnings to match NumPy behavior
+- [ ] Or remove and document as intentional deviation
+
+### 5. Integer dtype behavior
+
+`deg2rad`/`radians` returns 0 for integer inputs (integer multiplication truncates).
+NumPy promotes to float64.
+
+**Action:**
+- [ ] Consider auto-promoting integer inputs to float64 for angular functions
