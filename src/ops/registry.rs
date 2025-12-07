@@ -548,6 +548,20 @@ fn init_default_loops() -> UFuncRegistry {
             register_strided_unary!($reg, UnaryOp::Arcsin, $kind, $T, |v: $T| v.asin());
             register_strided_unary!($reg, UnaryOp::Arccos, $kind, $T, |v: $T| v.acos());
             register_strided_unary!($reg, UnaryOp::Arctan, $kind, $T, |v: $T| v.atan());
+
+            register_strided_unary!($reg, UnaryOp::Square, $kind, $T, |v: $T| v * v);
+            register_strided_unary!($reg, UnaryOp::Positive, $kind, $T, |v: $T| v);
+            register_strided_unary!($reg, UnaryOp::Reciprocal, $kind, $T, |v: $T| 1.0 / v);
+            register_strided_unary!($reg, UnaryOp::Exp2, $kind, $T, |v: $T| (2.0 as $T).powf(v));
+            register_strided_unary!($reg, UnaryOp::Expm1, $kind, $T, |v: $T| v.exp_m1());
+            register_strided_unary!($reg, UnaryOp::Log1p, $kind, $T, |v: $T| v.ln_1p());
+            register_strided_unary!($reg, UnaryOp::Cbrt, $kind, $T, |v: $T| v.cbrt());
+            register_strided_unary!($reg, UnaryOp::Trunc, $kind, $T, |v: $T| v.trunc());
+            register_strided_unary!($reg, UnaryOp::Rint, $kind, $T, |v: $T| v.round());
+            register_strided_unary!($reg, UnaryOp::Arcsinh, $kind, $T, |v: $T| v.asinh());
+            register_strided_unary!($reg, UnaryOp::Arccosh, $kind, $T, |v: $T| v.acosh());
+            register_strided_unary!($reg, UnaryOp::Arctanh, $kind, $T, |v: $T| v.atanh());
+            register_strided_unary!($reg, UnaryOp::Signbit, $kind, $T, |v: $T| if v.is_sign_negative() { 1.0 } else { 0.0 });
         };
     }
     register_float_unary!(reg, DTypeKind::Float64, f64);
@@ -589,6 +603,20 @@ fn init_default_loops() -> UFuncRegistry {
     register_f16_unary!(reg, UnaryOp::Arcsin, |v: f32| v.asin());
     register_f16_unary!(reg, UnaryOp::Arccos, |v: f32| v.acos());
     register_f16_unary!(reg, UnaryOp::Arctan, |v: f32| v.atan());
+
+    register_f16_unary!(reg, UnaryOp::Square, |v: f32| v * v);
+    register_f16_unary!(reg, UnaryOp::Positive, |v: f32| v);
+    register_f16_unary!(reg, UnaryOp::Reciprocal, |v: f32| 1.0 / v);
+    register_f16_unary!(reg, UnaryOp::Exp2, |v: f32| 2.0f32.powf(v));
+    register_f16_unary!(reg, UnaryOp::Expm1, |v: f32| v.exp_m1());
+    register_f16_unary!(reg, UnaryOp::Log1p, |v: f32| v.ln_1p());
+    register_f16_unary!(reg, UnaryOp::Cbrt, |v: f32| v.cbrt());
+    register_f16_unary!(reg, UnaryOp::Trunc, |v: f32| v.trunc());
+    register_f16_unary!(reg, UnaryOp::Rint, |v: f32| v.round());
+    register_f16_unary!(reg, UnaryOp::Arcsinh, |v: f32| v.asinh());
+    register_f16_unary!(reg, UnaryOp::Arccosh, |v: f32| v.acosh());
+    register_f16_unary!(reg, UnaryOp::Arctanh, |v: f32| v.atanh());
+    register_f16_unary!(reg, UnaryOp::Signbit, |v: f32| if v.is_sign_negative() { 1.0 } else { 0.0 });
 
     // Signed integer unary ops
     macro_rules! register_signed_int_unary {

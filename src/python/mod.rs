@@ -487,6 +487,88 @@ pub fn abs(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     apply_unary(x, |v| v.abs(), |a| a.abs())
 }
 
+#[pyfunction]
+pub fn square(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v * v, |a| a.square())
+}
+
+#[pyfunction]
+pub fn positive(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v, |a| a.positive())
+}
+
+#[pyfunction]
+pub fn negative(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| -v, |a| a.neg())
+}
+
+#[pyfunction]
+pub fn reciprocal(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| 1.0 / v, |a| a.reciprocal())
+}
+
+#[pyfunction]
+pub fn exp2(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| 2.0_f64.powf(v), |a| a.exp2())
+}
+
+#[pyfunction]
+pub fn expm1(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.exp_m1(), |a| a.expm1())
+}
+
+#[pyfunction]
+pub fn log1p(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.ln_1p(), |a| a.log1p())
+}
+
+#[pyfunction]
+pub fn cbrt(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.cbrt(), |a| a.cbrt())
+}
+
+#[pyfunction]
+pub fn trunc(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.trunc(), |a| a.trunc())
+}
+
+#[pyfunction]
+pub fn rint(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.round(), |a| a.rint())
+}
+
+#[pyfunction]
+pub fn arcsinh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.asinh(), |a| a.arcsinh())
+}
+
+#[pyfunction]
+pub fn arccosh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.acosh(), |a| a.arccosh())
+}
+
+#[pyfunction]
+pub fn arctanh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| v.atanh(), |a| a.arctanh())
+}
+
+#[pyfunction]
+pub fn signbit(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v.is_sign_negative() { 1.0 } else { 0.0 }, |a| a.signbit())
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, nan=None, posinf=None, neginf=None))]
+pub fn nan_to_num(
+    x: &PyRumpyArray,
+    nan: Option<f64>,
+    posinf: Option<f64>,
+    neginf: Option<f64>,
+) -> PyRumpyArray {
+    let nan_val = nan.unwrap_or(0.0);
+    PyRumpyArray::new(x.inner.nan_to_num(nan_val, posinf, neginf))
+}
+
 // Element-wise binary functions that accept array or scalar
 
 /// Apply a binary ufunc to either array or scalar inputs.
@@ -1341,6 +1423,22 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(isinf, m)?)?;
     m.add_function(wrap_pyfunction!(isfinite, m)?)?;
     m.add_function(wrap_pyfunction!(abs, m)?)?;
+
+    m.add_function(wrap_pyfunction!(square, m)?)?;
+    m.add_function(wrap_pyfunction!(positive, m)?)?;
+    m.add_function(wrap_pyfunction!(negative, m)?)?;
+    m.add_function(wrap_pyfunction!(reciprocal, m)?)?;
+    m.add_function(wrap_pyfunction!(exp2, m)?)?;
+    m.add_function(wrap_pyfunction!(expm1, m)?)?;
+    m.add_function(wrap_pyfunction!(log1p, m)?)?;
+    m.add_function(wrap_pyfunction!(cbrt, m)?)?;
+    m.add_function(wrap_pyfunction!(trunc, m)?)?;
+    m.add_function(wrap_pyfunction!(rint, m)?)?;
+    m.add_function(wrap_pyfunction!(arcsinh, m)?)?;
+    m.add_function(wrap_pyfunction!(arccosh, m)?)?;
+    m.add_function(wrap_pyfunction!(arctanh, m)?)?;
+    m.add_function(wrap_pyfunction!(signbit, m)?)?;
+    m.add_function(wrap_pyfunction!(nan_to_num, m)?)?;
     m.add_function(wrap_pyfunction!(maximum, m)?)?;
     m.add_function(wrap_pyfunction!(minimum, m)?)?;
     m.add_function(wrap_pyfunction!(add, m)?)?;

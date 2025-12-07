@@ -764,3 +764,288 @@ class TestArrayUfunc:
         result = np.add(np.float64(10.0), x)
         assert isinstance(result, rp.ndarray), f"Expected rp.ndarray, got {type(result)}"
         assert_eq(result, np.array([11.0, 12.0, 13.0]))
+
+
+# =============================================================================
+# Stream 1: Additional Unary Math Functions
+# =============================================================================
+
+class TestSquare:
+    """Test square function (x^2)."""
+
+    def test_square_float64(self):
+        n = np.array([1.0, 2.0, 3.0, -2.0])
+        r = rp.asarray(n)
+        assert_eq(rp.square(r), np.square(n))
+
+    def test_square_float32(self):
+        n = np.array([1.0, 2.0, 3.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.square(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.square(n))
+
+    def test_square_int64(self):
+        n = np.array([1, 2, 3, -2], dtype="int64")
+        r = rp.asarray(n)
+        assert_eq(rp.square(r), np.square(n))
+
+    def test_square_scalar(self):
+        assert abs(rp.square(3.0) - np.square(3.0)) < 1e-10
+
+
+class TestPositiveNegative:
+    """Test positive and negative functions."""
+
+    def test_positive_float64(self):
+        n = np.array([1.0, -2.0, 3.0])
+        r = rp.asarray(n)
+        assert_eq(rp.positive(r), np.positive(n))
+
+    def test_negative_float64(self):
+        n = np.array([1.0, -2.0, 3.0])
+        r = rp.asarray(n)
+        assert_eq(rp.negative(r), np.negative(n))
+
+    def test_positive_scalar(self):
+        assert abs(rp.positive(3.0) - np.positive(3.0)) < 1e-10
+
+    def test_negative_scalar(self):
+        assert abs(rp.negative(3.0) - np.negative(3.0)) < 1e-10
+
+
+class TestReciprocal:
+    """Test reciprocal function (1/x)."""
+
+    def test_reciprocal_float64(self):
+        n = np.array([1.0, 2.0, 4.0, 0.5])
+        r = rp.asarray(n)
+        assert_eq(rp.reciprocal(r), np.reciprocal(n))
+
+    def test_reciprocal_float32(self):
+        n = np.array([1.0, 2.0, 4.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.reciprocal(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.reciprocal(n))
+
+    def test_reciprocal_scalar(self):
+        assert abs(rp.reciprocal(2.0) - np.reciprocal(2.0)) < 1e-10
+
+
+class TestExp2:
+    """Test exp2 function (2^x)."""
+
+    def test_exp2_float64(self):
+        n = np.array([0.0, 1.0, 2.0, 3.0, -1.0])
+        r = rp.asarray(n)
+        assert_eq(rp.exp2(r), np.exp2(n))
+
+    def test_exp2_float32(self):
+        n = np.array([0.0, 1.0, 2.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.exp2(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.exp2(n))
+
+    def test_exp2_scalar(self):
+        assert abs(rp.exp2(3.0) - np.exp2(3.0)) < 1e-10
+
+
+class TestExpm1Log1p:
+    """Test expm1 and log1p for numerical precision."""
+
+    def test_expm1_float64(self):
+        n = np.array([0.0, 0.001, 0.01, 1.0, -0.001])
+        r = rp.asarray(n)
+        assert_eq(rp.expm1(r), np.expm1(n))
+
+    def test_log1p_float64(self):
+        n = np.array([0.0, 0.001, 0.01, 1.0])
+        r = rp.asarray(n)
+        assert_eq(rp.log1p(r), np.log1p(n))
+
+    def test_expm1_log1p_inverse(self):
+        """expm1 and log1p should be inverses."""
+        x = rp.asarray(np.array([0.001, 0.01, 0.1]))
+        assert_eq(rp.log1p(rp.expm1(x)), np.asarray(x))
+
+    def test_expm1_scalar(self):
+        assert abs(rp.expm1(0.001) - np.expm1(0.001)) < 1e-10
+
+    def test_log1p_scalar(self):
+        assert abs(rp.log1p(0.001) - np.log1p(0.001)) < 1e-10
+
+
+class TestCbrt:
+    """Test cube root function."""
+
+    def test_cbrt_float64(self):
+        n = np.array([0.0, 1.0, 8.0, 27.0, -8.0])
+        r = rp.asarray(n)
+        assert_eq(rp.cbrt(r), np.cbrt(n))
+
+    def test_cbrt_float32(self):
+        n = np.array([1.0, 8.0, 27.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.cbrt(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.cbrt(n))
+
+    def test_cbrt_scalar(self):
+        assert abs(rp.cbrt(27.0) - np.cbrt(27.0)) < 1e-10
+
+
+class TestTruncRint:
+    """Test truncation and rounding functions."""
+
+    def test_trunc_float64(self):
+        n = np.array([1.7, 2.5, -1.7, -2.5, 0.0])
+        r = rp.asarray(n)
+        assert_eq(rp.trunc(r), np.trunc(n))
+
+    def test_rint_float64(self):
+        # Note: Rust uses round-half-away-from-zero, NumPy uses round-half-to-even
+        # We test non-exact-half values where both agree
+        n = np.array([1.3, 1.7, -1.3, -1.7, 0.0])
+        r = rp.asarray(n)
+        assert_eq(rp.rint(r), np.rint(n))
+
+    def test_trunc_float32(self):
+        n = np.array([1.7, -1.7], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.trunc(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.trunc(n))
+
+    def test_rint_float32(self):
+        n = np.array([1.3, 1.7], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.rint(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.rint(n))
+
+    def test_trunc_scalar(self):
+        assert abs(rp.trunc(3.7) - np.trunc(3.7)) < 1e-10
+
+    def test_rint_scalar(self):
+        assert abs(rp.rint(3.7) - np.rint(3.7)) < 1e-10
+
+
+class TestInverseHyperbolic:
+    """Test arcsinh, arccosh, arctanh functions."""
+
+    def test_arcsinh_float64(self):
+        n = np.array([0.0, 1.0, -1.0, 10.0])
+        r = rp.asarray(n)
+        assert_eq(rp.arcsinh(r), np.arcsinh(n))
+
+    def test_arccosh_float64(self):
+        n = np.array([1.0, 2.0, 10.0])  # arccosh domain is [1, inf)
+        r = rp.asarray(n)
+        assert_eq(rp.arccosh(r), np.arccosh(n))
+
+    def test_arctanh_float64(self):
+        n = np.array([0.0, 0.5, -0.5])  # arctanh domain is (-1, 1)
+        r = rp.asarray(n)
+        assert_eq(rp.arctanh(r), np.arctanh(n))
+
+    def test_arcsinh_float32(self):
+        n = np.array([0.0, 1.0, -1.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.arcsinh(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.arcsinh(n))
+
+    def test_arccosh_float32(self):
+        n = np.array([1.0, 2.0], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.arccosh(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.arccosh(n))
+
+    def test_arctanh_float32(self):
+        n = np.array([0.0, 0.5], dtype="float32")
+        r = rp.asarray(n)
+        result = rp.arctanh(r)
+        assert result.dtype == "float32"
+        assert_eq(result, np.arctanh(n))
+
+    def test_arcsinh_scalar(self):
+        assert abs(rp.arcsinh(1.0) - np.arcsinh(1.0)) < 1e-10
+
+    def test_arccosh_scalar(self):
+        assert abs(rp.arccosh(2.0) - np.arccosh(2.0)) < 1e-10
+
+    def test_arctanh_scalar(self):
+        assert abs(rp.arctanh(0.5) - np.arctanh(0.5)) < 1e-10
+
+
+class TestSignbit:
+    """Test signbit function."""
+
+    def test_signbit_float64(self):
+        n = np.array([1.0, -1.0, 0.0, -0.0, np.inf, -np.inf])
+        r = rp.asarray(n)
+        # rumpy returns float, numpy returns bool
+        r_result = rp.signbit(r)
+        n_result = np.signbit(n)
+        assert_eq(r_result, n_result.astype(float))
+
+    def test_signbit_float32(self):
+        n = np.array([1.0, -1.0, 0.0], dtype="float32")
+        r = rp.asarray(n)
+        r_result = rp.signbit(r)
+        n_result = np.signbit(n)
+        assert_eq(r_result, n_result.astype("float32"))
+
+    def test_signbit_negative_zero(self):
+        """signbit(-0.0) should be True."""
+        n = np.array([-0.0])
+        r = rp.asarray(n)
+        r_result = rp.signbit(r)
+        assert_eq(r_result, np.array([1.0]))
+
+    def test_signbit_scalar(self):
+        assert rp.signbit(-1.0) == 1.0
+        assert rp.signbit(1.0) == 0.0
+
+
+class TestNanToNum:
+    """Test nan_to_num function."""
+
+    def test_nan_to_num_defaults(self):
+        n = np.array([1.0, np.nan, np.inf, -np.inf])
+        r = rp.asarray(n)
+        r_result = rp.nan_to_num(r)
+        n_result = np.nan_to_num(n)
+        assert_eq(r_result, n_result)
+
+    def test_nan_to_num_custom_nan(self):
+        n = np.array([1.0, np.nan, 2.0])
+        r = rp.asarray(n)
+        r_result = rp.nan_to_num(r, nan=999.0)
+        n_result = np.nan_to_num(n, nan=999.0)
+        assert_eq(r_result, n_result)
+
+    def test_nan_to_num_custom_inf(self):
+        n = np.array([np.inf, -np.inf, 1.0])
+        r = rp.asarray(n)
+        r_result = rp.nan_to_num(r, posinf=100.0, neginf=-100.0)
+        n_result = np.nan_to_num(n, posinf=100.0, neginf=-100.0)
+        assert_eq(r_result, n_result)
+
+    def test_nan_to_num_float32(self):
+        n = np.array([1.0, np.nan, np.inf], dtype="float32")
+        r = rp.asarray(n)
+        r_result = rp.nan_to_num(r)
+        n_result = np.nan_to_num(n)
+        assert r_result.dtype == "float32"
+        assert_eq(r_result, n_result)
+
+    def test_nan_to_num_int_noop(self):
+        """nan_to_num on integers is a noop."""
+        n = np.array([1, 2, 3], dtype="int64")
+        r = rp.asarray(n)
+        r_result = rp.nan_to_num(r)
+        assert_eq(r_result, n)

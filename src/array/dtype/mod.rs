@@ -74,6 +74,19 @@ pub enum UnaryOp {
     Isnan,
     Isinf,
     Isfinite,
+    Square,
+    Positive,
+    Reciprocal,
+    Exp2,
+    Expm1,
+    Log1p,
+    Cbrt,
+    Trunc,
+    Rint,
+    Arcsinh,
+    Arccosh,
+    Arctanh,
+    Signbit,
 }
 
 /// Binary operations.

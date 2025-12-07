@@ -67,6 +67,20 @@ macro_rules! impl_float_dtype {
                     UnaryOp::Isnan => if v.is_nan() { 1.0 } else { 0.0 },
                     UnaryOp::Isinf => if v.is_infinite() { 1.0 } else { 0.0 },
                     UnaryOp::Isfinite => if v.is_finite() { 1.0 } else { 0.0 },
+
+                    UnaryOp::Square => v * v,
+                    UnaryOp::Positive => v,
+                    UnaryOp::Reciprocal => 1.0 / v,
+                    UnaryOp::Exp2 => (2.0 as $T).powf(v),
+                    UnaryOp::Expm1 => v.exp_m1(),
+                    UnaryOp::Log1p => v.ln_1p(),
+                    UnaryOp::Cbrt => v.cbrt(),
+                    UnaryOp::Trunc => v.trunc(),
+                    UnaryOp::Rint => v.round(),
+                    UnaryOp::Arcsinh => v.asinh(),
+                    UnaryOp::Arccosh => v.acosh(),
+                    UnaryOp::Arctanh => v.atanh(),
+                    UnaryOp::Signbit => if v.is_sign_negative() { 1.0 } else { 0.0 },
                 };
                 Self::write(out, idx, result);
             }
@@ -219,6 +233,20 @@ macro_rules! impl_signed_int_dtype {
                     UnaryOp::Isnan => 0,
                     UnaryOp::Isinf => 0,
                     UnaryOp::Isfinite => 1,
+
+                    UnaryOp::Square => v.wrapping_mul(v),
+                    UnaryOp::Positive => v,
+                    UnaryOp::Reciprocal => if v != 0 { 1 / v } else { 0 },
+                    UnaryOp::Exp2 => 2f64.powf(v as f64) as $T,
+                    UnaryOp::Expm1 => (v as f64).exp_m1() as $T,
+                    UnaryOp::Log1p => (v as f64).ln_1p() as $T,
+                    UnaryOp::Cbrt => (v as f64).cbrt() as $T,
+                    UnaryOp::Trunc => v,
+                    UnaryOp::Rint => v,
+                    UnaryOp::Arcsinh => (v as f64).asinh() as $T,
+                    UnaryOp::Arccosh => (v as f64).acosh() as $T,
+                    UnaryOp::Arctanh => (v as f64).atanh() as $T,
+                    UnaryOp::Signbit => if v < 0 { 1 } else { 0 },
                 };
                 Self::write(out, idx, result);
             }
@@ -367,6 +395,20 @@ macro_rules! impl_unsigned_int_dtype {
                     UnaryOp::Isnan => 0,
                     UnaryOp::Isinf => 0,
                     UnaryOp::Isfinite => 1,
+
+                    UnaryOp::Square => v.wrapping_mul(v),
+                    UnaryOp::Positive => v,
+                    UnaryOp::Reciprocal => if v != 0 { 1 / v } else { 0 },
+                    UnaryOp::Exp2 => 2f64.powf(v as f64) as $T,
+                    UnaryOp::Expm1 => (v as f64).exp_m1() as $T,
+                    UnaryOp::Log1p => (v as f64).ln_1p() as $T,
+                    UnaryOp::Cbrt => (v as f64).cbrt() as $T,
+                    UnaryOp::Trunc => v,
+                    UnaryOp::Rint => v,
+                    UnaryOp::Arcsinh => (v as f64).asinh() as $T,
+                    UnaryOp::Arccosh => (v as f64).acosh() as $T,
+                    UnaryOp::Arctanh => (v as f64).atanh() as $T,
+                    UnaryOp::Signbit => 0,  // Unsigned types never have sign bit set
                 };
                 Self::write(out, idx, result);
             }

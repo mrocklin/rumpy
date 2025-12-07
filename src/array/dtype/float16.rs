@@ -65,6 +65,20 @@ impl DTypeOps for Float16Ops {
             UnaryOp::Isnan => if v.is_nan() { 1.0 } else { 0.0 },
             UnaryOp::Isinf => if v.is_infinite() { 1.0 } else { 0.0 },
             UnaryOp::Isfinite => if v.is_finite() { 1.0 } else { 0.0 },
+
+            UnaryOp::Square => v * v,
+            UnaryOp::Positive => v,
+            UnaryOp::Reciprocal => 1.0 / v,
+            UnaryOp::Exp2 => 2.0f32.powf(v),
+            UnaryOp::Expm1 => v.exp_m1(),
+            UnaryOp::Log1p => v.ln_1p(),
+            UnaryOp::Cbrt => v.cbrt(),
+            UnaryOp::Trunc => v.trunc(),
+            UnaryOp::Rint => v.round(),
+            UnaryOp::Arcsinh => v.asinh(),
+            UnaryOp::Arccosh => v.acosh(),
+            UnaryOp::Arctanh => v.atanh(),
+            UnaryOp::Signbit => if v.is_sign_negative() { 1.0 } else { 0.0 },
         };
         Self::write(out, idx, f16::from_f32(result));
     }

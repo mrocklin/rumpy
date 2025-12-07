@@ -178,6 +178,69 @@ impl DTypeOps for Complex128Ops {
             UnaryOp::Isnan => (if r.is_nan() || i.is_nan() { 1.0 } else { 0.0 }, 0.0),
             UnaryOp::Isinf => (if r.is_infinite() || i.is_infinite() { 1.0 } else { 0.0 }, 0.0),
             UnaryOp::Isfinite => (if r.is_finite() && i.is_finite() { 1.0 } else { 0.0 }, 0.0),
+
+            UnaryOp::Square => (r * r - i * i, 2.0 * r * i),
+            UnaryOp::Positive => (r, i),
+            UnaryOp::Reciprocal => {
+                let denom = r * r + i * i;
+                (r / denom, -i / denom)
+            }
+            UnaryOp::Exp2 => {
+                // 2^(a+bi) = 2^a * (cos(b*ln2) + i*sin(b*ln2))
+                let ln2 = 2.0_f64.ln();
+                let exp_r = 2.0_f64.powf(r);
+                (exp_r * (i * ln2).cos(), exp_r * (i * ln2).sin())
+            }
+            UnaryOp::Expm1 => {
+                // expm1(z) = exp(z) - 1
+                let exp_r = r.exp();
+                (exp_r * i.cos() - 1.0, exp_r * i.sin())
+            }
+            UnaryOp::Log1p => {
+                // log1p(z) = log(1+z)
+                let nr = 1.0 + r;
+                let mag = (nr * nr + i * i).sqrt();
+                (mag.ln(), i.atan2(nr))
+            }
+            UnaryOp::Cbrt => {
+                // cbrt(z) = |z|^(1/3) * exp(i*arg(z)/3)
+                let mag = (r * r + i * i).sqrt().cbrt();
+                let arg = i.atan2(r) / 3.0;
+                (mag * arg.cos(), mag * arg.sin())
+            }
+            UnaryOp::Trunc => (r.trunc(), i.trunc()),
+            UnaryOp::Rint => (r.round(), i.round()),
+            UnaryOp::Arcsinh => {
+                // arcsinh(z) = log(z + sqrt(z^2 + 1))
+                let z2_plus_1 = (r * r - i * i + 1.0, 2.0 * r * i);
+                let mag = (z2_plus_1.0 * z2_plus_1.0 + z2_plus_1.1 * z2_plus_1.1).sqrt();
+                let sqrt_r = ((mag + z2_plus_1.0) / 2.0).sqrt();
+                let sqrt_i = z2_plus_1.1.signum() * ((mag - z2_plus_1.0) / 2.0).sqrt();
+                let sum = (r + sqrt_r, i + sqrt_i);
+                let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
+                (log_mag.ln(), sum.1.atan2(sum.0))
+            }
+            UnaryOp::Arccosh => {
+                // arccosh(z) = log(z + sqrt(z^2 - 1))
+                let z2_minus_1 = (r * r - i * i - 1.0, 2.0 * r * i);
+                let mag = (z2_minus_1.0 * z2_minus_1.0 + z2_minus_1.1 * z2_minus_1.1).sqrt();
+                let sqrt_r = ((mag + z2_minus_1.0) / 2.0).sqrt();
+                let sqrt_i = z2_minus_1.1.signum() * ((mag - z2_minus_1.0) / 2.0).sqrt();
+                let sum = (r + sqrt_r, i + sqrt_i);
+                let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
+                (log_mag.ln(), sum.1.atan2(sum.0))
+            }
+            UnaryOp::Arctanh => {
+                // arctanh(z) = 0.5 * log((1+z)/(1-z))
+                let num = (1.0 + r, i);
+                let den = (1.0 - r, -i);
+                let den_mag2 = den.0 * den.0 + den.1 * den.1;
+                let div_r = (num.0 * den.0 + num.1 * den.1) / den_mag2;
+                let div_i = (num.1 * den.0 - num.0 * den.1) / den_mag2;
+                let log_mag = (div_r * div_r + div_i * div_i).sqrt();
+                (0.5 * log_mag.ln(), 0.5 * div_i.atan2(div_r))
+            }
+            UnaryOp::Signbit => (if r.is_sign_negative() { 1.0 } else { 0.0 }, 0.0),
         };
         Self::write(out, idx, out_r, out_i);
     }
