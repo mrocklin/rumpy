@@ -15,432 +15,6 @@ pub use pyarray::{parse_dtype, parse_shape, PyRumpyArray};
 
 use crate::array::{DType, RumpyArray};
 
-// Math ufuncs (module-level functions like np.sqrt, np.exp, etc.)
-// These accept either array or scalar, returning the same type.
-
-/// Result type for ufuncs that can return scalar or array.
-pub enum UnaryResult {
-    Scalar(f64),
-    Array(PyRumpyArray),
-}
-
-impl<'py> IntoPyObject<'py> for UnaryResult {
-    type Target = PyAny;
-    type Output = Bound<'py, PyAny>;
-    type Error = PyErr;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        match self {
-            UnaryResult::Scalar(v) => Ok(v.into_pyobject(py)?.into_any()),
-            UnaryResult::Array(arr) => Ok(arr.into_pyobject(py)?.into_any()),
-        }
-    }
-}
-
-/// Apply a unary ufunc to either scalar or array input.
-fn apply_unary<F, G>(x: &Bound<'_, PyAny>, scalar_op: F, array_op: G) -> PyResult<UnaryResult>
-where
-    F: FnOnce(f64) -> f64,
-    G: FnOnce(&RumpyArray) -> Result<RumpyArray, crate::ops::UnaryOpError>,
-{
-    // Try array first
-    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
-        return array_op(&arr.inner)
-            .map(|a| UnaryResult::Array(PyRumpyArray::new(a)))
-            .map_err(|_| pyo3::exceptions::PyTypeError::new_err("ufunc not supported for this dtype"));
-    }
-    // Try scalar
-    if let Ok(scalar) = x.extract::<f64>() {
-        return Ok(UnaryResult::Scalar(scalar_op(scalar)));
-    }
-    Err(pyo3::exceptions::PyTypeError::new_err(
-        "input must be ndarray or number",
-    ))
-}
-
-#[pyfunction]
-pub fn sqrt(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.sqrt(), |a| a.sqrt())
-}
-
-#[pyfunction]
-pub fn exp(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.exp(), |a| a.exp())
-}
-
-#[pyfunction]
-pub fn log(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.ln(), |a| a.log())
-}
-
-#[pyfunction]
-pub fn sin(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.sin(), |a| a.sin())
-}
-
-#[pyfunction]
-pub fn cos(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.cos(), |a| a.cos())
-}
-
-#[pyfunction]
-pub fn tan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.tan(), |a| a.tan())
-}
-
-#[pyfunction]
-pub fn floor(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.floor(), |a| a.floor())
-}
-
-#[pyfunction]
-pub fn ceil(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.ceil(), |a| a.ceil())
-}
-
-#[pyfunction]
-pub fn arcsin(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.asin(), |a| a.arcsin())
-}
-
-#[pyfunction]
-pub fn arccos(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.acos(), |a| a.arccos())
-}
-
-#[pyfunction]
-pub fn arctan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.atan(), |a| a.arctan())
-}
-
-#[pyfunction]
-pub fn log10(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.log10(), |a| a.log10())
-}
-
-#[pyfunction]
-pub fn log2(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.log2(), |a| a.log2())
-}
-
-#[pyfunction]
-pub fn sinh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.sinh(), |a| a.sinh())
-}
-
-#[pyfunction]
-pub fn cosh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.cosh(), |a| a.cosh())
-}
-
-#[pyfunction]
-pub fn tanh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.tanh(), |a| a.tanh())
-}
-
-#[pyfunction]
-pub fn sign(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| if v > 0.0 { 1.0 } else if v < 0.0 { -1.0 } else { 0.0 }, |a| a.sign())
-}
-
-#[pyfunction]
-pub fn isnan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| if v.is_nan() { 1.0 } else { 0.0 }, |a| a.isnan())
-}
-
-#[pyfunction]
-pub fn isinf(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| if v.is_infinite() { 1.0 } else { 0.0 }, |a| a.isinf())
-}
-
-#[pyfunction]
-pub fn isfinite(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| if v.is_finite() { 1.0 } else { 0.0 }, |a| a.isfinite())
-}
-
-#[pyfunction]
-pub fn abs(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.abs(), |a| a.abs())
-}
-
-#[pyfunction]
-pub fn square(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v * v, |a| a.square())
-}
-
-#[pyfunction]
-pub fn positive(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v, |a| a.positive())
-}
-
-#[pyfunction]
-pub fn negative(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| -v, |a| a.neg())
-}
-
-#[pyfunction]
-pub fn reciprocal(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| 1.0 / v, |a| a.reciprocal())
-}
-
-#[pyfunction]
-pub fn exp2(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| 2.0_f64.powf(v), |a| a.exp2())
-}
-
-#[pyfunction]
-pub fn expm1(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.exp_m1(), |a| a.expm1())
-}
-
-#[pyfunction]
-pub fn log1p(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.ln_1p(), |a| a.log1p())
-}
-
-#[pyfunction]
-pub fn cbrt(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.cbrt(), |a| a.cbrt())
-}
-
-#[pyfunction]
-pub fn trunc(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.trunc(), |a| a.trunc())
-}
-
-/// Alias for trunc - round toward zero.
-#[pyfunction]
-pub fn fix(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    trunc(x)
-}
-
-#[pyfunction]
-pub fn rint(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.round(), |a| a.rint())
-}
-
-#[pyfunction]
-pub fn arcsinh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.asinh(), |a| a.arcsinh())
-}
-
-#[pyfunction]
-pub fn arccosh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.acosh(), |a| a.arccosh())
-}
-
-#[pyfunction]
-pub fn arctanh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| v.atanh(), |a| a.arctanh())
-}
-
-#[pyfunction]
-pub fn signbit(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    apply_unary(x, |v| if v.is_sign_negative() { 1.0 } else { 0.0 }, |a| a.signbit())
-}
-
-#[pyfunction]
-#[pyo3(signature = (x, nan=None, posinf=None, neginf=None))]
-pub fn nan_to_num(
-    x: &PyRumpyArray,
-    nan: Option<f64>,
-    posinf: Option<f64>,
-    neginf: Option<f64>,
-) -> PyRumpyArray {
-    let nan_val = nan.unwrap_or(0.0);
-    PyRumpyArray::new(x.inner.nan_to_num(nan_val, posinf, neginf))
-}
-
-// Element-wise binary functions that accept array or scalar
-
-/// Apply a binary ufunc to either array or scalar inputs.
-fn apply_binary_ufunc(
-    x1: &Bound<'_, PyAny>,
-    x2: &Bound<'_, PyAny>,
-    op: crate::array::dtype::BinaryOp,
-) -> PyResult<PyRumpyArray> {
-    use crate::ops::BinaryOpError;
-
-    // Try array-array first
-    let arr1 = if let Ok(arr) = x1.extract::<PyRef<'_, PyRumpyArray>>() {
-        arr.inner.clone()
-    } else if let Ok(scalar) = x1.extract::<f64>() {
-        RumpyArray::full(vec![1], scalar, DType::float64())
-    } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
-            "operand must be ndarray or number",
-        ));
-    };
-
-    let arr2 = if let Ok(arr) = x2.extract::<PyRef<'_, PyRumpyArray>>() {
-        arr.inner.clone()
-    } else if let Ok(scalar) = x2.extract::<f64>() {
-        RumpyArray::full(vec![1], scalar, DType::float64())
-    } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
-            "operand must be ndarray or number",
-        ));
-    };
-
-    arr1.binary_op(&arr2, op)
-        .map(PyRumpyArray::new)
-        .map_err(|e| match e {
-            BinaryOpError::ShapeMismatch => {
-                pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes")
-            }
-            BinaryOpError::UnsupportedDtype => {
-                pyo3::exceptions::PyTypeError::new_err("operation not supported for these dtypes")
-            }
-        })
-}
-
-#[pyfunction]
-pub fn maximum(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Maximum)
-}
-
-#[pyfunction]
-pub fn minimum(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Minimum)
-}
-
-#[pyfunction]
-pub fn add(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Add)
-}
-
-#[pyfunction]
-pub fn subtract(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Sub)
-}
-
-#[pyfunction]
-pub fn multiply(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Mul)
-}
-
-#[pyfunction]
-pub fn divide(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Div)
-}
-
-#[pyfunction]
-pub fn power(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Pow)
-}
-
-#[pyfunction]
-pub fn floor_divide(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::FloorDiv)
-}
-
-#[pyfunction]
-pub fn remainder(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Mod)
-}
-
-// Stream 2: Binary math operations
-
-#[pyfunction]
-pub fn arctan2(y: &Bound<'_, PyAny>, x: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(y, x, crate::array::dtype::BinaryOp::Arctan2)
-}
-
-#[pyfunction]
-pub fn hypot(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Hypot)
-}
-
-#[pyfunction]
-pub fn fmax(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::FMax)
-}
-
-#[pyfunction]
-pub fn fmin(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::FMin)
-}
-
-#[pyfunction]
-pub fn copysign(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Copysign)
-}
-
-#[pyfunction]
-pub fn logaddexp(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Logaddexp)
-}
-
-#[pyfunction]
-pub fn logaddexp2(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Logaddexp2)
-}
-
-#[pyfunction]
-pub fn nextafter(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
-    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Nextafter)
-}
-
-// deg2rad and rad2deg as module-level functions
-// These always return float64, even for integer inputs (like numpy)
-
-#[pyfunction]
-pub fn deg2rad(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    let deg_to_rad = std::f64::consts::PI / 180.0;
-    apply_unary(x, |v| v * deg_to_rad, |a| {
-        // Promote to float64 if integer (numpy behavior)
-        let arr = if a.dtype() != DType::float64() && a.dtype() != DType::float32() {
-            a.astype(DType::float64())
-        } else {
-            a.clone()
-        };
-        Ok(arr.scalar_op(deg_to_rad, crate::array::dtype::BinaryOp::Mul))
-    })
-}
-
-#[pyfunction]
-pub fn rad2deg(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    let rad_to_deg = 180.0 / std::f64::consts::PI;
-    apply_unary(x, |v| v * rad_to_deg, |a| {
-        // Promote to float64 if integer (numpy behavior)
-        let arr = if a.dtype() != DType::float64() && a.dtype() != DType::float32() {
-            a.astype(DType::float64())
-        } else {
-            a.clone()
-        };
-        Ok(arr.scalar_op(rad_to_deg, crate::array::dtype::BinaryOp::Mul))
-    })
-}
-
-/// Alias for deg2rad.
-#[pyfunction]
-pub fn radians(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    deg2rad(x)
-}
-
-/// Alias for rad2deg.
-#[pyfunction]
-pub fn degrees(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
-    rad2deg(x)
-}
-
-// Complex accessors
-
-#[pyfunction]
-pub fn real(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.real())
-}
-
-#[pyfunction]
-pub fn imag(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.imag())
-}
-
-#[pyfunction]
-pub fn conj(x: &PyRumpyArray) -> PyRumpyArray {
-    PyRumpyArray::new(x.inner.conj())
-}
-
 #[pyfunction]
 pub fn diagonal(x: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.diagonal())
@@ -2751,70 +2325,68 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(nanmax, m)?)?;
     m.add_function(wrap_pyfunction!(nanargmin, m)?)?;
     m.add_function(wrap_pyfunction!(nanargmax, m)?)?;
-    // Math ufuncs
-    m.add_function(wrap_pyfunction!(sqrt, m)?)?;
-    m.add_function(wrap_pyfunction!(exp, m)?)?;
-    m.add_function(wrap_pyfunction!(log, m)?)?;
-    m.add_function(wrap_pyfunction!(sin, m)?)?;
-    m.add_function(wrap_pyfunction!(cos, m)?)?;
-    m.add_function(wrap_pyfunction!(tan, m)?)?;
-    m.add_function(wrap_pyfunction!(floor, m)?)?;
-    m.add_function(wrap_pyfunction!(ceil, m)?)?;
-    m.add_function(wrap_pyfunction!(arcsin, m)?)?;
-    m.add_function(wrap_pyfunction!(arccos, m)?)?;
-    m.add_function(wrap_pyfunction!(arctan, m)?)?;
-    m.add_function(wrap_pyfunction!(log10, m)?)?;
-    m.add_function(wrap_pyfunction!(log2, m)?)?;
-    m.add_function(wrap_pyfunction!(sinh, m)?)?;
-    m.add_function(wrap_pyfunction!(cosh, m)?)?;
-    m.add_function(wrap_pyfunction!(tanh, m)?)?;
-    m.add_function(wrap_pyfunction!(sign, m)?)?;
-    m.add_function(wrap_pyfunction!(isnan, m)?)?;
-    m.add_function(wrap_pyfunction!(isinf, m)?)?;
-    m.add_function(wrap_pyfunction!(isfinite, m)?)?;
-    m.add_function(wrap_pyfunction!(abs, m)?)?;
-
-    m.add_function(wrap_pyfunction!(square, m)?)?;
-    m.add_function(wrap_pyfunction!(positive, m)?)?;
-    m.add_function(wrap_pyfunction!(negative, m)?)?;
-    m.add_function(wrap_pyfunction!(reciprocal, m)?)?;
-    m.add_function(wrap_pyfunction!(exp2, m)?)?;
-    m.add_function(wrap_pyfunction!(expm1, m)?)?;
-    m.add_function(wrap_pyfunction!(log1p, m)?)?;
-    m.add_function(wrap_pyfunction!(cbrt, m)?)?;
-    m.add_function(wrap_pyfunction!(trunc, m)?)?;
-    m.add_function(wrap_pyfunction!(fix, m)?)?;
-    m.add_function(wrap_pyfunction!(rint, m)?)?;
-    m.add_function(wrap_pyfunction!(arcsinh, m)?)?;
-    m.add_function(wrap_pyfunction!(arccosh, m)?)?;
-    m.add_function(wrap_pyfunction!(arctanh, m)?)?;
-    m.add_function(wrap_pyfunction!(signbit, m)?)?;
-    m.add_function(wrap_pyfunction!(nan_to_num, m)?)?;
-    m.add_function(wrap_pyfunction!(maximum, m)?)?;
-    m.add_function(wrap_pyfunction!(minimum, m)?)?;
-    m.add_function(wrap_pyfunction!(add, m)?)?;
-    m.add_function(wrap_pyfunction!(subtract, m)?)?;
-    m.add_function(wrap_pyfunction!(multiply, m)?)?;
-    m.add_function(wrap_pyfunction!(divide, m)?)?;
-    m.add_function(wrap_pyfunction!(power, m)?)?;
-    m.add_function(wrap_pyfunction!(floor_divide, m)?)?;
-    m.add_function(wrap_pyfunction!(remainder, m)?)?;
-    // Stream 2: Binary math operations
-    m.add_function(wrap_pyfunction!(arctan2, m)?)?;
-    m.add_function(wrap_pyfunction!(hypot, m)?)?;
-    m.add_function(wrap_pyfunction!(fmax, m)?)?;
-    m.add_function(wrap_pyfunction!(fmin, m)?)?;
-    m.add_function(wrap_pyfunction!(copysign, m)?)?;
-    m.add_function(wrap_pyfunction!(logaddexp, m)?)?;
-    m.add_function(wrap_pyfunction!(logaddexp2, m)?)?;
-    m.add_function(wrap_pyfunction!(nextafter, m)?)?;
-    m.add_function(wrap_pyfunction!(deg2rad, m)?)?;
-    m.add_function(wrap_pyfunction!(rad2deg, m)?)?;
-    m.add_function(wrap_pyfunction!(radians, m)?)?;
-    m.add_function(wrap_pyfunction!(degrees, m)?)?;
-    m.add_function(wrap_pyfunction!(real, m)?)?;
-    m.add_function(wrap_pyfunction!(imag, m)?)?;
-    m.add_function(wrap_pyfunction!(conj, m)?)?;
+    // Math ufuncs (from ufuncs module)
+    m.add_function(wrap_pyfunction!(ufuncs::sqrt, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::exp, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::log, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::sin, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::cos, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::tan, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::floor, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::ceil, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arcsin, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arccos, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arctan, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::log10, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::log2, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::cosh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::tanh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::sign, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isnan, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isinf, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isfinite, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::abs, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::square, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::positive, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::negative, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::reciprocal, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::exp2, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::expm1, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::log1p, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::cbrt, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::trunc, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::fix, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::rint, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arcsinh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arccosh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arctanh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::signbit, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::nan_to_num, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::maximum, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::minimum, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::add, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::subtract, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::multiply, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::divide, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::power, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::floor_divide, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::remainder, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::arctan2, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::hypot, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::fmax, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::fmin, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::copysign, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::logaddexp, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::logaddexp2, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::nextafter, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::deg2rad, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::rad2deg, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::radians, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::degrees, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::real, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::imag, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::conj, m)?)?;
     m.add_function(wrap_pyfunction!(diagonal, m)?)?;
     m.add_function(wrap_pyfunction!(count_nonzero, m)?)?;
     m.add_function(wrap_pyfunction!(swapaxes, m)?)?;
@@ -2826,35 +2398,35 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(diff, m)?)?;
     m.add_function(wrap_pyfunction!(all, m)?)?;
     m.add_function(wrap_pyfunction!(any, m)?)?;
-    m.add_function(wrap_pyfunction!(clip, m)?)?;
-    m.add_function(wrap_pyfunction!(round, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::clip, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::round, m)?)?;
     m.add_function(wrap_pyfunction!(cumsum, m)?)?;
     m.add_function(wrap_pyfunction!(cumprod, m)?)?;
     // Conditional
     m.add_function(wrap_pyfunction!(where_fn, m)?)?;
-    // Logical operations
-    m.add_function(wrap_pyfunction!(logical_and, m)?)?;
-    m.add_function(wrap_pyfunction!(logical_or, m)?)?;
-    m.add_function(wrap_pyfunction!(logical_xor, m)?)?;
-    m.add_function(wrap_pyfunction!(logical_not, m)?)?;
-    // Comparison operations
-    m.add_function(wrap_pyfunction!(equal, m)?)?;
-    m.add_function(wrap_pyfunction!(not_equal, m)?)?;
-    m.add_function(wrap_pyfunction!(less, m)?)?;
-    m.add_function(wrap_pyfunction!(less_equal, m)?)?;
-    m.add_function(wrap_pyfunction!(greater, m)?)?;
-    m.add_function(wrap_pyfunction!(greater_equal, m)?)?;
-    m.add_function(wrap_pyfunction!(isclose, m)?)?;
-    m.add_function(wrap_pyfunction!(allclose, m)?)?;
-    m.add_function(wrap_pyfunction!(array_equal, m)?)?;
-    // Bitwise operations
-    m.add_function(wrap_pyfunction!(bitwise_and, m)?)?;
-    m.add_function(wrap_pyfunction!(bitwise_or, m)?)?;
-    m.add_function(wrap_pyfunction!(bitwise_xor, m)?)?;
-    m.add_function(wrap_pyfunction!(bitwise_not, m)?)?;
-    m.add_function(wrap_pyfunction!(invert, m)?)?;
-    m.add_function(wrap_pyfunction!(left_shift, m)?)?;
-    m.add_function(wrap_pyfunction!(right_shift, m)?)?;
+    // Logical operations (from ufuncs module)
+    m.add_function(wrap_pyfunction!(ufuncs::logical_and, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::logical_or, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::logical_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::logical_not, m)?)?;
+    // Comparison operations (from ufuncs module)
+    m.add_function(wrap_pyfunction!(ufuncs::equal, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::not_equal, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::less, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::less_equal, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::greater, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::greater_equal, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isclose, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::allclose, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::array_equal, m)?)?;
+    // Bitwise operations (from ufuncs module)
+    m.add_function(wrap_pyfunction!(ufuncs::bitwise_and, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::bitwise_or, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::bitwise_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::bitwise_not, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::invert, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::left_shift, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::right_shift, m)?)?;
     // Shape manipulation
     m.add_function(wrap_pyfunction!(expand_dims, m)?)?;
     m.add_function(wrap_pyfunction!(squeeze, m)?)?;

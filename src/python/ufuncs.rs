@@ -466,45 +466,57 @@ pub fn logical_not(x: &PyRumpyArray) -> PyRumpyArray {
 }
 
 #[pyfunction]
-pub fn equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::equal(&x1.inner, &x2.inner)
+pub fn equal(x1: &Bound<'_, pyo3::PyAny>, x2: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    let a = super::shape::to_rumpy_array(x1)?;
+    let b = super::shape::to_rumpy_array(x2)?;
+    crate::ops::equal(&a, &b)
         .map(PyRumpyArray::new)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("shapes not broadcastable"))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 #[pyfunction]
-pub fn not_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::not_equal(&x1.inner, &x2.inner)
+pub fn not_equal(x1: &Bound<'_, pyo3::PyAny>, x2: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    let a = super::shape::to_rumpy_array(x1)?;
+    let b = super::shape::to_rumpy_array(x2)?;
+    crate::ops::not_equal(&a, &b)
         .map(PyRumpyArray::new)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("shapes not broadcastable"))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 #[pyfunction]
-pub fn less(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::less(&x1.inner, &x2.inner)
+pub fn less(x1: &Bound<'_, pyo3::PyAny>, x2: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    let a = super::shape::to_rumpy_array(x1)?;
+    let b = super::shape::to_rumpy_array(x2)?;
+    crate::ops::less(&a, &b)
         .map(PyRumpyArray::new)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("shapes not broadcastable"))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 #[pyfunction]
-pub fn less_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::less_equal(&x1.inner, &x2.inner)
+pub fn less_equal(x1: &Bound<'_, pyo3::PyAny>, x2: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    let a = super::shape::to_rumpy_array(x1)?;
+    let b = super::shape::to_rumpy_array(x2)?;
+    crate::ops::less_equal(&a, &b)
         .map(PyRumpyArray::new)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("shapes not broadcastable"))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 #[pyfunction]
-pub fn greater(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::greater(&x1.inner, &x2.inner)
+pub fn greater(x1: &Bound<'_, pyo3::PyAny>, x2: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    let a = super::shape::to_rumpy_array(x1)?;
+    let b = super::shape::to_rumpy_array(x2)?;
+    crate::ops::greater(&a, &b)
         .map(PyRumpyArray::new)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("shapes not broadcastable"))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 #[pyfunction]
-pub fn greater_equal(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyResult<PyRumpyArray> {
-    crate::ops::greater_equal(&x1.inner, &x2.inner)
+pub fn greater_equal(x1: &Bound<'_, pyo3::PyAny>, x2: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    let a = super::shape::to_rumpy_array(x1)?;
+    let b = super::shape::to_rumpy_array(x2)?;
+    crate::ops::greater_equal(&a, &b)
         .map(PyRumpyArray::new)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("shapes not broadcastable"))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands could not be broadcast together"))
 }
 
 #[pyfunction]
