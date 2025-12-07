@@ -290,6 +290,26 @@ fn init_default_loops() -> UFuncRegistry {
         };
     }
 
+    // Stream 2: Binary math ops (float-only)
+    macro_rules! register_stream2_binary {
+        ($reg:expr, $kind:expr, $T:ty) => {
+            register_strided_binary!($reg, BinaryOp::Arctan2, $kind, $T, |a: $T, b: $T| a.atan2(b));
+            register_strided_binary!($reg, BinaryOp::Hypot, $kind, $T, |a: $T, b: $T| a.hypot(b));
+            register_strided_binary!($reg, BinaryOp::Copysign, $kind, $T, |a: $T, b: $T| a.copysign(b));
+            register_strided_binary!($reg, BinaryOp::FMax, $kind, $T, |a: $T, b: $T| if b.is_nan() { a } else if a.is_nan() { b } else { a.max(b) });
+            register_strided_binary!($reg, BinaryOp::FMin, $kind, $T, |a: $T, b: $T| if b.is_nan() { a } else if a.is_nan() { b } else { a.min(b) });
+            register_strided_binary!($reg, BinaryOp::Logaddexp, $kind, $T, |a: $T, b: $T| {
+                let m = a.max(b);
+                if m.is_infinite() { m } else { m + (1.0 as $T + (-(a - b).abs()).exp()).ln() }
+            });
+            register_strided_binary!($reg, BinaryOp::Logaddexp2, $kind, $T, |a: $T, b: $T| {
+                let m = a.max(b);
+                let ln2 = std::f64::consts::LN_2 as $T;
+                if m.is_infinite() { m } else { m + ((1.0 as $T + (-(a - b).abs() * ln2).exp()).ln() / ln2) }
+            });
+        };
+    }
+
     // Binary loops for all numeric types
     register_arithmetic!(reg, DTypeKind::Float64, f64);
     register_arithmetic!(reg, DTypeKind::Float32, f32);
@@ -304,6 +324,10 @@ fn init_default_loops() -> UFuncRegistry {
     // Float-specific binary ops (pow, floordiv)
     register_float_binary!(reg, DTypeKind::Float64, f64);
     register_float_binary!(reg, DTypeKind::Float32, f32);
+
+    // Stream 2: Binary math ops (arctan2, hypot, fmax, fmin, copysign, logaddexp, logaddexp2)
+    register_stream2_binary!(reg, DTypeKind::Float64, f64);
+    register_stream2_binary!(reg, DTypeKind::Float32, f32);
 
     // Float16 binary loops (convert to f32 for ops)
     macro_rules! register_f16_binary {
@@ -335,6 +359,27 @@ fn init_default_loops() -> UFuncRegistry {
     register_f16_binary!(reg, BinaryOp::Mod, |a: f32, b: f32| a % b);
     register_f16_binary!(reg, BinaryOp::Pow, |a: f32, b: f32| a.powf(b));
     register_f16_binary!(reg, BinaryOp::FloorDiv, |a: f32, b: f32| (a / b).floor());
+    // Stream 2: Float16 binary math ops
+    register_f16_binary!(reg, BinaryOp::Arctan2, |a: f32, b: f32| a.atan2(b));
+    register_f16_binary!(reg, BinaryOp::Hypot, |a: f32, b: f32| a.hypot(b));
+    register_f16_binary!(reg, BinaryOp::Copysign, |a: f32, b: f32| a.copysign(b));
+    register_f16_binary!(reg, BinaryOp::FMax, |a: f32, b: f32| if b.is_nan() { a } else if a.is_nan() { b } else { a.max(b) });
+    register_f16_binary!(reg, BinaryOp::FMin, |a: f32, b: f32| if b.is_nan() { a } else if a.is_nan() { b } else { a.min(b) });
+    register_f16_binary!(reg, BinaryOp::Logaddexp, |a: f32, b: f32| {
+        let m = a.max(b);
+        if m.is_infinite() { m } else { m + (1.0_f32 + (-(a - b).abs()).exp()).ln() }
+    });
+    register_f16_binary!(reg, BinaryOp::Logaddexp2, |a: f32, b: f32| {
+        let m = a.max(b);
+        let ln2 = std::f32::consts::LN_2;
+        if m.is_infinite() { m } else { m + ((1.0_f32 + (-(a - b).abs() * ln2).exp()).ln() / ln2) }
+    });
+    register_f16_binary!(reg, BinaryOp::Nextafter, |a: f32, b: f32| {
+        if a.is_nan() || b.is_nan() { f32::NAN }
+        else if a == b { b }
+        else if a < b { f32::from_bits(if a >= 0.0 { a.to_bits() + 1 } else { a.to_bits() - 1 }) }
+        else { f32::from_bits(if a > 0.0 { a.to_bits() - 1 } else { a.to_bits() + 1 }) }
+    });
 
     // Bool binary loops (Add=or, Mul=and)
     reg.register_binary(

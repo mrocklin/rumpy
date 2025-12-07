@@ -82,6 +82,35 @@ impl DTypeOps for Float16Ops {
             BinaryOp::FloorDiv => (av / bv).floor(),
             BinaryOp::Maximum => if av.is_nan() || bv.is_nan() { f32::NAN } else { av.max(bv) },
             BinaryOp::Minimum => if av.is_nan() || bv.is_nan() { f32::NAN } else { av.min(bv) },
+            // Stream 2: Binary Math Operations
+            BinaryOp::Arctan2 => av.atan2(bv),
+            BinaryOp::Hypot => av.hypot(bv),
+            BinaryOp::FMax => if bv.is_nan() { av } else if av.is_nan() { bv } else { av.max(bv) },
+            BinaryOp::FMin => if bv.is_nan() { av } else if av.is_nan() { bv } else { av.min(bv) },
+            BinaryOp::Copysign => av.copysign(bv),
+            BinaryOp::Logaddexp => {
+                let m = av.max(bv);
+                if m.is_infinite() { m } else { m + (1.0_f32 + (-(av - bv).abs()).exp()).ln() }
+            },
+            BinaryOp::Logaddexp2 => {
+                let m = av.max(bv);
+                let ln2 = std::f32::consts::LN_2;
+                if m.is_infinite() { m } else { m + ((1.0_f32 + (-(av - bv).abs() * ln2).exp()).ln() / ln2) }
+            },
+            BinaryOp::Nextafter => {
+                // Use bit manipulation for nextafter
+                if av.is_nan() || bv.is_nan() {
+                    f32::NAN
+                } else if av == bv {
+                    bv
+                } else if av < bv {
+                    let bits = av.to_bits();
+                    f32::from_bits(if av >= 0.0 { bits + 1 } else { bits - 1 })
+                } else {
+                    let bits = av.to_bits();
+                    f32::from_bits(if av > 0.0 { bits - 1 } else { bits + 1 })
+                }
+            },
         };
         Self::write(out, idx, f16::from_f32(result));
     }

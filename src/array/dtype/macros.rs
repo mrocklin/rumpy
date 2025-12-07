@@ -84,6 +84,41 @@ macro_rules! impl_float_dtype {
                     BinaryOp::FloorDiv => (av / bv).floor(),
                     BinaryOp::Maximum => if av.is_nan() || bv.is_nan() { <$T>::NAN } else { av.max(bv) },
                     BinaryOp::Minimum => if av.is_nan() || bv.is_nan() { <$T>::NAN } else { av.min(bv) },
+                    // Stream 2: Binary Math Operations
+                    BinaryOp::Arctan2 => av.atan2(bv),
+                    BinaryOp::Hypot => av.hypot(bv),
+                    BinaryOp::FMax => if bv.is_nan() { av } else if av.is_nan() { bv } else { av.max(bv) },
+                    BinaryOp::FMin => if bv.is_nan() { av } else if av.is_nan() { bv } else { av.min(bv) },
+                    BinaryOp::Copysign => av.copysign(bv),
+                    BinaryOp::Logaddexp => {
+                        // log(exp(a) + exp(b)) = max(a,b) + log(1 + exp(-|a-b|))
+                        let m = av.max(bv);
+                        if m.is_infinite() { m } else { m + (1.0 as $T + (-(av - bv).abs()).exp()).ln() }
+                    },
+                    BinaryOp::Logaddexp2 => {
+                        // log2(2^a + 2^b) = max(a,b) + log2(1 + 2^(-|a-b|))
+                        let m = av.max(bv);
+                        let ln2 = std::f64::consts::LN_2 as $T;
+                        if m.is_infinite() { m } else { m + ((1.0 as $T + (-(av - bv).abs() * ln2).exp()).ln() / ln2) }
+                    },
+                    BinaryOp::Nextafter => {
+                        // Use f64 nextafter for both f32 and f64
+                        let av64 = av as f64;
+                        let bv64 = bv as f64;
+                        if av64.is_nan() || bv64.is_nan() {
+                            <$T>::NAN
+                        } else if av64 == bv64 {
+                            bv
+                        } else if av64 < bv64 {
+                            // Move toward positive
+                            let bits = av.to_bits();
+                            <$T>::from_bits(if av >= 0.0 as $T { bits + 1 } else { bits - 1 })
+                        } else {
+                            // Move toward negative
+                            let bits = av.to_bits();
+                            <$T>::from_bits(if av > 0.0 as $T { bits - 1 } else { bits + 1 })
+                        }
+                    },
                 };
                 Self::write(out, idx, result);
             }
@@ -234,8 +269,15 @@ macro_rules! impl_signed_int_dtype {
                     BinaryOp::Pow => if bv >= 0 { av.wrapping_pow(bv as u32) } else { 0 },
                     BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
                     BinaryOp::FloorDiv => if bv != 0 { av.div_euclid(bv) } else { 0 },
-                    BinaryOp::Maximum => av.max(bv),
-                    BinaryOp::Minimum => av.min(bv),
+                    BinaryOp::Maximum | BinaryOp::FMax => av.max(bv),
+                    BinaryOp::Minimum | BinaryOp::FMin => av.min(bv),
+                    // Float-only ops: convert to float, compute, convert back
+                    BinaryOp::Arctan2 => (av as f64).atan2(bv as f64) as $T,
+                    BinaryOp::Hypot => (av as f64).hypot(bv as f64) as $T,
+                    BinaryOp::Copysign => if bv >= 0 { av.abs() } else { -av.abs() },
+                    BinaryOp::Logaddexp => ((av as f64).exp() + (bv as f64).exp()).ln() as $T,
+                    BinaryOp::Logaddexp2 => ((av as f64).exp2() + (bv as f64).exp2()).log2() as $T,
+                    BinaryOp::Nextafter => if av < bv { av.wrapping_add(1) } else if av > bv { av.wrapping_sub(1) } else { bv },
                 };
                 Self::write(out, idx, result);
             }
@@ -382,8 +424,15 @@ macro_rules! impl_unsigned_int_dtype {
                     BinaryOp::Pow => av.wrapping_pow(bv as u32),
                     BinaryOp::Mod => if bv != 0 { av % bv } else { 0 },
                     BinaryOp::FloorDiv => if bv != 0 { av / bv } else { 0 },
-                    BinaryOp::Maximum => av.max(bv),
-                    BinaryOp::Minimum => av.min(bv),
+                    BinaryOp::Maximum | BinaryOp::FMax => av.max(bv),
+                    BinaryOp::Minimum | BinaryOp::FMin => av.min(bv),
+                    // Float-only ops: convert to float, compute, convert back
+                    BinaryOp::Arctan2 => (av as f64).atan2(bv as f64) as $T,
+                    BinaryOp::Hypot => (av as f64).hypot(bv as f64) as $T,
+                    BinaryOp::Copysign => av,  // unsigned is always positive
+                    BinaryOp::Logaddexp => ((av as f64).exp() + (bv as f64).exp()).ln() as $T,
+                    BinaryOp::Logaddexp2 => ((av as f64).exp2() + (bv as f64).exp2()).log2() as $T,
+                    BinaryOp::Nextafter => if av < bv { av.wrapping_add(1) } else if av > bv { av.wrapping_sub(1) } else { bv },
                 };
                 Self::write(out, idx, result);
             }

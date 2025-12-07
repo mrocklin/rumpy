@@ -88,6 +88,15 @@ pub enum BinaryOp {
     FloorDiv,
     Maximum,
     Minimum,
+    // Stream 2: Binary Math Operations
+    Arctan2,
+    Hypot,
+    FMax,      // max ignoring NaN
+    FMin,      // min ignoring NaN
+    Copysign,
+    Logaddexp,
+    Logaddexp2,
+    Nextafter,
 }
 
 /// Reduce operations.

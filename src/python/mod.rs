@@ -575,6 +575,62 @@ pub fn remainder(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRum
     apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Mod)
 }
 
+// Stream 2: Binary math operations
+
+#[pyfunction]
+pub fn arctan2(y: &Bound<'_, PyAny>, x: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(y, x, crate::array::dtype::BinaryOp::Arctan2)
+}
+
+#[pyfunction]
+pub fn hypot(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Hypot)
+}
+
+#[pyfunction]
+pub fn fmax(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::FMax)
+}
+
+#[pyfunction]
+pub fn fmin(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::FMin)
+}
+
+#[pyfunction]
+pub fn copysign(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Copysign)
+}
+
+#[pyfunction]
+pub fn logaddexp(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Logaddexp)
+}
+
+#[pyfunction]
+pub fn logaddexp2(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Logaddexp2)
+}
+
+#[pyfunction]
+pub fn nextafter(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    apply_binary_ufunc(x1, x2, crate::array::dtype::BinaryOp::Nextafter)
+}
+
+// deg2rad and rad2deg as module-level functions
+
+#[pyfunction]
+pub fn deg2rad(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    let deg_to_rad = std::f64::consts::PI / 180.0;
+    apply_unary(x, |v| v * deg_to_rad, |a| Ok(a.scalar_op(deg_to_rad, crate::array::dtype::BinaryOp::Mul)))
+}
+
+#[pyfunction]
+pub fn rad2deg(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    let rad_to_deg = 180.0 / std::f64::consts::PI;
+    apply_unary(x, |v| v * rad_to_deg, |a| Ok(a.scalar_op(rad_to_deg, crate::array::dtype::BinaryOp::Mul)))
+}
+
 // Complex accessors
 
 #[pyfunction]
@@ -1350,6 +1406,17 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(power, m)?)?;
     m.add_function(wrap_pyfunction!(floor_divide, m)?)?;
     m.add_function(wrap_pyfunction!(remainder, m)?)?;
+    // Stream 2: Binary math operations
+    m.add_function(wrap_pyfunction!(arctan2, m)?)?;
+    m.add_function(wrap_pyfunction!(hypot, m)?)?;
+    m.add_function(wrap_pyfunction!(fmax, m)?)?;
+    m.add_function(wrap_pyfunction!(fmin, m)?)?;
+    m.add_function(wrap_pyfunction!(copysign, m)?)?;
+    m.add_function(wrap_pyfunction!(logaddexp, m)?)?;
+    m.add_function(wrap_pyfunction!(logaddexp2, m)?)?;
+    m.add_function(wrap_pyfunction!(nextafter, m)?)?;
+    m.add_function(wrap_pyfunction!(deg2rad, m)?)?;
+    m.add_function(wrap_pyfunction!(rad2deg, m)?)?;
     m.add_function(wrap_pyfunction!(real, m)?)?;
     m.add_function(wrap_pyfunction!(imag, m)?)?;
     m.add_function(wrap_pyfunction!(conj, m)?)?;
