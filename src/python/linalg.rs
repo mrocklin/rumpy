@@ -72,6 +72,63 @@ pub fn cholesky(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("cholesky requires SPD matrix"))
 }
 
+/// Sign and log of determinant.
+#[pyfunction]
+pub fn slogdet(a: &PyRumpyArray) -> PyResult<(f64, f64)> {
+    linalg_ops::slogdet(&a.inner)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("slogdet requires square 2D array"))
+}
+
+/// Condition number.
+#[pyfunction]
+#[pyo3(signature = (a, p=None))]
+pub fn cond(a: &PyRumpyArray, p: Option<&str>) -> PyResult<f64> {
+    linalg_ops::cond(&a.inner, p)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("unsupported norm type or non-2D array"))
+}
+
+/// Matrix rank.
+#[pyfunction]
+#[pyo3(signature = (a, tol=None))]
+pub fn matrix_rank(a: &PyRumpyArray, tol: Option<f64>) -> PyResult<usize> {
+    linalg_ops::matrix_rank(&a.inner, tol)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("matrix_rank requires 2D array"))
+}
+
+/// Moore-Penrose pseudo-inverse.
+#[pyfunction]
+#[pyo3(signature = (a, rcond=None))]
+pub fn pinv(a: &PyRumpyArray, rcond: Option<f64>) -> PyResult<PyRumpyArray> {
+    linalg_ops::pinv(&a.inner, rcond)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("pinv requires 2D array"))
+}
+
+/// Least squares solution.
+#[pyfunction]
+#[pyo3(signature = (a, b, rcond=None))]
+pub fn lstsq(a: &PyRumpyArray, b: &PyRumpyArray, rcond: Option<f64>) -> PyResult<(PyRumpyArray, PyRumpyArray, usize, PyRumpyArray)> {
+    linalg_ops::lstsq(&a.inner, &b.inner, rcond)
+        .map(|(x, residuals, rank, s)| (PyRumpyArray::new(x), PyRumpyArray::new(residuals), rank, PyRumpyArray::new(s)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("lstsq: invalid dimensions"))
+}
+
+/// Eigenvalues of a general matrix.
+#[pyfunction]
+pub fn eigvals(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    linalg_ops::eigvals(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("eigvals requires square 2D array"))
+}
+
+/// Eigendecomposition of a general matrix.
+#[pyfunction]
+pub fn eig(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
+    linalg_ops::eig(&a.inner)
+        .map(|(w, v)| (PyRumpyArray::new(w), PyRumpyArray::new(v)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("eig requires square 2D array"))
+}
+
 /// Register linalg submodule.
 pub fn register_submodule(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let linalg_module = PyModule::new(parent.py(), "linalg")?;
@@ -83,6 +140,13 @@ pub fn register_submodule(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     linalg_module.add_function(wrap_pyfunction!(det, &linalg_module)?)?;
     linalg_module.add_function(wrap_pyfunction!(norm, &linalg_module)?)?;
     linalg_module.add_function(wrap_pyfunction!(cholesky, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(slogdet, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(cond, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(matrix_rank, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(pinv, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(lstsq, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(eigvals, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(eig, &linalg_module)?)?;
     parent.add_submodule(&linalg_module)?;
     Ok(())
 }

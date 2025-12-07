@@ -2020,6 +2020,69 @@ pub fn diag(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("diag requires 1D or 2D array"))
 }
 
+/// Vector dot product (flattens arrays then computes inner product).
+#[pyfunction]
+pub fn vdot(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<f64> {
+    crate::ops::linalg::vdot(&a.inner, &b.inner)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("vdot: arrays must have same total size"))
+}
+
+/// Kronecker product of two arrays.
+#[pyfunction]
+pub fn kron(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::linalg::kron(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("kron: unsupported dimensions"))
+}
+
+/// Cross product of two 3D vectors.
+#[pyfunction]
+pub fn cross(a: &PyRumpyArray, b: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    crate::ops::linalg::cross(&a.inner, &b.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("cross: requires 1D arrays of length 3"))
+}
+
+/// Tensor dot product over specified axes.
+#[pyfunction]
+#[pyo3(signature = (a, b, axes=None))]
+pub fn tensordot(a: &PyRumpyArray, b: &PyRumpyArray, axes: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<PyRumpyArray> {
+    // Parse axes - can be int or tuple of two lists (default is 2)
+    let (a_axes, b_axes) = if let Some(axes) = axes {
+        if let Ok(n) = axes.extract::<usize>() {
+            // axes=n means last n axes of a and first n axes of b
+            let a_axes: Vec<usize> = (a.inner.ndim().saturating_sub(n)..a.inner.ndim()).collect();
+            let b_axes: Vec<usize> = (0..n).collect();
+            (a_axes, b_axes)
+        } else if let Ok((ax_a, ax_b)) = axes.extract::<(Vec<usize>, Vec<usize>)>() {
+            (ax_a, ax_b)
+        } else if let Ok((ax_a, ax_b)) = axes.extract::<(Vec<i64>, Vec<i64>)>() {
+            // Handle negative indices
+            let a_axes: Vec<usize> = ax_a.into_iter()
+                .map(|x| if x < 0 { (a.inner.ndim() as i64 + x) as usize } else { x as usize })
+                .collect();
+            let b_axes: Vec<usize> = ax_b.into_iter()
+                .map(|x| if x < 0 { (b.inner.ndim() as i64 + x) as usize } else { x as usize })
+                .collect();
+            (a_axes, b_axes)
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "axes must be integer or tuple of two lists"
+            ));
+        }
+    } else {
+        // Default: axes=2
+        let n = 2;
+        let a_axes: Vec<usize> = (a.inner.ndim().saturating_sub(n)..a.inner.ndim()).collect();
+        let b_axes: Vec<usize> = (0..n).collect();
+        (a_axes, b_axes)
+    };
+
+    crate::ops::linalg::tensordot(&a.inner, &b.inner, (a_axes, b_axes))
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("tensordot: incompatible dimensions"))
+}
+
 // ============================================================================
 // Indexing operations (Stream 10)
 // ============================================================================
@@ -3152,6 +3215,10 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(inv, m)?)?;
     m.add_function(wrap_pyfunction!(eigh, m)?)?;
     m.add_function(wrap_pyfunction!(diag, m)?)?;
+    m.add_function(wrap_pyfunction!(vdot, m)?)?;
+    m.add_function(wrap_pyfunction!(kron, m)?)?;
+    m.add_function(wrap_pyfunction!(cross, m)?)?;
+    m.add_function(wrap_pyfunction!(tensordot, m)?)?;
     // Indexing operations
     m.add_function(wrap_pyfunction!(take, m)?)?;
     m.add_function(wrap_pyfunction!(take_along_axis, m)?)?;
