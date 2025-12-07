@@ -322,13 +322,13 @@ Module-level versions of array methods + new functions.
 
 ---
 
-## Stream 16: Numerical Operations
+## Stream 16: Numerical Operations ✅ COMPLETE
 
-- [ ] `gradient` - numerical gradient
-- [ ] `trapezoid` - trapezoidal integration
-- [ ] `interp` - 1D linear interpolation
-- [ ] `convolve` - already have, verify edge cases
-- [ ] `correlate` - cross-correlation
+- [x] `gradient` - numerical gradient
+- [x] `trapezoid` - trapezoidal integration
+- [x] `interp` - 1D linear interpolation
+- [x] `convolve` - already have, verified edge cases
+- [x] `correlate` - cross-correlation
 
 **Files**: `src/ops/numerical.rs` (new), `src/python/mod.rs`, `tests/test_numerical.py`
 

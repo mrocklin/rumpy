@@ -1695,6 +1695,8 @@ pub fn indices(dimensions: &[usize], dtype: DType) -> RumpyArray {
 
 /// 1D discrete convolution.
 /// mode: "full", "same", or "valid"
+///
+/// Uses direct O(n*m) method for small inputs, FFT O(n log n) for large.
 pub fn convolve(a: &RumpyArray, v: &RumpyArray, mode: &str) -> Option<RumpyArray> {
     // Both must be 1D
     if a.ndim() != 1 || v.ndim() != 1 {
@@ -1714,7 +1716,7 @@ pub fn convolve(a: &RumpyArray, v: &RumpyArray, mode: &str) -> Option<RumpyArray
         return Some(RumpyArray::zeros(vec![out_len.max(0)], DType::float64()));
     }
 
-    // Collect values
+    // Collect values (needed for both methods)
     let a_ptr = a.data_ptr();
     let a_dtype = a.dtype();
     let a_ops = a_dtype.ops();
@@ -1732,11 +1734,24 @@ pub fn convolve(a: &RumpyArray, v: &RumpyArray, mode: &str) -> Option<RumpyArray
         v_vals.push(unsafe { v_ops.read_f64(v_ptr, offset) }.unwrap_or(0.0));
     }
 
-    // Output size depends on mode
-    let (out_len, offset) = match mode {
-        "full" => (n + m - 1, 0isize),
-        "same" => (n, (m as isize - 1) / 2),
-        "valid" => (n.saturating_sub(m - 1).max(1), m as isize - 1),
+    // Choose algorithm: FFT is O((n+m) log(n+m)), direct is O(n*m)
+    // FFT wins when n*m is large enough to offset FFT overhead
+    // Empirically, crossover vs numpy is around n*m = 2M
+    // We use FFT when it's faster than our own direct method (~500k)
+    let use_fft = n * m > 500_000;
+
+    let full_result = if use_fft {
+        convolve_fft(&a_vals, &v_vals)
+    } else {
+        convolve_direct(&a_vals, &v_vals)
+    };
+
+    // Extract the portion based on mode
+    let full_len = n + m - 1;
+    let (out_len, start) = match mode {
+        "full" => (full_len, 0),
+        "same" => (n, (m - 1) / 2),
+        "valid" => (n.saturating_sub(m - 1).max(1), m - 1),
         _ => return None,
     };
 
@@ -1745,21 +1760,45 @@ pub fn convolve(a: &RumpyArray, v: &RumpyArray, mode: &str) -> Option<RumpyArray
     let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
     let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
 
-    // Convolution: result[k] = sum_j a[k-j] * v[j] for valid indices
-    // For "full" mode, k ranges from 0 to n+m-2
-    for k in 0..out_len {
-        let full_k = k as isize + offset;
-        let mut sum = 0.0;
-        for j in 0..m {
-            let i = full_k - j as isize;
-            if i >= 0 && (i as usize) < n {
-                sum += a_vals[i as usize] * v_vals[j];
-            }
-        }
-        unsafe { *result_ptr.add(k) = sum; }
+    for i in 0..out_len {
+        unsafe { *result_ptr.add(i) = full_result[start + i]; }
     }
 
     Some(result)
+}
+
+/// Direct O(n*m) convolution helper.
+fn convolve_direct(a: &[f64], v: &[f64]) -> Vec<f64> {
+    let (n, m) = (a.len(), v.len());
+    let out_len = n + m - 1;
+    let mut result = vec![0.0; out_len];
+    for k in 0..out_len {
+        result[k] = (k.saturating_sub(n - 1)..m.min(k + 1))
+            .map(|j| a[k - j] * v[j]).sum();
+    }
+    result
+}
+
+/// FFT-based O(n log n) convolution helper.
+fn convolve_fft(a: &[f64], v: &[f64]) -> Vec<f64> {
+    use rustfft::{FftPlanner, num_complex::Complex64};
+    let out_len = a.len() + v.len() - 1;
+    let fft_len = out_len.next_power_of_two();
+
+    let mut a_c: Vec<_> = a.iter().map(|&x| Complex64::new(x, 0.0)).collect();
+    a_c.resize(fft_len, Complex64::new(0.0, 0.0));
+    let mut v_c: Vec<_> = v.iter().map(|&x| Complex64::new(x, 0.0)).collect();
+    v_c.resize(fft_len, Complex64::new(0.0, 0.0));
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(fft_len);
+    fft.process(&mut a_c);
+    fft.process(&mut v_c);
+
+    for i in 0..fft_len { a_c[i] *= v_c[i]; }
+
+    planner.plan_fft_inverse(fft_len).process(&mut a_c);
+    a_c[..out_len].iter().map(|c| c.re / fft_len as f64).collect()
 }
 
 // Stream 11: Array Manipulation Functions
