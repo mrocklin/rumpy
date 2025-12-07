@@ -1,7 +1,7 @@
 //! Linear algebra operations.
 
 use crate::array::{DType, RumpyArray};
-use crate::ops::DTypeKind;
+use crate::array::dtype::DTypeKind;
 use faer::prelude::SolverCore;
 use faer::{ColRef, MatRef, Side};
 

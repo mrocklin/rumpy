@@ -68,6 +68,25 @@ array([[ 0,  1,  2,  3],
 [0 1 2 3 4]
 ```
 
+## Completed: ops/mod.rs Refactoring
+
+Split `src/ops/mod.rs` from 2015 lines to 385 lines (81% reduction).
+
+### `src/ops/array_methods/` Structure
+
+| File | Lines | Contents |
+|------|-------|----------|
+| `unary.rs` | 405 | sqrt, exp, log, sin, cos, tan, floor, ceil, real, imag, conj, nan_to_num |
+| `sorting.rs` | 645 | sort, argsort, partition, argpartition, unique, to_vec, lexsort |
+| `reductions.rs` | 656 | sum, prod, max, min, mean, var, std, moment, skew, kurtosis, argmax, argmin + NaN variants |
+| `cumulative.rs` | 216 | diff, cumsum, cumprod |
+| `logical.rs` | 152 | all, any, all_axis, any_axis, count_nonzero |
+
+### Pattern
+- Each file has `impl RumpyArray { ... }` with methods for that category
+- Rust allows multiple impl blocks across files
+- `mod.rs` declares modules and re-exports `lexsort`
+
 ## Next
 
 ### Random (Phase 2)

@@ -49,7 +49,13 @@ src/
 │       └── complex*.rs       # Complex number implementations
 │
 ├── ops/                      # Operations (Rust implementation)
-│   ├── mod.rs                # RumpyArray methods, re-exports
+│   ├── mod.rs                # Core binary/compare ops, re-exports
+│   ├── array_methods/        # RumpyArray method implementations by category
+│   │   ├── unary.rs          # sqrt, exp, log, sin, cos, real, imag, nan_to_num
+│   │   ├── reductions.rs     # sum, mean, var, std, argmax + NaN variants
+│   │   ├── sorting.rs        # sort, argsort, partition, unique, lexsort
+│   │   ├── cumulative.rs     # diff, cumsum, cumprod
+│   │   └── logical.rs        # all, any, count_nonzero
 │   ├── ufunc.rs              # Core: map_unary_op, map_binary_op, reduce_axis_op
 │   ├── registry.rs           # Type-specific optimized loops (SIMD)
 │   ├── comparison.rs         # logical_and/or/xor/not, equal, isclose
