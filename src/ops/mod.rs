@@ -2476,17 +2476,24 @@ impl RumpyArray {
     }
 
     /// Median of all elements (flattened).
+    /// Uses select_nth_unstable for O(n) instead of O(n log n) sort.
     pub fn median(&self) -> f64 {
         let size = self.size();
         if size == 0 {
             return f64::NAN;
         }
         let mut values = self.to_vec();
-        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        if size.is_multiple_of(2) {
-            (values[size / 2 - 1] + values[size / 2]) / 2.0
+        let mid = size / 2;
+
+        // select_nth_unstable partitions so values[mid] is the correct element
+        values.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        if size % 2 == 0 {
+            // For even length, need max of left partition (which is unsorted)
+            let left_max = values[..mid].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            (left_max + values[mid]) / 2.0
         } else {
-            values[size / 2]
+            values[mid]
         }
     }
 

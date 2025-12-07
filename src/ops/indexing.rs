@@ -340,6 +340,7 @@ fn compress_axis(condition: &[bool], arr: &RumpyArray, axis: usize) -> Option<Ru
 }
 
 /// Find indices where elements should be inserted to maintain order.
+/// Optimized to binary search directly in memory without Vec allocation.
 pub fn searchsorted(a: &RumpyArray, v: &RumpyArray, side: &str) -> Option<RumpyArray> {
     if a.ndim() != 1 {
         return None;
@@ -347,22 +348,6 @@ pub fn searchsorted(a: &RumpyArray, v: &RumpyArray, side: &str) -> Option<RumpyA
 
     let a_len = a.size();
     let v_size = v.size();
-
-    // Collect sorted array values (required for binary search)
-    let a_ptr = a.data_ptr();
-    let a_dtype = a.dtype();
-    let a_ops = a_dtype.ops();
-
-    // Fast path for contiguous sorted array
-    let a_vals: Vec<f64> = if a.is_c_contiguous() {
-        (0..a_len)
-            .map(|i| unsafe { a_ops.read_f64(a_ptr, (i * a_dtype.itemsize()) as isize) }.unwrap_or(0.0))
-            .collect()
-    } else {
-        a.iter_offsets()
-            .map(|offset| unsafe { a_ops.read_f64(a_ptr, offset) }.unwrap_or(0.0))
-            .collect()
-    };
 
     let mut result = RumpyArray::zeros(v.shape().to_vec(), DType::int64());
     if v_size == 0 {
@@ -373,19 +358,35 @@ pub fn searchsorted(a: &RumpyArray, v: &RumpyArray, side: &str) -> Option<RumpyA
     let buffer = Arc::get_mut(result_buffer)?;
     let result_ptr = buffer.as_mut_ptr() as *mut i64;
 
+    let a_ptr = a.data_ptr();
+    let a_dtype = a.dtype();
+    let a_ops = a_dtype.ops();
+    let a_stride = if a.is_c_contiguous() { a_dtype.itemsize() as isize } else { a.strides()[0] };
+
     let v_ptr = v.data_ptr();
     let v_dtype = v.dtype();
     let v_ops = v_dtype.ops();
     let use_left = side != "right";
 
+    // Binary search directly in memory for each value
     for (i, offset) in v.iter_offsets().enumerate() {
         let val = unsafe { v_ops.read_f64(v_ptr, offset) }.unwrap_or(0.0);
-        let idx = if use_left {
-            a_vals.partition_point(|&x| x < val)
-        } else {
-            a_vals.partition_point(|&x| x <= val)
-        };
-        unsafe { *result_ptr.add(i) = idx as i64; }
+
+        // Binary search
+        let mut lo = 0usize;
+        let mut hi = a_len;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            let mid_offset = (mid as isize) * a_stride;
+            let mid_val = unsafe { a_ops.read_f64(a_ptr, mid_offset) }.unwrap_or(0.0);
+            let go_right = if use_left { mid_val < val } else { mid_val <= val };
+            if go_right {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        unsafe { *result_ptr.add(i) = lo as i64; }
     }
 
     Some(result)
