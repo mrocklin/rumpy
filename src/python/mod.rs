@@ -1288,6 +1288,366 @@ pub fn where_fn(
         })
 }
 
+// ========== Stream 9: Shape Manipulation (Module-level) ==========
+
+/// Reshape an array without changing its data.
+#[pyfunction]
+#[pyo3(signature = (a, newshape))]
+pub fn reshape(a: &PyRumpyArray, newshape: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    use pyo3::types::{PyTuple, PyList};
+
+    // Parse newshape (can be int, tuple, or list), allowing -1 for inference
+    let shape_isize: Vec<isize> = if let Ok(n) = newshape.extract::<isize>() {
+        vec![n]
+    } else if let Ok(tuple) = newshape.downcast::<PyTuple>() {
+        tuple.iter().map(|x| x.extract::<isize>()).collect::<PyResult<Vec<_>>>()?
+    } else if let Ok(list) = newshape.downcast::<PyList>() {
+        list.iter().map(|x| x.extract::<isize>()).collect::<PyResult<Vec<_>>>()?
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "shape must be an int, tuple, or list",
+        ));
+    };
+
+    // Resolve -1 dimension (reuse helper from pyarray)
+    let shape = pyarray::resolve_reshape_shape(shape_isize, a.inner.size())?;
+
+    a.inner.reshape(shape)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "cannot reshape array (size mismatch or non-contiguous)",
+            )
+        })
+}
+
+/// Return a contiguous flattened array (view if possible, copy otherwise).
+#[pyfunction]
+pub fn ravel(a: &PyRumpyArray) -> PyRumpyArray {
+    let size = a.inner.size();
+    // Try to return a view, fall back to copy
+    if let Some(view) = a.inner.reshape(vec![size]) {
+        PyRumpyArray::new(view)
+    } else {
+        // Non-contiguous, need to copy
+        PyRumpyArray::new(a.inner.copy().reshape(vec![size]).unwrap())
+    }
+}
+
+/// Return a copy of the array collapsed into one dimension.
+#[pyfunction]
+pub fn flatten(a: &PyRumpyArray) -> PyRumpyArray {
+    let size = a.inner.size();
+    PyRumpyArray::new(a.inner.copy().reshape(vec![size]).unwrap())
+}
+
+/// Reverse or permute the axes of an array.
+#[pyfunction]
+#[pyo3(signature = (a, axes=None))]
+pub fn transpose(a: &PyRumpyArray, axes: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
+    use pyo3::types::{PyTuple, PyList};
+
+    match axes {
+        None => Ok(PyRumpyArray::new(a.inner.transpose())),
+        Some(axes_obj) => {
+            // Parse axes
+            let axes_vec: Vec<usize> = if let Ok(tuple) = axes_obj.downcast::<PyTuple>() {
+                tuple.iter().map(|x| x.extract::<usize>()).collect::<PyResult<Vec<_>>>()?
+            } else if let Ok(list) = axes_obj.downcast::<PyList>() {
+                list.iter().map(|x| x.extract::<usize>()).collect::<PyResult<Vec<_>>>()?
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "axes must be a tuple or list of integers",
+                ));
+            };
+
+            if axes_vec.len() != a.inner.ndim() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "axes don't match array",
+                ));
+            }
+
+            Ok(PyRumpyArray::new(a.inner.transpose_axes(&axes_vec)))
+        }
+    }
+}
+
+/// Convert input to an array with at least one dimension.
+#[pyfunction]
+pub fn atleast_1d(py: Python<'_>, arys: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn ensure_1d(arr: &RumpyArray) -> RumpyArray {
+        if arr.ndim() == 0 {
+            arr.expand_dims(0).unwrap_or_else(|| arr.clone())
+        } else {
+            // Return view sharing same buffer (no data copy)
+            arr.view_with(0, arr.shape().to_vec(), arr.strides().to_vec())
+        }
+    }
+
+    // Handle single array input
+    if let Ok(arr) = arys.extract::<PyRef<'_, PyRumpyArray>>() {
+        return Ok(PyRumpyArray::new(ensure_1d(&arr.inner)).into_pyobject(py)?.into_any().unbind());
+    }
+
+    // Handle tuple/list of arrays
+    if let Ok(list) = arys.downcast::<pyo3::types::PyList>() {
+        let results: Vec<PyRumpyArray> = list.iter()
+            .map(|item| {
+                let arr = item.extract::<PyRef<'_, PyRumpyArray>>()?;
+                Ok(PyRumpyArray::new(ensure_1d(&arr.inner)))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(results.into_pyobject(py)?.into_any().unbind());
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "atleast_1d requires ndarray or list of ndarrays",
+    ))
+}
+
+/// Convert inputs to arrays with at least two dimensions.
+#[pyfunction]
+pub fn atleast_2d(py: Python<'_>, arys: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn ensure_2d(arr: &RumpyArray) -> RumpyArray {
+        match arr.ndim() {
+            0 => arr.reshape(vec![1, 1]).unwrap_or_else(|| arr.clone()),
+            1 => arr.expand_dims(0).unwrap_or_else(|| arr.clone()),
+            _ => arr.view_with(0, arr.shape().to_vec(), arr.strides().to_vec()),
+        }
+    }
+
+    // Handle single array input
+    if let Ok(arr) = arys.extract::<PyRef<'_, PyRumpyArray>>() {
+        return Ok(PyRumpyArray::new(ensure_2d(&arr.inner)).into_pyobject(py)?.into_any().unbind());
+    }
+
+    // Handle tuple/list of arrays
+    if let Ok(list) = arys.downcast::<pyo3::types::PyList>() {
+        let results: Vec<PyRumpyArray> = list.iter()
+            .map(|item| {
+                let arr = item.extract::<PyRef<'_, PyRumpyArray>>()?;
+                Ok(PyRumpyArray::new(ensure_2d(&arr.inner)))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(results.into_pyobject(py)?.into_any().unbind());
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "atleast_2d requires ndarray or list of ndarrays",
+    ))
+}
+
+/// Convert inputs to arrays with at least three dimensions.
+#[pyfunction]
+pub fn atleast_3d(py: Python<'_>, arys: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn ensure_3d(arr: &RumpyArray) -> RumpyArray {
+        match arr.ndim() {
+            0 => arr.reshape(vec![1, 1, 1]).unwrap_or_else(|| arr.clone()),
+            1 => {
+                // Shape (N,) -> (1, N, 1) - need expand on both ends
+                let n = arr.shape()[0];
+                arr.reshape(vec![1, n, 1]).unwrap_or_else(|| arr.clone())
+            }
+            2 => arr.expand_dims(2).unwrap_or_else(|| arr.clone()),
+            _ => arr.view_with(0, arr.shape().to_vec(), arr.strides().to_vec()),
+        }
+    }
+
+    // Handle single array input
+    if let Ok(arr) = arys.extract::<PyRef<'_, PyRumpyArray>>() {
+        return Ok(PyRumpyArray::new(ensure_3d(&arr.inner)).into_pyobject(py)?.into_any().unbind());
+    }
+
+    // Handle tuple/list of arrays
+    if let Ok(list) = arys.downcast::<pyo3::types::PyList>() {
+        let results: Vec<PyRumpyArray> = list.iter()
+            .map(|item| {
+                let arr = item.extract::<PyRef<'_, PyRumpyArray>>()?;
+                Ok(PyRumpyArray::new(ensure_3d(&arr.inner)))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(results.into_pyobject(py)?.into_any().unbind());
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "atleast_3d requires ndarray or list of ndarrays",
+    ))
+}
+
+/// Move axes of an array to new positions.
+#[pyfunction]
+pub fn moveaxis(a: &PyRumpyArray, source: &Bound<'_, PyAny>, destination: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    // Parse source and destination (can be int or tuple/list of ints)
+    let src: Vec<isize> = if let Ok(n) = source.extract::<isize>() {
+        vec![n]
+    } else if let Ok(list) = source.extract::<Vec<isize>>() {
+        list
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "source must be an int or sequence of ints",
+        ));
+    };
+
+    let dst: Vec<isize> = if let Ok(n) = destination.extract::<isize>() {
+        vec![n]
+    } else if let Ok(list) = destination.extract::<Vec<isize>>() {
+        list
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "destination must be an int or sequence of ints",
+        ));
+    };
+
+    if src.len() != dst.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "source and destination must have same length",
+        ));
+    }
+
+    let ndim = a.inner.ndim();
+
+    // Normalize negative indices
+    let normalize = |idx: isize| -> usize {
+        if idx < 0 {
+            (ndim as isize + idx) as usize
+        } else {
+            idx as usize
+        }
+    };
+
+    let src_normalized: Vec<usize> = src.iter().map(|&i| normalize(i)).collect();
+    let dst_normalized: Vec<usize> = dst.iter().map(|&i| normalize(i)).collect();
+
+    // Validate indices
+    for &s in &src_normalized {
+        if s >= ndim {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!("axis {} is out of bounds for array of dimension {}", s, ndim),
+            ));
+        }
+    }
+    for &d in &dst_normalized {
+        if d >= ndim {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!("axis {} is out of bounds for array of dimension {}", d, ndim),
+            ));
+        }
+    }
+
+    // Build the permutation
+    // Start with axes not in source (in order), then insert source axes at destination positions
+    let mut order: Vec<usize> = (0..ndim).filter(|x| !src_normalized.contains(x)).collect();
+
+    // Insert source axes at their destination positions
+    let mut src_dst: Vec<(usize, usize)> = src_normalized.iter().zip(dst_normalized.iter())
+        .map(|(&s, &d)| (s, d))
+        .collect();
+    src_dst.sort_by_key(|&(_, d)| d);
+
+    for (src_ax, dst_ax) in src_dst {
+        order.insert(dst_ax, src_ax);
+    }
+
+    Ok(PyRumpyArray::new(a.inner.transpose_axes(&order)))
+}
+
+/// Roll the specified axis backwards, until it lies in a given position.
+#[pyfunction]
+#[pyo3(signature = (a, axis, start=0))]
+pub fn rollaxis(a: &PyRumpyArray, axis: isize, start: isize) -> PyResult<PyRumpyArray> {
+    let ndim = a.inner.ndim();
+
+    // Normalize axis
+    let axis = if axis < 0 {
+        (ndim as isize + axis) as usize
+    } else {
+        axis as usize
+    };
+
+    if axis >= ndim {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("axis {} is out of bounds for array of dimension {}", axis, ndim),
+        ));
+    }
+
+    // Normalize start (can be ndim)
+    let start = if start < 0 {
+        (ndim as isize + start) as usize
+    } else {
+        start as usize
+    };
+
+    if start > ndim {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("start {} is out of bounds", start),
+        ));
+    }
+
+    // Build permutation: move axis to position start
+    let mut order: Vec<usize> = (0..ndim).collect();
+    order.remove(axis);
+
+    let insert_pos = if start > axis { start - 1 } else { start };
+    order.insert(insert_pos, axis);
+
+    Ok(PyRumpyArray::new(a.inner.transpose_axes(&order)))
+}
+
+/// Broadcast an array to a new shape.
+#[pyfunction]
+pub fn broadcast_to(x: &PyRumpyArray, shape: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    let new_shape = parse_shape(shape)?;
+
+    x.inner.broadcast_to(&new_shape)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "operands could not be broadcast together",
+            )
+        })
+}
+
+/// Broadcast any number of arrays against each other.
+#[pyfunction]
+pub fn broadcast_arrays(arrays: &Bound<'_, pyo3::types::PyList>) -> PyResult<Vec<PyRumpyArray>> {
+    if arrays.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Collect all arrays
+    let mut inner_arrays: Vec<RumpyArray> = Vec::with_capacity(arrays.len());
+    for item in arrays.iter() {
+        inner_arrays.push(to_rumpy_array(&item)?);
+    }
+
+    // Compute broadcast shape
+    let mut result_shape = inner_arrays[0].shape().to_vec();
+    for arr in inner_arrays.iter().skip(1) {
+        result_shape = crate::array::broadcast_shapes(&result_shape, arr.shape())
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(
+                    "operands could not be broadcast together",
+                )
+            })?;
+    }
+
+    // Broadcast each array to the result shape
+    let results: Vec<PyRumpyArray> = inner_arrays
+        .iter()
+        .map(|arr| {
+            arr.broadcast_to(&result_shape)
+                .map(PyRumpyArray::new)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err(
+                        "operands could not be broadcast together",
+                    )
+                })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    Ok(results)
+}
+
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
@@ -1373,6 +1733,18 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(flip, m)?)?;
     m.add_function(wrap_pyfunction!(flipud, m)?)?;
     m.add_function(wrap_pyfunction!(fliplr, m)?)?;
+    // Stream 9: Shape manipulation (module-level)
+    m.add_function(wrap_pyfunction!(reshape, m)?)?;
+    m.add_function(wrap_pyfunction!(ravel, m)?)?;
+    m.add_function(wrap_pyfunction!(flatten, m)?)?;
+    m.add_function(wrap_pyfunction!(transpose, m)?)?;
+    m.add_function(wrap_pyfunction!(atleast_1d, m)?)?;
+    m.add_function(wrap_pyfunction!(atleast_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(atleast_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(moveaxis, m)?)?;
+    m.add_function(wrap_pyfunction!(rollaxis, m)?)?;
+    m.add_function(wrap_pyfunction!(broadcast_to, m)?)?;
+    m.add_function(wrap_pyfunction!(broadcast_arrays, m)?)?;
     // Concatenation
     m.add_function(wrap_pyfunction!(concatenate, m)?)?;
     m.add_function(wrap_pyfunction!(stack, m)?)?;

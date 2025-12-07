@@ -62,7 +62,7 @@ fn parse_reshape_args_isize(args: &Bound<'_, PyTuple>) -> PyResult<Vec<isize>> {
 }
 
 /// Resolve -1 in shape given total size.
-fn resolve_reshape_shape(shape: Vec<isize>, size: usize) -> PyResult<Vec<usize>> {
+pub fn resolve_reshape_shape(shape: Vec<isize>, size: usize) -> PyResult<Vec<usize>> {
     let mut neg_idx: Option<usize> = None;
     let mut known_product: usize = 1;
 
