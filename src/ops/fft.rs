@@ -4,19 +4,41 @@ use crate::array::{DType, RumpyArray, increment_indices};
 use rustfft::{FftPlanner, num_complex::Complex64};
 
 /// Convert array to complex buffer for FFT.
+/// Uses fast path for contiguous float64/complex128 arrays.
 fn to_complex_buffer(arr: &RumpyArray) -> Vec<Complex64> {
     let size = arr.size();
-    let mut buffer = Vec::with_capacity(size);
     let ptr = arr.data_ptr();
     let dtype = arr.dtype();
-    let ops = dtype.ops();
 
-    let mut indices = vec![0usize; arr.ndim()];
-    for _ in 0..size {
-        let offset = arr.byte_offset_for(&indices);
+    // Fast path for contiguous float64
+    if arr.is_c_contiguous() && dtype == DType::float64() {
+        let f64_ptr = ptr as *const f64;
+        let mut buffer = Vec::with_capacity(size);
+        for i in 0..size {
+            let re = unsafe { *f64_ptr.add(i) };
+            buffer.push(Complex64::new(re, 0.0));
+        }
+        return buffer;
+    }
+
+    // Fast path for contiguous complex128
+    if arr.is_c_contiguous() && dtype == DType::complex128() {
+        let f64_ptr = ptr as *const f64;
+        let mut buffer = Vec::with_capacity(size);
+        for i in 0..size {
+            let re = unsafe { *f64_ptr.add(2 * i) };
+            let im = unsafe { *f64_ptr.add(2 * i + 1) };
+            buffer.push(Complex64::new(re, im));
+        }
+        return buffer;
+    }
+
+    // Slow path for strided/other dtypes
+    let ops = dtype.ops();
+    let mut buffer = Vec::with_capacity(size);
+    for offset in arr.iter_offsets() {
         let (re, im) = unsafe { ops.read_complex(ptr, offset).unwrap_or((0.0, 0.0)) };
         buffer.push(Complex64::new(re, im));
-        increment_indices(&mut indices, arr.shape());
     }
     buffer
 }
