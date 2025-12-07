@@ -530,6 +530,212 @@ fn init_default_loops() -> UFuncRegistry {
                     }
                 },
             );
+            // Unary abs - complex abs returns |z| = sqrt(r² + i²)
+            $reg.register_unary(
+                UnaryOp::Abs,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src, *src.add(1));
+                        let mag = (r * r + i * i).sqrt();
+                        let out = op as *mut $T;
+                        *out = mag;
+                        *out.add(1) = 0.0;  // Result is real
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary sqrt - complex sqrt
+            $reg.register_unary(
+                UnaryOp::Sqrt,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let mag = (r * r + i * i).sqrt();
+                        let out = op as *mut $T;
+                        if mag == 0.0 {
+                            *out = 0.0;
+                            *out.add(1) = 0.0;
+                        } else {
+                            // sqrt(z) = sqrt((|z| + Re(z))/2) + i*sign(Im(z))*sqrt((|z| - Re(z))/2)
+                            let sqrt_mag = mag.sqrt();
+                            let half_theta = i.atan2(r) / 2.0;
+                            *out = (sqrt_mag * half_theta.cos()) as $T;
+                            *out.add(1) = (sqrt_mag * half_theta.sin()) as $T;
+                        }
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary exp - complex exp: e^(a+bi) = e^a * (cos(b) + i*sin(b))
+            $reg.register_unary(
+                UnaryOp::Exp,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let exp_r = r.exp();
+                        let out = op as *mut $T;
+                        *out = (exp_r * i.cos()) as $T;
+                        *out.add(1) = (exp_r * i.sin()) as $T;
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary log - complex log: ln(z) = ln|z| + i*arg(z)
+            $reg.register_unary(
+                UnaryOp::Log,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let mag = (r * r + i * i).sqrt();
+                        let out = op as *mut $T;
+                        *out = mag.ln() as $T;
+                        *out.add(1) = i.atan2(r) as $T;
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary sin - complex sin: sin(a+bi) = sin(a)cosh(b) + i*cos(a)sinh(b)
+            $reg.register_unary(
+                UnaryOp::Sin,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let out = op as *mut $T;
+                        *out = (r.sin() * i.cosh()) as $T;
+                        *out.add(1) = (r.cos() * i.sinh()) as $T;
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary cos - complex cos: cos(a+bi) = cos(a)cosh(b) - i*sin(a)sinh(b)
+            $reg.register_unary(
+                UnaryOp::Cos,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let out = op as *mut $T;
+                        *out = (r.cos() * i.cosh()) as $T;
+                        *out.add(1) = (-(r.sin() * i.sinh())) as $T;
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary tan - complex tan: tan(z) = sin(z)/cos(z)
+            $reg.register_unary(
+                UnaryOp::Tan,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        // tan(z) = sin(z)/cos(z) = (sin(r)cosh(i) + i*cos(r)sinh(i)) / (cos(r)cosh(i) - i*sin(r)sinh(i))
+                        let sin_r = r.sin();
+                        let cos_r = r.cos();
+                        let sinh_i = i.sinh();
+                        let cosh_i = i.cosh();
+                        let (nr, ni) = (sin_r * cosh_i, cos_r * sinh_i);
+                        let (dr, di) = (cos_r * cosh_i, -sin_r * sinh_i);
+                        let denom = dr * dr + di * di;
+                        let out = op as *mut $T;
+                        if denom != 0.0 {
+                            *out = ((nr * dr + ni * di) / denom) as $T;
+                            *out.add(1) = ((ni * dr - nr * di) / denom) as $T;
+                        } else {
+                            *out = <$T>::NAN;
+                            *out.add(1) = <$T>::NAN;
+                        }
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary sinh - complex sinh: sinh(a+bi) = sinh(a)cos(b) + i*cosh(a)sin(b)
+            $reg.register_unary(
+                UnaryOp::Sinh,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let out = op as *mut $T;
+                        *out = (r.sinh() * i.cos()) as $T;
+                        *out.add(1) = (r.cosh() * i.sin()) as $T;
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary cosh - complex cosh: cosh(a+bi) = cosh(a)cos(b) + i*sinh(a)sin(b)
+            $reg.register_unary(
+                UnaryOp::Cosh,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        let out = op as *mut $T;
+                        *out = (r.cosh() * i.cos()) as $T;
+                        *out.add(1) = (r.sinh() * i.sin()) as $T;
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
+            // Unary tanh - complex tanh
+            $reg.register_unary(
+                UnaryOp::Tanh,
+                TypeSignature::unary($kind.clone(), $kind.clone()),
+                |src_ptr, out_ptr, n, strides| unsafe {
+                    let (ss, so) = strides;
+                    let (mut sp, mut op) = (src_ptr, out_ptr);
+                    for _ in 0..n {
+                        let src = sp as *const $T;
+                        let (r, i) = (*src as f64, *src.add(1) as f64);
+                        // tanh(z) = sinh(z)/cosh(z)
+                        let (sinh_r, cosh_r) = (r.sinh(), r.cosh());
+                        let (sin_i, cos_i) = (i.sin(), i.cos());
+                        let (nr, ni) = (sinh_r * cos_i, cosh_r * sin_i);
+                        let (dr, di) = (cosh_r * cos_i, sinh_r * sin_i);
+                        let denom = dr * dr + di * di;
+                        let out = op as *mut $T;
+                        if denom != 0.0 {
+                            *out = ((nr * dr + ni * di) / denom) as $T;
+                            *out.add(1) = ((ni * dr - nr * di) / denom) as $T;
+                        } else {
+                            *out = <$T>::NAN;
+                            *out.add(1) = <$T>::NAN;
+                        }
+                        sp = sp.offset(ss); op = op.offset(so);
+                    }
+                },
+            );
             // Reduce ops
             $reg.register_reduce(
                 ReduceOp::Sum,
@@ -557,6 +763,76 @@ fn init_default_loops() -> UFuncRegistry {
                     let (ar, ai, vr, vi) = (*acc, *acc.add(1), *v, *v.add(1));
                     *acc = ar * vr - ai * vi;
                     *acc.add(1) = ar * vi + ai * vr;
+                },
+            );
+            // Strided reduce for Sum (used in axis reductions)
+            $reg.register_reduce_strided(
+                ReduceOp::Sum,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe {
+                    let out = out_ptr as *mut $T;
+                    *out = 0.0; *out.add(1) = 0.0;
+                },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let itemsize = std::mem::size_of::<$T>() as isize * 2;  // Complex has 2 components
+                    let acc = acc_ptr as *mut $T;
+                    if stride == itemsize {
+                        // Contiguous: use slice for vectorization
+                        let src = std::slice::from_raw_parts(src_ptr as *const $T, n * 2);
+                        let (mut sum_r, mut sum_i) = (*acc, *acc.add(1));
+                        for i in (0..n*2).step_by(2) {
+                            sum_r += src[i];
+                            sum_i += src[i + 1];
+                        }
+                        *acc = sum_r;
+                        *acc.add(1) = sum_i;
+                    } else {
+                        // Strided
+                        let mut p = src_ptr;
+                        for _ in 0..n {
+                            let v = p as *const $T;
+                            *acc += *v;
+                            *acc.add(1) += *v.add(1);
+                            p = p.offset(stride);
+                        }
+                    }
+                },
+            );
+            // Strided reduce for Prod
+            $reg.register_reduce_strided(
+                ReduceOp::Prod,
+                TypeSignature::reduce($kind.clone(), $kind.clone()),
+                |out_ptr, _idx| unsafe {
+                    let out = out_ptr as *mut $T;
+                    *out = 1.0; *out.add(1) = 0.0;
+                },
+                |acc_ptr, src_ptr, n, stride| unsafe {
+                    let itemsize = std::mem::size_of::<$T>() as isize * 2;
+                    let acc = acc_ptr as *mut $T;
+                    if stride == itemsize {
+                        // Contiguous
+                        let src = std::slice::from_raw_parts(src_ptr as *const $T, n * 2);
+                        let (mut pr, mut pi) = (*acc, *acc.add(1));
+                        for i in (0..n*2).step_by(2) {
+                            let (vr, vi) = (src[i], src[i + 1]);
+                            let new_r = pr * vr - pi * vi;
+                            let new_i = pr * vi + pi * vr;
+                            pr = new_r;
+                            pi = new_i;
+                        }
+                        *acc = pr;
+                        *acc.add(1) = pi;
+                    } else {
+                        // Strided
+                        let mut p = src_ptr;
+                        for _ in 0..n {
+                            let v = p as *const $T;
+                            let (ar, ai, vr, vi) = (*acc, *acc.add(1), *v, *v.add(1));
+                            *acc = ar * vr - ai * vi;
+                            *acc.add(1) = ar * vi + ai * vr;
+                            p = p.offset(stride);
+                        }
+                    }
                 },
             );
         };

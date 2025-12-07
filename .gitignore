@@ -16,3 +16,7 @@ dist/
 # Testing
 .pytest_cache/
 .hypothesis/
+
+# Notebooks/scratch
+__marimo__/
+play.py
