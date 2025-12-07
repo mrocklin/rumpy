@@ -257,16 +257,16 @@ Module-level versions of array methods + new functions.
 
 ---
 
-## Stream 12: Set Operations
+## Stream 12: Set Operations ✓
 
-- [ ] `isin` - test if elements are in test array
-- [ ] `in1d` - test if elements are in 1D array (deprecated, alias to isin)
-- [ ] `intersect1d` - intersection of sorted arrays
-- [ ] `union1d` - union of arrays
-- [ ] `setdiff1d` - set difference
-- [ ] `setxor1d` - set symmetric difference
+- [x] `isin` - test if elements are in test array
+- [x] `in1d` - test if elements are in 1D array (deprecated, alias to isin)
+- [x] `intersect1d` - intersection of sorted arrays
+- [x] `union1d` - union of arrays
+- [x] `setdiff1d` - set difference
+- [x] `setxor1d` - set symmetric difference
 
-**Files**: `src/ops/set_ops.rs` (new), `src/python/mod.rs`, `tests/test_set.py`
+**Files**: `src/ops/set_ops.rs`, `src/python/mod.rs`, `tests/test_set.py`
 
 ---
 

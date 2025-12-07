@@ -13,6 +13,7 @@ pub mod linalg;
 pub mod matmul;
 pub mod outer;
 pub mod registry;
+pub mod set_ops;
 pub mod solve;
 pub mod statistics;
 pub mod ufunc;
@@ -32,6 +33,7 @@ pub use bitwise::{
     left_shift, right_shift,
 };
 pub use statistics::{histogram, cov, corrcoef};
+pub use set_ops::{isin, in1d, intersect1d, union1d, setdiff1d, setxor1d};
 
 use crate::array::{broadcast_shapes, increment_indices, promote_dtype, DType, RumpyArray};
 use crate::array::dtype::{DTypeKind, UnaryOp, ReduceOp};
