@@ -35,7 +35,20 @@ pub fn to_rumpy_array(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<RumpyArray> {
 
 /// Give a new shape to an array.
 #[pyfunction]
-pub fn reshape(a: &PyRumpyArray, newshape: Vec<isize>) -> PyResult<PyRumpyArray> {
+pub fn reshape(a: &PyRumpyArray, newshape: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    // Parse newshape - can be int, tuple, or list
+    let newshape: Vec<isize> = if let Ok(n) = newshape.extract::<isize>() {
+        vec![n]
+    } else if let Ok(tuple) = newshape.downcast::<pyo3::types::PyTuple>() {
+        tuple.iter().map(|x| x.extract::<isize>()).collect::<PyResult<Vec<_>>>()?
+    } else if let Ok(list) = newshape.downcast::<PyList>() {
+        list.iter().map(|x| x.extract::<isize>()).collect::<PyResult<Vec<_>>>()?
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "newshape must be int, tuple, or list"
+        ));
+    };
+
     // Handle -1 in shape (infer dimension)
     let total = a.inner.size();
     let neg_one_count = newshape.iter().filter(|&&x| x == -1).count();
@@ -104,7 +117,21 @@ pub fn swapaxes(x: &PyRumpyArray, axis1: usize, axis2: usize) -> PyRumpyArray {
 
 /// Move axes to new positions.
 #[pyfunction]
-pub fn moveaxis(a: &PyRumpyArray, source: Vec<isize>, destination: Vec<isize>) -> PyResult<PyRumpyArray> {
+pub fn moveaxis(a: &PyRumpyArray, source: &Bound<'_, pyo3::PyAny>, destination: &Bound<'_, pyo3::PyAny>) -> PyResult<PyRumpyArray> {
+    // Parse source - can be int or sequence
+    let source: Vec<isize> = if let Ok(n) = source.extract::<isize>() {
+        vec![n]
+    } else {
+        source.extract::<Vec<isize>>()?
+    };
+
+    // Parse destination - can be int or sequence
+    let destination: Vec<isize> = if let Ok(n) = destination.extract::<isize>() {
+        vec![n]
+    } else {
+        destination.extract::<Vec<isize>>()?
+    };
+
     let ndim = a.inner.ndim();
 
     // Normalize axes
