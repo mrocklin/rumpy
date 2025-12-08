@@ -477,6 +477,11 @@ You are implementing NumPy API parity for rumpy, a NumPy clone in Rust.
 
 **Philosophy**: Seek general solutions. There are many operations and dtypes - prefer
 well-factored code with shared abstractions (macros, traits) over copy-paste.
+Try to acheive performance parity with numpy.  When writing iterative code this
+often means writing things so that they can take advantage of simd
+optimizations, or better yet, using existing iteration systems in the project
+that already do this.
+
 
 **Your Tasks**:
 [LIST OF FUNCTIONS FROM PLAN]
@@ -495,6 +500,9 @@ well-factored code with shared abstractions (macros, traits) over copy-paste.
 **Testing**: Use pytest in the tests/ directory. Compare rumpy results against numpy
 using `assert_eq` from `tests/helpers.py`.
 
+When you're done, review your code to see if there is anything you should clean
+up or simplify.
+
 **Build Command**:
 ```bash
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
@@ -504,34 +512,49 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 - Do NOT modify files outside your stream's scope
 - If you need a dependency from another stream, note it and skip
 - Commit frequently with clear messages
-```
 
 ---
 
 ## Estimated Scope
 
-| Stream | Functions | Complexity | Dependencies |
-|--------|-----------|------------|--------------|
-| 1. Unary Math | 17 | Low | None |
-| 2. Binary Math | 11 | Low | None |
-| 3. Comparisons | 9 | Medium | None |
-| 4. Logical | 4 | Low | None |
-| 5. Bitwise | 6 | Low | None |
-| 6. NaN Reductions | 9 | Medium | None |
-| 7. Statistics | 6 | High | Stream 6 partial |
-| 8. Creation | 11 | Medium | None |
-| 9. Shape | 11 | Medium | None |
-| 10. Indexing | 9 | High | None |
-| 11. Manipulation | 14 | Medium | None |
-| 12. Set Ops | 6 | Medium | Stream 13 |
-| 13. Sorting Adv | 3 | High | None |
-| 14. Linalg | 11 | High | None |
-| 15. Random | 8 | Medium | None |
-| 16. Numerical | 5 | High | None |
-| 17. Polynomial | 5 | High | None |
-| 18. Array Methods | 12 | Medium | Various |
+| Stream | Functions | Complexity | Dependencies | Status |
+|--------|-----------|------------|--------------|--------|
+| 1. Unary Math | 17 | Low | None | ✅ |
+| 2. Binary Math | 11 | Low | None | ✅ |
+| 3. Comparisons | 9 | Medium | None | ✅ |
+| 4. Logical | 4 | Low | None | ✅ |
+| 5. Bitwise | 6 | Low | None | ✅ |
+| 6. NaN Reductions | 9 | Medium | None | ✅ |
+| 7. Statistics | 6 | High | Stream 6 partial | ✅ |
+| 8. Creation | 11 | Medium | None | ✅ |
+| 9. Shape | 11 | Medium | None | ✅ |
+| 10. Indexing | 9 | High | None | ✅ |
+| 11. Manipulation | 14 | Medium | None | ✅ |
+| 12. Set Ops | 6 | Medium | Stream 13 | ✅ |
+| 13. Sorting Adv | 3 | High | None | ✅ |
+| 14. Linalg | 11 | High | None | ✅ |
+| 15. Random | 8 | Medium | None | ✅ |
+| 16. Numerical | 5 | High | None | ✅ |
+| 17. Polynomial | 5 | High | None | ✅ |
+| 18. Array Methods | 12 | Medium | Various | ✅ |
+| 19. I/O | 10 | High | None | |
+| 20. FFT Extensions | 8 | High | Stream fft | |
+| 21. Random Extended | 18 | Medium | Stream 15 | |
+| 22. DType System | 9 | High | None | |
+| 23. ndarray Methods | 11 | Medium | None | |
+| 24. Linalg Extensions | 9 | High | Stream 14 | |
+| 25. Special Functions | 9 | Medium | None | |
+| 26. Index Utilities | 10 | Medium | None | |
+| 27. Array Inspection | 12 | Low | None | |
+| 28. Window Functions | 5 | Low | None | |
+| 29. Unique Extensions | 4 | Low | Stream 13 | |
+| 30. Convenience Aliases | 15 | Low | Various | |
+| 31. NaN Extensions | 5 | Medium | Stream 6 | |
+| 32. Miscellaneous | 13 | Medium | Various | |
 
-**Total**: ~157 functions across 18 streams
+**Completed**: ~157 functions across 18 streams
+**Remaining**: ~128 functions across 14 new streams
+**Total**: ~285 functions across 32 streams
 
 ---
 
@@ -560,11 +583,366 @@ Before marking stream complete:
 
 ---
 
+## Stream 19: I/O Operations
+
+File reading/writing - essential for real-world use.
+
+### Tier 1 - Text I/O
+- [ ] `loadtxt` - load from text file
+- [ ] `savetxt` - save to text file
+- [ ] `genfromtxt` - load with missing value handling
+
+### Tier 2 - Binary I/O
+- [ ] `save` - save single array (.npy format)
+- [ ] `load` - load .npy file
+- [ ] `savez` - save multiple arrays (.npz)
+- [ ] `savez_compressed` - compressed .npz
+
+### Tier 3 - Buffer Operations
+- [ ] `frombuffer` - create from buffer
+- [ ] `fromfile` - read from binary file
+- [ ] `tofile` - array method, write binary
+
+**Files**: `src/ops/io.rs` (new), `src/python/io.rs` (new), `tests/test_io.py`
+
+---
+
+## Stream 20: FFT Extensions
+
+Complete the FFT submodule.
+
+### N-dimensional
+- [ ] `fftn` - n-dimensional FFT
+- [ ] `ifftn` - inverse n-dimensional FFT
+- [ ] `rfftn` - real n-dimensional FFT
+- [ ] `irfftn` - inverse real n-dimensional FFT
+
+### Real 2D
+- [ ] `rfft2` - 2D real FFT
+- [ ] `irfft2` - inverse 2D real FFT
+
+### Hermitian
+- [ ] `hfft` - Hermitian FFT
+- [ ] `ihfft` - inverse Hermitian FFT
+
+**Files**: `src/ops/fft.rs`, `src/python/fft.rs`, `tests/test_fft.py`
+
+---
+
+## Stream 21: Random Distributions (Extended)
+
+Additional distributions for Generator.
+
+### Tier 1 - Common
+- [ ] `lognormal` - log-normal distribution
+- [ ] `laplace` - Laplace distribution
+- [ ] `logistic` - logistic distribution
+- [ ] `rayleigh` - Rayleigh distribution
+- [ ] `weibull` - Weibull distribution
+
+### Tier 2 - Discrete
+- [ ] `geometric` - geometric distribution
+- [ ] `negative_binomial` - negative binomial
+- [ ] `hypergeometric` - hypergeometric distribution
+- [ ] `multinomial` - multinomial distribution
+- [ ] `zipf` - Zipf distribution
+
+### Tier 3 - Specialized
+- [ ] `triangular` - triangular distribution
+- [ ] `vonmises` - von Mises (circular) distribution
+- [ ] `pareto` - Pareto distribution
+- [ ] `wald` - Wald (inverse Gaussian) distribution
+- [ ] `dirichlet` - Dirichlet distribution
+- [ ] `standard_t` - Student's t distribution
+- [ ] `standard_cauchy` - Cauchy distribution
+- [ ] `standard_gamma` - standard gamma (shape only)
+
+**Files**: `src/random/*.rs`, `src/python/random.rs`, `tests/test_random.py`
+
+---
+
+## Stream 22: DType System Extensions
+
+Type introspection and promotion functions.
+
+### Type Info
+- [ ] `finfo` - floating point type info
+- [ ] `iinfo` - integer type info
+- [ ] `dtype` - dtype constructor (accept np.float64, etc.)
+
+### Type Promotion
+- [ ] `promote_types` - find common type
+- [ ] `result_type` - determine result type for operands
+- [ ] `can_cast` - check if cast is allowed
+- [ ] `common_type` - find common type for sequences
+
+### Type Predicates
+- [ ] `issubdtype` - check dtype inheritance
+- [ ] `isdtype` - check if dtype matches kind
+
+**Files**: `src/array/dtype/mod.rs`, `src/python/dtype.rs` (new), `tests/test_dtypes.py`
+
+---
+
+## Stream 23: ndarray Methods (Extended)
+
+Complete array method parity.
+
+### Properties
+- [ ] `base` - underlying array for views
+- [ ] `data` - buffer pointer (memoryview)
+- [ ] `flags` - array flags object (C_CONTIGUOUS, etc.)
+- [ ] `flat` - 1D iterator over elements
+
+### Methods
+- [ ] `ptp` - peak-to-peak (max - min)
+- [ ] `compress` - select using boolean mask
+- [ ] `choose` - construct from index choices
+- [ ] `resize` - resize array in-place
+
+### Serialization
+- [ ] `dump` - pickle to file
+- [ ] `dumps` - pickle to string
+- [ ] `tofile` - write to binary file
+
+**Files**: `src/python/pyarray/*.rs`, `tests/test_array_methods.py`
+
+---
+
+## Stream 24: Linalg Extensions
+
+Complete linear algebra submodule.
+
+### Eigenvalues
+- [ ] `eigvalsh` - eigenvalues of symmetric matrix
+
+### Matrix Operations
+- [ ] `matrix_power` - matrix to integer power
+- [ ] `multi_dot` - efficient multi-matrix dot
+
+### Tensor Operations
+- [ ] `tensorinv` - tensor inverse
+- [ ] `tensorsolve` - tensor equation solve
+
+### Norms (Extended)
+- [ ] `vector_norm` - vector norm with ord parameter
+- [ ] `matrix_norm` - matrix norm with ord parameter
+
+### Singular Values
+- [ ] `svdvals` - singular values only
+
+### Misc
+- [ ] `LinAlgError` - exception class
+
+**Files**: `src/ops/linalg.rs`, `src/python/linalg.rs`, `tests/test_linalg.py`
+
+---
+
+## Stream 25: Special Functions
+
+Mathematical special functions.
+
+### Tier 1 - Common
+- [ ] `sinc` - sinc function (sin(πx)/(πx))
+- [ ] `i0` - modified Bessel function of order 0
+
+### Tier 2 - Integer Math
+- [ ] `gcd` - greatest common divisor
+- [ ] `lcm` - least common multiple
+
+### Tier 3 - Float Decomposition
+- [ ] `modf` - fractional and integer parts
+- [ ] `frexp` - mantissa and exponent
+- [ ] `ldexp` - x * 2^i
+
+### Tier 4 - Special Values
+- [ ] `heaviside` - Heaviside step function
+- [ ] `spacing` - ULP distance
+
+**Files**: `src/ops/special.rs` (new), `src/python/ufuncs.rs`, `tests/test_special.py`
+
+---
+
+## Stream 26: Index Utilities
+
+Advanced indexing helpers.
+
+### Index Conversion
+- [ ] `unravel_index` - flat index to multi-index
+- [ ] `ravel_multi_index` - multi-index to flat index
+
+### Index Generation
+- [ ] `diag_indices` - diagonal indices
+- [ ] `diag_indices_from` - diagonal indices matching array
+- [ ] `tril_indices` - lower triangle indices
+- [ ] `triu_indices` - upper triangle indices
+- [ ] `mask_indices` - indices from mask function
+
+### Binning
+- [ ] `digitize` - bin indices for values
+
+### Bit Packing
+- [ ] `packbits` - pack binary values
+- [ ] `unpackbits` - unpack to binary array
+
+**Files**: `src/ops/indexing.rs`, `src/python/indexing.rs`, `tests/test_indexing_ops.py`
+
+---
+
+## Stream 27: Array Inspection
+
+Value checking and inspection functions.
+
+### Special Value Checks
+- [ ] `isneginf` - check for negative infinity
+- [ ] `isposinf` - check for positive infinity
+- [ ] `isreal` - check if real (imag == 0)
+- [ ] `iscomplex` - check if has imaginary part
+- [ ] `isrealobj` - check if array is real-valued
+- [ ] `iscomplexobj` - check if array is complex-valued
+
+### Memory Inspection
+- [ ] `shares_memory` - check if arrays share memory
+- [ ] `may_share_memory` - check if arrays might share memory
+
+### Scalar/Shape Checks
+- [ ] `isscalar` - check if scalar
+- [ ] `ndim` - number of dimensions (module-level)
+- [ ] `size` - total elements (module-level)
+- [ ] `shape` - shape tuple (module-level)
+
+**Files**: `src/ops/inspection.rs` (new), `src/python/mod.rs`, `tests/test_inspection.py`
+
+---
+
+## Stream 28: Window Functions
+
+Signal processing window functions.
+
+- [ ] `bartlett` - Bartlett window
+- [ ] `blackman` - Blackman window
+- [ ] `hamming` - Hamming window
+- [ ] `hanning` - Hann window
+- [ ] `kaiser` - Kaiser window (requires beta parameter)
+
+**Files**: `src/ops/windows.rs` (new), `src/python/mod.rs`, `tests/test_windows.py`
+
+---
+
+## Stream 29: Unique Extensions
+
+Extended unique functionality (NumPy 2.0+).
+
+- [ ] `unique_all` - unique with all return values
+- [ ] `unique_counts` - unique with counts only
+- [ ] `unique_inverse` - unique with inverse only
+- [ ] `unique_values` - unique values only
+
+**Files**: `src/ops/array_methods/sorting.rs`, `src/python/mod.rs`, `tests/test_sorting.py`
+
+---
+
+## Stream 30: Convenience Aliases
+
+Aliases and simple wrappers for compatibility.
+
+### Math Aliases
+- [ ] `absolute` - alias for abs
+- [ ] `conjugate` - alias for conj
+- [ ] `acos`, `asin`, `atan` - aliases for arccos, arcsin, arctan
+- [ ] `acosh`, `asinh`, `atanh` - aliases for arccosh, arcsinh, arctanh
+- [ ] `pow` - alias for power
+- [ ] `mod` - alias for remainder
+- [ ] `fabs` - absolute value (float only)
+- [ ] `true_divide` - alias for divide
+- [ ] `fmod` - floating point remainder
+
+### Reduction Aliases
+- [ ] `amax` - alias for max (with axis)
+- [ ] `amin` - alias for min (with axis)
+
+### Constants
+- [ ] `pi` - π
+- [ ] `e` - Euler's number
+- [ ] `inf` - positive infinity
+- [ ] `nan` - Not a Number
+- [ ] `newaxis` - None (already have, verify)
+
+**Files**: `src/python/mod.rs`, `tests/test_aliases.py`
+
+---
+
+## Stream 31: NaN-aware Extensions
+
+Additional NaN-handling functions.
+
+- [ ] `nanmedian` - median ignoring NaN
+- [ ] `nanpercentile` - percentile ignoring NaN
+- [ ] `nanquantile` - quantile ignoring NaN
+- [ ] `nancumsum` - cumulative sum ignoring NaN
+- [ ] `nancumprod` - cumulative product ignoring NaN
+
+**Files**: `src/ops/array_methods/reductions.rs`, `src/python/reductions.rs`, `tests/test_nan.py`
+
+---
+
+## Stream 32: Miscellaneous Operations
+
+Remaining useful functions.
+
+### Array Manipulation
+- [ ] `resize` - resize array (different from reshape)
+- [ ] `unstack` - unstack along axis
+- [ ] `block` - assemble from nested blocks
+- [ ] `trim_zeros` - trim leading/trailing zeros
+
+### Conditional
+- [ ] `extract` - extract elements where condition
+- [ ] `place` - place values where condition
+- [ ] `putmask` - put values using mask
+- [ ] `select` - select from choicelist by conditions
+- [ ] `piecewise` - piecewise function
+
+### Other
+- [ ] `ediff1d` - differences with prepend/append
+- [ ] `unwrap` - unwrap phase angles
+- [ ] `angle` - phase angle of complex
+- [ ] `real_if_close` - convert to real if imaginary is small
+
+**Files**: Various, `tests/test_misc.py`
+
+---
+
+## Stream Summary (New)
+
+| Stream | Functions | Focus |
+|--------|-----------|-------|
+| 19. I/O | 10 | File operations |
+| 20. FFT Extensions | 8 | Complete FFT module |
+| 21. Random Extended | 18 | More distributions |
+| 22. DType System | 9 | Type introspection |
+| 23. ndarray Methods | 11 | Array method parity |
+| 24. Linalg Extensions | 9 | Complete linalg |
+| 25. Special Functions | 9 | Math special functions |
+| 26. Index Utilities | 10 | Advanced indexing |
+| 27. Array Inspection | 12 | Value/memory checks |
+| 28. Window Functions | 5 | Signal windows |
+| 29. Unique Extensions | 4 | NumPy 2.0 unique |
+| 30. Convenience Aliases | 15 | Compatibility |
+| 31. NaN Extensions | 5 | More NaN-aware ops |
+| 32. Miscellaneous | 13 | Remaining useful |
+
+**New Total**: ~128 additional functions across 14 new streams
+
+---
+
 ## Code Quality Issues
 
 Post-implementation cleanup opportunities identified during review.
 
-### 1. Large Files
+### 1. Large Files ✅ FIXED
+
+Broken these files apart into different files based on grouped functionality.
 
 | File | Lines | Issue |
 |------|-------|-------|
