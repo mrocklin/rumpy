@@ -75,15 +75,17 @@ pub fn reduce<T: Copy, K: ReduceKernel<T>>(data: &[T], _kernel: K) -> T {
     }
 
     // 8-accumulator pattern for ILP (matches NumPy's pairwise sum)
-    let mut r = [K::init(); 8];
-    r[0] = data[0];
-    r[1] = data[1];
-    r[2] = data[2];
-    r[3] = data[3];
-    r[4] = data[4];
-    r[5] = data[5];
-    r[6] = data[6];
-    r[7] = data[7];
+    // Use combine() for init to support NaN-skipping kernels
+    let mut r = [
+        K::combine(K::init(), data[0]),
+        K::combine(K::init(), data[1]),
+        K::combine(K::init(), data[2]),
+        K::combine(K::init(), data[3]),
+        K::combine(K::init(), data[4]),
+        K::combine(K::init(), data[5]),
+        K::combine(K::init(), data[6]),
+        K::combine(K::init(), data[7]),
+    ];
 
     // Process in chunks of 8
     let mut i = 8;

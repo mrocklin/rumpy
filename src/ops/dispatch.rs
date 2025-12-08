@@ -17,6 +17,7 @@ use crate::ops::kernels::arithmetic::{
     Add, Sub, Mul, Div, Sum, Prod, Max, Min,
     Pow, Mod, FloorDiv, Maximum, Minimum,
     Arctan2, Hypot, FMax, FMin, Copysign, Logaddexp, Logaddexp2, Nextafter,
+    NanSum, NanProd, NanMax, NanMin,
 };
 use crate::ops::kernels::math::{
     Neg, Abs, Sqrt, Exp, Log, Log10, Log2, Sin, Cos, Tan, Floor, Ceil, Square,
@@ -498,6 +499,84 @@ fn dispatch_reduce_axis_typed<T: Copy, K: ReduceKernel<T>>(
     }
 
     Some(result)
+}
+
+// ============================================================================
+// NaN-aware reduce dispatch (floats only)
+// ============================================================================
+
+/// Dispatch NaN-aware sum (full array).
+pub fn dispatch_nan_reduce_sum(arr: &RumpyArray) -> Option<f64> {
+    dispatch_nan_reduce_float(arr, NanSum)
+}
+
+/// Dispatch NaN-aware product (full array).
+pub fn dispatch_nan_reduce_prod(arr: &RumpyArray) -> Option<f64> {
+    dispatch_nan_reduce_float(arr, NanProd)
+}
+
+/// Dispatch NaN-aware max (full array).
+pub fn dispatch_nan_reduce_max(arr: &RumpyArray) -> Option<f64> {
+    dispatch_nan_reduce_float(arr, NanMax)
+}
+
+/// Dispatch NaN-aware min (full array).
+pub fn dispatch_nan_reduce_min(arr: &RumpyArray) -> Option<f64> {
+    dispatch_nan_reduce_float(arr, NanMin)
+}
+
+/// Generic NaN-aware reduce dispatch for float types.
+fn dispatch_nan_reduce_float<K>(arr: &RumpyArray, kernel: K) -> Option<f64>
+where
+    K: ReduceKernel<f64> + ReduceKernel<f32>,
+{
+    let kind = arr.dtype().kind();
+    let size = arr.size();
+
+    match kind {
+        DTypeKind::Float64 => {
+            let val = dispatch_reduce_typed::<f64, K>(arr, size, kernel)?;
+            Some(val)
+        }
+        DTypeKind::Float32 => {
+            let val = dispatch_reduce_typed::<f32, K>(arr, size, kernel)?;
+            Some(val as f64)
+        }
+        _ => None, // Only floats support NaN-aware reductions
+    }
+}
+
+/// Dispatch NaN-aware sum along axis.
+pub fn dispatch_nan_reduce_axis_sum(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_nan_reduce_axis_float(arr, axis, NanSum)
+}
+
+/// Dispatch NaN-aware product along axis.
+pub fn dispatch_nan_reduce_axis_prod(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_nan_reduce_axis_float(arr, axis, NanProd)
+}
+
+/// Dispatch NaN-aware max along axis.
+pub fn dispatch_nan_reduce_axis_max(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_nan_reduce_axis_float(arr, axis, NanMax)
+}
+
+/// Dispatch NaN-aware min along axis.
+pub fn dispatch_nan_reduce_axis_min(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_nan_reduce_axis_float(arr, axis, NanMin)
+}
+
+/// Generic NaN-aware axis reduce dispatch for float types.
+fn dispatch_nan_reduce_axis_float<K>(arr: &RumpyArray, axis: usize, kernel: K) -> Option<RumpyArray>
+where
+    K: ReduceKernel<f64> + ReduceKernel<f32>,
+{
+    let kind = arr.dtype().kind();
+    match kind {
+        DTypeKind::Float64 => dispatch_reduce_axis_typed::<f64, K>(arr, axis, kernel, DType::float64()),
+        DTypeKind::Float32 => dispatch_reduce_axis_typed::<f32, K>(arr, axis, kernel, DType::float32()),
+        _ => None, // Only floats support NaN-aware reductions
+    }
 }
 
 // ============================================================================

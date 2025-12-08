@@ -686,41 +686,51 @@ impl RumpyArray {
 
     /// Sum all elements, ignoring NaN values.
     pub fn nansum(&self) -> f64 {
-        self.nan_reduce_full(0.0, |acc, v| acc + v).0
+        use crate::ops::dispatch;
+        dispatch::dispatch_nan_reduce_sum(self)
+            .unwrap_or_else(|| self.nan_reduce_full(0.0, |acc, v| acc + v).0)
     }
 
     /// Sum along axis, ignoring NaN values.
     pub fn nansum_axis(&self, axis: usize) -> RumpyArray {
-        self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
-            let mut sum = 0.0;
-            for j in 0..len {
-                indices[ax] = j;
-                let val = self.get_element(indices);
-                if !val.is_nan() {
-                    sum += val;
+        use crate::ops::dispatch;
+        dispatch::dispatch_nan_reduce_axis_sum(self, axis).unwrap_or_else(|| {
+            self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
+                let mut sum = 0.0;
+                for j in 0..len {
+                    indices[ax] = j;
+                    let val = self.get_element(indices);
+                    if !val.is_nan() {
+                        sum += val;
+                    }
                 }
-            }
-            sum
+                sum
+            })
         })
     }
 
     /// Product of all elements, ignoring NaN values.
     pub fn nanprod(&self) -> f64 {
-        self.nan_reduce_full(1.0, |acc, v| acc * v).0
+        use crate::ops::dispatch;
+        dispatch::dispatch_nan_reduce_prod(self)
+            .unwrap_or_else(|| self.nan_reduce_full(1.0, |acc, v| acc * v).0)
     }
 
     /// Product along axis, ignoring NaN values.
     pub fn nanprod_axis(&self, axis: usize) -> RumpyArray {
-        self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
-            let mut prod = 1.0;
-            for j in 0..len {
-                indices[ax] = j;
-                let val = self.get_element(indices);
-                if !val.is_nan() {
-                    prod *= val;
+        use crate::ops::dispatch;
+        dispatch::dispatch_nan_reduce_axis_prod(self, axis).unwrap_or_else(|| {
+            self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
+                let mut prod = 1.0;
+                for j in 0..len {
+                    indices[ax] = j;
+                    let val = self.get_element(indices);
+                    if !val.is_nan() {
+                        prod *= val;
+                    }
                 }
-            }
-            prod
+                prod
+            })
         })
     }
 
@@ -827,47 +837,67 @@ impl RumpyArray {
 
     /// Minimum of all elements, ignoring NaN values.
     pub fn nanmin(&self) -> f64 {
-        let (val, found) = self.nan_reduce_full(f64::INFINITY, |acc, v| acc.min(v));
-        if found { val } else { f64::NAN }
+        use crate::ops::dispatch;
+        match dispatch::dispatch_nan_reduce_min(self) {
+            Some(val) if val == f64::INFINITY => f64::NAN, // All NaN case
+            Some(val) => val,
+            None => {
+                let (val, found) = self.nan_reduce_full(f64::INFINITY, |acc, v| acc.min(v));
+                if found { val } else { f64::NAN }
+            }
+        }
     }
 
     /// Minimum along axis, ignoring NaN values.
     pub fn nanmin_axis(&self, axis: usize) -> RumpyArray {
-        self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
-            let mut min_val = f64::INFINITY;
-            let mut found = false;
-            for j in 0..len {
-                indices[ax] = j;
-                let val = self.get_element(indices);
-                if !val.is_nan() {
-                    min_val = min_val.min(val);
-                    found = true;
+        use crate::ops::dispatch;
+        dispatch::dispatch_nan_reduce_axis_min(self, axis).unwrap_or_else(|| {
+            self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
+                let mut min_val = f64::INFINITY;
+                let mut found = false;
+                for j in 0..len {
+                    indices[ax] = j;
+                    let val = self.get_element(indices);
+                    if !val.is_nan() {
+                        min_val = min_val.min(val);
+                        found = true;
+                    }
                 }
-            }
-            if found { min_val } else { f64::NAN }
+                if found { min_val } else { f64::NAN }
+            })
         })
     }
 
     /// Maximum of all elements, ignoring NaN values.
     pub fn nanmax(&self) -> f64 {
-        let (val, found) = self.nan_reduce_full(f64::NEG_INFINITY, |acc, v| acc.max(v));
-        if found { val } else { f64::NAN }
+        use crate::ops::dispatch;
+        match dispatch::dispatch_nan_reduce_max(self) {
+            Some(val) if val == f64::NEG_INFINITY => f64::NAN, // All NaN case
+            Some(val) => val,
+            None => {
+                let (val, found) = self.nan_reduce_full(f64::NEG_INFINITY, |acc, v| acc.max(v));
+                if found { val } else { f64::NAN }
+            }
+        }
     }
 
     /// Maximum along axis, ignoring NaN values.
     pub fn nanmax_axis(&self, axis: usize) -> RumpyArray {
-        self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
-            let mut max_val = f64::NEG_INFINITY;
-            let mut found = false;
-            for j in 0..len {
-                indices[ax] = j;
-                let val = self.get_element(indices);
-                if !val.is_nan() {
-                    max_val = max_val.max(val);
-                    found = true;
+        use crate::ops::dispatch;
+        dispatch::dispatch_nan_reduce_axis_max(self, axis).unwrap_or_else(|| {
+            self.nan_reduce_axis(axis, self.dtype(), |indices, ax, len| {
+                let mut max_val = f64::NEG_INFINITY;
+                let mut found = false;
+                for j in 0..len {
+                    indices[ax] = j;
+                    let val = self.get_element(indices);
+                    if !val.is_nan() {
+                        max_val = max_val.max(val);
+                        found = true;
+                    }
                 }
-            }
-            if found { max_val } else { f64::NAN }
+                if found { max_val } else { f64::NAN }
+            })
         })
     }
 

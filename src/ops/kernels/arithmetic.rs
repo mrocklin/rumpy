@@ -69,6 +69,19 @@ pub struct Logaddexp2;
 #[derive(Clone, Copy)]
 pub struct Nextafter;
 
+// NaN-aware reduction kernels (skip NaN values)
+#[derive(Clone, Copy)]
+pub struct NanSum;
+
+#[derive(Clone, Copy)]
+pub struct NanProd;
+
+#[derive(Clone, Copy)]
+pub struct NanMax;
+
+#[derive(Clone, Copy)]
+pub struct NanMin;
+
 // ============================================================================
 // Float implementations
 // ============================================================================
@@ -193,6 +206,50 @@ macro_rules! impl_float_arithmetic {
 
 impl_float_arithmetic!(f64);
 impl_float_arithmetic!(f32);
+
+// ============================================================================
+// NaN-aware reduction kernels (skip NaN values)
+// ============================================================================
+
+macro_rules! impl_nan_reduce {
+    ($T:ty) => {
+        impl ReduceKernel<$T> for NanSum {
+            #[inline(always)]
+            fn init() -> $T { 0.0 }
+            #[inline(always)]
+            fn combine(acc: $T, v: $T) -> $T {
+                if v.is_nan() { acc } else { acc + v }
+            }
+        }
+        impl ReduceKernel<$T> for NanProd {
+            #[inline(always)]
+            fn init() -> $T { 1.0 }
+            #[inline(always)]
+            fn combine(acc: $T, v: $T) -> $T {
+                if v.is_nan() { acc } else { acc * v }
+            }
+        }
+        impl ReduceKernel<$T> for NanMax {
+            #[inline(always)]
+            fn init() -> $T { <$T>::NEG_INFINITY }
+            #[inline(always)]
+            fn combine(acc: $T, v: $T) -> $T {
+                if v.is_nan() { acc } else if v > acc { v } else { acc }
+            }
+        }
+        impl ReduceKernel<$T> for NanMin {
+            #[inline(always)]
+            fn init() -> $T { <$T>::INFINITY }
+            #[inline(always)]
+            fn combine(acc: $T, v: $T) -> $T {
+                if v.is_nan() { acc } else if v < acc { v } else { acc }
+            }
+        }
+    };
+}
+
+impl_nan_reduce!(f64);
+impl_nan_reduce!(f32);
 
 // ============================================================================
 // Float16 implementations (convert to f32, compute, convert back)

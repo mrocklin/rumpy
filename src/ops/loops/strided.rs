@@ -76,15 +76,16 @@ pub unsafe fn reduce_strided<T: Copy, K: ReduceKernel<T>>(
     }
 
     // 8-accumulator pattern for ILP (matches NumPy's pairwise sum)
+    // Use combine() for init to support NaN-skipping kernels
     let mut r = [
-        *ptr,
-        *ptr.byte_offset(stride),
-        *ptr.byte_offset(stride * 2),
-        *ptr.byte_offset(stride * 3),
-        *ptr.byte_offset(stride * 4),
-        *ptr.byte_offset(stride * 5),
-        *ptr.byte_offset(stride * 6),
-        *ptr.byte_offset(stride * 7),
+        K::combine(K::init(), *ptr),
+        K::combine(K::init(), *ptr.byte_offset(stride)),
+        K::combine(K::init(), *ptr.byte_offset(stride * 2)),
+        K::combine(K::init(), *ptr.byte_offset(stride * 3)),
+        K::combine(K::init(), *ptr.byte_offset(stride * 4)),
+        K::combine(K::init(), *ptr.byte_offset(stride * 5)),
+        K::combine(K::init(), *ptr.byte_offset(stride * 6)),
+        K::combine(K::init(), *ptr.byte_offset(stride * 7)),
     ];
 
     // Process in chunks of 8
