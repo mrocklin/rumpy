@@ -259,6 +259,17 @@ pub trait DTypeOps: Send + Sync + 'static {
         None
     }
 
+    /// Write an i64 value at element index.
+    /// Used for creating integer arrays without precision loss.
+    /// Returns false if this dtype doesn't support i64 conversion.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn write_i64(&self, ptr: *mut u8, idx: usize, val: i64) -> bool {
+        let _ = (ptr, idx, val);
+        false
+    }
+
     /// Write f64 at a given byte offset (for strided array access).
     /// Returns false if this dtype doesn't support f64 conversion.
     ///
@@ -330,6 +341,12 @@ impl DType {
     #[inline]
     pub fn kind(&self) -> DTypeKind {
         self.0.kind()
+    }
+
+    /// Check if this is an integer type.
+    #[inline]
+    pub fn is_integer(&self) -> bool {
+        self.0.is_integer()
     }
 
     // === Convenience constructors ===

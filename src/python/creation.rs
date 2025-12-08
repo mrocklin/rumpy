@@ -458,20 +458,36 @@ pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRu
     let first = list.get_item(0)?;
     if first.downcast::<PyList>().is_ok() {
         // Nested list - recursively get shape and flatten
+        // Try integer path for integer dtypes, fall back to f64
+        if dtype.is_integer() {
+            if let Ok((shape, data)) = flatten_nested_list_i64(list) {
+                return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64_with_shape(data, shape, dtype)));
+            }
+        }
         let (shape, data) = flatten_nested_list(list)?;
         return Ok(PyRumpyArray::new(RumpyArray::from_vec_with_shape(data, shape, dtype)));
     }
 
-    // 1D list
+    // 1D list - try integer extraction for integer dtypes, fall back to f64
+    if dtype.is_integer() {
+        // Try extracting as i64 first (preserves large int precision)
+        let data_i64: Result<Vec<i64>, _> = list
+            .iter()
+            .map(|item| item.extract::<i64>())
+            .collect();
+        if let Ok(data) = data_i64 {
+            return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64(data, dtype)));
+        }
+        // Fall back to f64 (handles float inputs like [5.0, 2.0, ...])
+    }
     let data: Vec<f64> = list
         .iter()
         .map(|item| item.extract::<f64>())
         .collect::<PyResult<Vec<f64>>>()?;
-
     Ok(PyRumpyArray::new(RumpyArray::from_vec(data, dtype)))
 }
 
-/// Flatten nested Python list, returning shape and data.
+/// Flatten nested Python list, returning shape and data as f64.
 fn flatten_nested_list(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<f64>)> {
     let mut shape = vec![list.len()];
     let mut data = Vec::new();
@@ -485,6 +501,26 @@ fn flatten_nested_list(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<f6
             data.extend(sub_data);
         } else {
             data.push(item.extract::<f64>()?);
+        }
+    }
+
+    Ok((shape, data))
+}
+
+/// Flatten nested Python list, returning shape and data as i64.
+fn flatten_nested_list_i64(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<i64>)> {
+    let mut shape = vec![list.len()];
+    let mut data = Vec::new();
+
+    for item in list.iter() {
+        if let Ok(sublist) = item.downcast::<PyList>() {
+            let (sub_shape, sub_data) = flatten_nested_list_i64(sublist)?;
+            if shape.len() == 1 {
+                shape.extend(sub_shape);
+            }
+            data.extend(sub_data);
+        } else {
+            data.push(item.extract::<i64>()?);
         }
     }
 

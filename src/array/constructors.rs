@@ -49,6 +49,31 @@ impl RumpyArray {
         arr.reshape(shape).unwrap_or(arr)
     }
 
+    /// Create array from Vec of i64 values (1D) with given dtype.
+    /// Uses write_i64 to preserve precision for integer types.
+    pub fn from_vec_i64(data: Vec<i64>, dtype: DType) -> Self {
+        let n = data.len();
+        let mut arr = Self::zeros(vec![n], dtype);
+        if n == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+        let ops = arr.dtype.ops();
+
+        for (i, &v) in data.iter().enumerate() {
+            unsafe { ops.write_i64(ptr, i, v); }
+        }
+        arr
+    }
+
+    /// Create array from Vec of i64 with given shape.
+    pub fn from_vec_i64_with_shape(data: Vec<i64>, shape: Vec<usize>, dtype: DType) -> Self {
+        let arr = Self::from_vec_i64(data, dtype);
+        arr.reshape(shape).unwrap_or(arr)
+    }
+
     /// Create array from slice of i64 values (1D, as Int64 dtype).
     pub fn from_slice_i64(data: &[i64]) -> Self {
         let n = data.len();
@@ -62,7 +87,7 @@ impl RumpyArray {
         let ops = arr.dtype.ops();
 
         for (i, &v) in data.iter().enumerate() {
-            unsafe { ops.write_f64(ptr, i, v as f64); }
+            unsafe { ops.write_i64(ptr, i, v); }
         }
         arr
     }

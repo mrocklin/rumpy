@@ -296,12 +296,22 @@ impl RumpyArray {
             py: pyo3::Python<'_>,
             depth: usize,
             indices: &mut Vec<usize>,
+            use_int: bool,
         ) -> pyo3::PyResult<pyo3::PyObject> {
             use pyo3::IntoPyObject;
             if depth == arr.ndim() {
-                // Base case: return scalar
-                let val = arr.get_element(indices);
-                return Ok(val.into_pyobject(py)?.into_any().unbind());
+                // Base case: return scalar of appropriate type
+                let offset = arr.byte_offset_for(indices);
+                let ptr = arr.data_ptr();
+                let dtype = arr.dtype();
+                let ops = dtype.ops();
+                if use_int {
+                    let val = unsafe { ops.read_i64(ptr, offset) }.unwrap_or(0);
+                    return Ok(val.into_pyobject(py)?.into_any().unbind());
+                } else {
+                    let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+                    return Ok(val.into_pyobject(py)?.into_any().unbind());
+                }
             }
 
             // Build list for this dimension
@@ -309,14 +319,15 @@ impl RumpyArray {
             let mut items = Vec::with_capacity(dim_size);
             for i in 0..dim_size {
                 indices[depth] = i;
-                items.push(build_list(arr, py, depth + 1, indices)?);
+                items.push(build_list(arr, py, depth + 1, indices, use_int)?);
             }
             let list = PyList::new(py, items)?;
             Ok(list.into_pyobject(py)?.into_any().unbind())
         }
 
         let mut indices = vec![0usize; self.ndim()];
-        build_list(self, py, 0, &mut indices)
+        let use_int = self.dtype().is_integer();
+        build_list(self, py, 0, &mut indices, use_int)
     }
 }
 
