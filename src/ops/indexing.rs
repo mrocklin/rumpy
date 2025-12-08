@@ -358,28 +358,36 @@ pub fn searchsorted(a: &RumpyArray, v: &RumpyArray, side: &str) -> Option<RumpyA
     let buffer = Arc::get_mut(result_buffer)?;
     let result_ptr = buffer.as_mut_ptr() as *mut i64;
 
-    let a_ptr = a.data_ptr();
     let a_dtype = a.dtype();
-    let a_ops = a_dtype.ops();
-    let a_stride = if a.is_c_contiguous() { a_dtype.itemsize() as isize } else { a.strides()[0] };
-
-    let v_ptr = v.data_ptr();
     let v_dtype = v.dtype();
-    let v_ops = v_dtype.ops();
     let use_left = side != "right";
 
-    // Binary search directly in memory for each value
-    for (i, offset) in v.iter_offsets().enumerate() {
-        let val = unsafe { v_ops.read_f64(v_ptr, offset) }.unwrap_or(0.0);
+    // Promote to common dtype for comparison
+    let common = crate::array::promote_dtype(&a_dtype, &v_dtype);
+    let a_conv = if a_dtype.kind() == common.kind() { None } else { Some(a.astype(common.clone())) };
+    let v_conv = if v_dtype.kind() == common.kind() { None } else { Some(v.astype(common)) };
+    let a_ref = a_conv.as_ref().unwrap_or(a);
+    let v_ref = v_conv.as_ref().unwrap_or(v);
 
-        // Binary search
+    let a_ptr = a_ref.data_ptr();
+    let a_ref_dtype = a_ref.dtype();
+    let a_ops = a_ref_dtype.ops();
+    let a_stride = if a_ref.is_c_contiguous() { a_ref_dtype.itemsize() as isize } else { a_ref.strides()[0] };
+    let v_ptr = v_ref.data_ptr();
+
+    // Binary search directly in memory for each value
+    for (i, v_offset) in v_ref.iter_offsets().enumerate() {
         let mut lo = 0usize;
         let mut hi = a_len;
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
             let mid_offset = (mid as isize) * a_stride;
-            let mid_val = unsafe { a_ops.read_f64(a_ptr, mid_offset) }.unwrap_or(0.0);
-            let go_right = if use_left { mid_val < val } else { mid_val <= val };
+            let cmp = unsafe { a_ops.compare_elements(a_ptr, mid_offset, v_ptr, v_offset) };
+            let go_right = if use_left {
+                cmp == std::cmp::Ordering::Less
+            } else {
+                cmp != std::cmp::Ordering::Greater
+            };
             if go_right {
                 lo = mid + 1;
             } else {
