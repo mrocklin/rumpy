@@ -217,6 +217,15 @@ impl RumpyArray {
         if size == 0 {
             return 0;
         }
+
+        // Fast path for contiguous f64
+        use crate::array::dtype::DTypeKind;
+        if self.is_c_contiguous() && self.dtype().kind() == DTypeKind::Float64 {
+            let ptr = self.data_ptr() as *const f64;
+            return argmax_f64_contiguous(ptr, size);
+        }
+
+        // General path via iter_offsets
         let ptr = self.data_ptr();
         let dtype = self.dtype();
         let ops = dtype.ops();
@@ -238,6 +247,15 @@ impl RumpyArray {
         if size == 0 {
             return 0;
         }
+
+        // Fast path for contiguous f64
+        use crate::array::dtype::DTypeKind;
+        if self.is_c_contiguous() && self.dtype().kind() == DTypeKind::Float64 {
+            let ptr = self.data_ptr() as *const f64;
+            return argmin_f64_contiguous(ptr, size);
+        }
+
+        // General path via iter_offsets
         let ptr = self.data_ptr();
         let dtype = self.dtype();
         let ops = dtype.ops();
@@ -255,16 +273,24 @@ impl RumpyArray {
 
     /// Index of maximum element along axis.
     pub fn argmax_axis(&self, axis: usize) -> RumpyArray {
-        self.arg_reduce_axis(axis, |a, b| a > b)
+        use crate::array::dtype::DTypeKind;
+        if self.dtype().kind() == DTypeKind::Float64 {
+            return argmax_axis_f64(self, axis);
+        }
+        self.arg_reduce_axis_slow(axis, |a, b| a > b)
     }
 
     /// Index of minimum element along axis.
     pub fn argmin_axis(&self, axis: usize) -> RumpyArray {
-        self.arg_reduce_axis(axis, |a, b| a < b)
+        use crate::array::dtype::DTypeKind;
+        if self.dtype().kind() == DTypeKind::Float64 {
+            return argmin_axis_f64(self, axis);
+        }
+        self.arg_reduce_axis_slow(axis, |a, b| a < b)
     }
 
-    /// Helper for argmax_axis/argmin_axis.
-    fn arg_reduce_axis<F>(&self, axis: usize, is_better: F) -> RumpyArray
+    /// Slow fallback for argmax/argmin axis (non-f64 types).
+    fn arg_reduce_axis_slow<F>(&self, axis: usize, is_better: F) -> RumpyArray
     where
         F: Fn(f64, f64) -> bool,
     {
@@ -317,6 +343,140 @@ impl RumpyArray {
         }
         result
     }
+}
+
+// ============================================================================
+// Optimized argmax/argmin implementations for f64
+// ============================================================================
+
+/// Contiguous f64 argmax - simple linear scan.
+#[inline]
+fn argmax_f64_contiguous(ptr: *const f64, n: usize) -> usize {
+    if n == 0 { return 0; }
+    let mut best_val = unsafe { *ptr };
+    let mut best_idx = 0;
+    for i in 1..n {
+        let v = unsafe { *ptr.add(i) };
+        if v > best_val {
+            best_val = v;
+            best_idx = i;
+        }
+    }
+    best_idx
+}
+
+/// Contiguous f64 argmin - simple linear scan.
+#[inline]
+fn argmin_f64_contiguous(ptr: *const f64, n: usize) -> usize {
+    if n == 0 { return 0; }
+    let mut best_val = unsafe { *ptr };
+    let mut best_idx = 0;
+    for i in 1..n {
+        let v = unsafe { *ptr.add(i) };
+        if v < best_val {
+            best_val = v;
+            best_idx = i;
+        }
+    }
+    best_idx
+}
+
+/// Optimized argmax along axis for f64.
+fn argmax_axis_f64(arr: &RumpyArray, axis: usize) -> RumpyArray {
+    arg_reduce_axis_f64(arr, axis, f64::NEG_INFINITY, |v, best| v > best, argmax_f64_contiguous)
+}
+
+/// Optimized argmin along axis for f64.
+fn argmin_axis_f64(arr: &RumpyArray, axis: usize) -> RumpyArray {
+    arg_reduce_axis_f64(arr, axis, f64::INFINITY, |v, best| v < best, argmin_f64_contiguous)
+}
+
+/// Generic axis arg-reduction for f64.
+fn arg_reduce_axis_f64<F, G>(
+    arr: &RumpyArray,
+    axis: usize,
+    init: f64,
+    is_better: F,
+    contiguous_fn: G,
+) -> RumpyArray
+where
+    F: Fn(f64, f64) -> bool,
+    G: Fn(*const f64, usize) -> usize,
+{
+    let shape = arr.shape();
+    let axis_len = shape[axis];
+    let axis_stride = arr.strides()[axis];
+    let itemsize = std::mem::size_of::<f64>() as isize;
+
+    // Output shape: remove the axis dimension
+    let mut out_shape: Vec<usize> = shape[..axis].to_vec();
+    out_shape.extend_from_slice(&shape[axis + 1..]);
+    if out_shape.is_empty() {
+        out_shape = vec![1];
+    }
+
+    let out_size: usize = out_shape.iter().product();
+    let mut result = RumpyArray::zeros(out_shape.clone(), DType::int64());
+
+    if out_size == 0 || axis_len == 0 {
+        return result;
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut i64;
+    let src_ptr = arr.data_ptr() as *const f64;
+
+    if axis_stride == itemsize {
+        // Contiguous reduction axis
+        for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+            let slice_start = unsafe { (src_ptr as *const u8).offset(base_offset) as *const f64 };
+            unsafe { *result_ptr.add(i) = contiguous_fn(slice_start, axis_len) as i64; }
+        }
+    } else if arr.is_c_contiguous() {
+        // C-contiguous array: row-major iteration
+        let outer_size: usize = shape[..axis].iter().product::<usize>().max(1);
+        let inner_size: usize = shape[axis + 1..].iter().product::<usize>().max(1);
+
+        let mut best_vals = vec![init; out_size];
+
+        let mut src_idx = 0usize;
+        for outer_idx in 0..outer_size {
+            let out_base = outer_idx * inner_size;
+            for axis_idx in 0..axis_len {
+                for inner_idx in 0..inner_size {
+                    let v = unsafe { *src_ptr.add(src_idx) };
+                    let out_idx = out_base + inner_idx;
+                    if is_better(v, best_vals[out_idx]) {
+                        best_vals[out_idx] = v;
+                        unsafe { *result_ptr.add(out_idx) = axis_idx as i64; }
+                    }
+                    src_idx += 1;
+                }
+            }
+        }
+    } else {
+        // General strided case
+        for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+            let start = unsafe { (src_ptr as *const u8).offset(base_offset) as *const f64 };
+            let mut best_val = unsafe { *start };
+            let mut best_idx = 0i64;
+            for j in 1..axis_len {
+                let v = unsafe { *(start as *const u8).offset(axis_stride * j as isize) as *const f64 };
+                let v = unsafe { *v };
+                if is_better(v, best_val) {
+                    best_val = v;
+                    best_idx = j as i64;
+                }
+            }
+            unsafe { *result_ptr.add(i) = best_idx; }
+        }
+    }
+
+    result
+}
+
+impl RumpyArray {
 
     // ========================================================================
     // NaN-aware reductions
