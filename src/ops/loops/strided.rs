@@ -50,6 +50,8 @@ pub unsafe fn map_unary_strided<T: Copy, K: UnaryKernel<T>>(
 
 /// Reduce strided array to single value.
 ///
+/// Uses 8-accumulator pattern matching NumPy's pairwise summation approach.
+///
 /// # Safety
 /// Caller must ensure pointer and stride are valid for n elements.
 #[inline]
@@ -59,11 +61,59 @@ pub unsafe fn reduce_strided<T: Copy, K: ReduceKernel<T>>(
     n: usize,
     _kernel: K,
 ) -> T {
-    let mut acc = K::init();
-    for i in 0..n {
-        let v = *ptr.byte_offset(stride * i as isize);
-        acc = K::combine(acc, v);
+    if n == 0 {
+        return K::init();
     }
+
+    // Small arrays: simple loop
+    if n < 8 {
+        let mut acc = K::init();
+        for i in 0..n {
+            let v = *ptr.byte_offset(stride * i as isize);
+            acc = K::combine(acc, v);
+        }
+        return acc;
+    }
+
+    // 8-accumulator pattern for ILP (matches NumPy's pairwise sum)
+    let mut r = [
+        *ptr.byte_offset(stride * 0),
+        *ptr.byte_offset(stride * 1),
+        *ptr.byte_offset(stride * 2),
+        *ptr.byte_offset(stride * 3),
+        *ptr.byte_offset(stride * 4),
+        *ptr.byte_offset(stride * 5),
+        *ptr.byte_offset(stride * 6),
+        *ptr.byte_offset(stride * 7),
+    ];
+
+    // Process in chunks of 8
+    let mut i = 8isize;
+    let end = (n - (n % 8)) as isize;
+    while i < end {
+        r[0] = K::combine(r[0], *ptr.byte_offset(stride * i));
+        r[1] = K::combine(r[1], *ptr.byte_offset(stride * (i + 1)));
+        r[2] = K::combine(r[2], *ptr.byte_offset(stride * (i + 2)));
+        r[3] = K::combine(r[3], *ptr.byte_offset(stride * (i + 3)));
+        r[4] = K::combine(r[4], *ptr.byte_offset(stride * (i + 4)));
+        r[5] = K::combine(r[5], *ptr.byte_offset(stride * (i + 5)));
+        r[6] = K::combine(r[6], *ptr.byte_offset(stride * (i + 6)));
+        r[7] = K::combine(r[7], *ptr.byte_offset(stride * (i + 7)));
+        i += 8;
+    }
+
+    // Combine 8 accumulators in tree pattern (matches NumPy)
+    let mut acc = K::combine(
+        K::combine(K::combine(r[0], r[1]), K::combine(r[2], r[3])),
+        K::combine(K::combine(r[4], r[5]), K::combine(r[6], r[7])),
+    );
+
+    // Handle remainder
+    while i < n as isize {
+        acc = K::combine(acc, *ptr.byte_offset(stride * i));
+        i += 1;
+    }
+
     acc
 }
 

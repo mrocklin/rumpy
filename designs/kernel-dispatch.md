@@ -80,12 +80,32 @@ Compiles to tight scalar or SIMD code. The compiler sees the exact operation.
 **Contiguous** (`loops/contiguous.rs`):
 - Operates on slices
 - LLVM can auto-vectorize
-- 4-accumulator pattern for reductions (ILP)
+- 8-accumulator pattern for reductions (ILP, matches NumPy pairwise summation)
 
 **Strided** (`loops/strided.rs`):
 - Pointer arithmetic with byte offsets
 - No SIMD benefit (irregular access)
 - Handles views, transposes, broadcasts
+
+## Axis Reduction Strategies
+
+Three paths based on memory layout (see `dispatch.rs`):
+
+1. **Contiguous reduction axis** (axis_stride == itemsize):
+   - Use slice-based `reduce()` per output position
+   - Best for last-axis reduction on C-contiguous arrays
+
+2. **C-contiguous array, non-contiguous axis**:
+   - Row-major iteration through source memory
+   - Accumulate to output positions as we go
+   - Transforms strided column access → sequential memory access
+   - Key insight: iterate memory sequentially, scatter to output
+
+3. **General strided**:
+   - Per-output-position strided reduce
+   - Fallback for non-contiguous views
+
+The row-major strategy for C-contiguous arrays achieves 0.5-1.1x NumPy performance across 2D-4D arrays.
 
 ## Fallback Chain
 

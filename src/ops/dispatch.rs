@@ -419,10 +419,9 @@ fn dispatch_reduce_axis_typed<T: Copy, K: ReduceKernel<T>>(
         out_shape = vec![1]; // Scalar result wrapped in 1D array
     }
 
-    let itemsize = std::mem::size_of::<T>() as isize;
     let axis_stride = arr.strides()[axis];
 
-    let mut result = RumpyArray::zeros(out_shape, dtype);
+    let mut result = RumpyArray::zeros(out_shape.clone(), dtype);
     let out_size = result.size();
 
     if out_size == 0 || axis_len == 0 {
@@ -440,17 +439,58 @@ fn dispatch_reduce_axis_typed<T: Copy, K: ReduceKernel<T>>(
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr() as *mut T;
 
-    // Iterate over output positions using axis_offsets
-    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
-        let src_start = unsafe { (arr.data_ptr() as *const T).byte_offset(base_offset) };
-
-        // Check if this reduction slice is contiguous
-        if axis_stride == itemsize {
-            // Contiguous: use slice-based reduce with 4-accumulator pattern
+    // Check if reduction axis is contiguous (last axis for C-order)
+    let itemsize = std::mem::size_of::<T>() as isize;
+    if axis_stride == itemsize {
+        // Contiguous reduction axis: use per-output-position reduce (cache-friendly)
+        for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+            let src_start = unsafe { (arr.data_ptr() as *const T).byte_offset(base_offset) };
             let slice = unsafe { std::slice::from_raw_parts(src_start, axis_len) };
             unsafe { *result_ptr.add(i) = loops::reduce(slice, kernel); }
-        } else {
-            // Strided: use pointer-based reduce
+        }
+    } else if arr.is_c_contiguous() {
+        // C-contiguous array: use row-major iteration for better cache behavior
+        // Key insight: iterate through source memory sequentially, accumulate to output
+        //
+        // For shape [d0, d1, ..., d_axis, ..., d_{n-1}] reducing axis k:
+        // - outer_shape = [d0, ..., d_{k-1}]       (axes before reduction)
+        // - axis_len = d_k                         (reduction axis)
+        // - inner_size = d_{k+1} * ... * d_{n-1}   (axes after reduction = contiguous block)
+        //
+        // Memory layout: outer_idx * (axis_len * inner_size) + axis_idx * inner_size + inner_idx
+        // Output layout: outer_idx * inner_size + inner_idx
+
+        let shape = arr.shape();
+        let outer_shape = &shape[..axis];
+        let inner_shape = &shape[axis + 1..];
+        let outer_size: usize = outer_shape.iter().product::<usize>().max(1);
+        let inner_size: usize = inner_shape.iter().product::<usize>().max(1);
+        let src_ptr = arr.data_ptr() as *const T;
+
+        // Initialize result with identity
+        for i in 0..out_size {
+            unsafe { *result_ptr.add(i) = K::init(); }
+        }
+
+        // Iterate in row-major order (sequential memory access through source)
+        let mut src_idx = 0usize;
+        for outer_idx in 0..outer_size {
+            let out_base = outer_idx * inner_size;
+            for _ in 0..axis_len {
+                for inner_idx in 0..inner_size {
+                    unsafe {
+                        let v = *src_ptr.add(src_idx);
+                        let acc = result_ptr.add(out_base + inner_idx);
+                        *acc = K::combine(*acc, v);
+                    }
+                    src_idx += 1;
+                }
+            }
+        }
+    } else {
+        // General strided case: use per-output-position strided reduce
+        for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+            let src_start = unsafe { (arr.data_ptr() as *const T).byte_offset(base_offset) };
             unsafe {
                 *result_ptr.add(i) = loops::reduce_strided(src_start, axis_stride, axis_len, kernel);
             }

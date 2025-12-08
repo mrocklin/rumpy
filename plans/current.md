@@ -6,9 +6,16 @@
 
 ## Status
 
-**Complete**: Random module with Generator class. Linalg: matmul, dot, inner, outer, solve, trace, det, norm, qr, svd, inv, eigh, diag. Stream 13 sorting: partition, argpartition, lexsort.
+**Complete**: Kernel/dispatch architecture for ufuncs. Random module. Linalg ops. Stream 13 sorting.
 
 ### Recent Work
+
+- [x] **Kernel/Dispatch Architecture** (`src/ops/kernels/`, `src/ops/loops/`, `src/ops/dispatch.rs`)
+  - Orthogonal separation: Operations (kernels) × Layouts (loops) × DTypes (dispatch)
+  - Binary ops, unary ops, comparisons, bitwise, reductions all use new system
+  - 8-accumulator pattern for reductions (matches NumPy pairwise summation)
+  - Row-major iteration for C-contiguous axis reductions (0.5-1.1x NumPy)
+  - See `designs/kernel-dispatch.md` and `designs/expression-problem.md`
 
 - [x] **Stream 13: Sorting Advanced** (`src/ops/mod.rs`)
   - `partition(a, kth, axis)` - partial sort, kth element in sorted position

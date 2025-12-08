@@ -56,32 +56,60 @@ pub fn map_compare<T: Copy, K: CompareKernel<T>>(
 
 /// Reduce contiguous slice to single value.
 ///
-/// Uses 4-accumulator pattern for instruction-level parallelism.
-/// This breaks associativity for floats but matches NumPy behavior.
+/// Uses 8-accumulator pattern matching NumPy's pairwise summation approach.
+/// This provides instruction-level parallelism and allows AVX vectorization.
 #[inline]
 pub fn reduce<T: Copy, K: ReduceKernel<T>>(data: &[T], _kernel: K) -> T {
-    if data.is_empty() {
+    let n = data.len();
+    if n == 0 {
         return K::init();
     }
 
-    // 4-accumulator pattern for ILP (instruction-level parallelism)
-    let (mut s0, mut s1, mut s2, mut s3) = (K::init(), K::init(), K::init(), K::init());
-    let chunks = data.chunks_exact(4);
-    let remainder = chunks.remainder();
-
-    for chunk in chunks {
-        s0 = K::combine(s0, chunk[0]);
-        s1 = K::combine(s1, chunk[1]);
-        s2 = K::combine(s2, chunk[2]);
-        s3 = K::combine(s3, chunk[3]);
+    // Small arrays: simple loop
+    if n < 8 {
+        let mut acc = K::init();
+        for &v in data {
+            acc = K::combine(acc, v);
+        }
+        return acc;
     }
 
-    // Combine the 4 accumulators
-    let mut acc = K::combine(K::combine(s0, s1), K::combine(s2, s3));
+    // 8-accumulator pattern for ILP (matches NumPy's pairwise sum)
+    let mut r = [K::init(); 8];
+    r[0] = data[0];
+    r[1] = data[1];
+    r[2] = data[2];
+    r[3] = data[3];
+    r[4] = data[4];
+    r[5] = data[5];
+    r[6] = data[6];
+    r[7] = data[7];
+
+    // Process in chunks of 8
+    let mut i = 8;
+    let end = n - (n % 8);
+    while i < end {
+        r[0] = K::combine(r[0], data[i]);
+        r[1] = K::combine(r[1], data[i + 1]);
+        r[2] = K::combine(r[2], data[i + 2]);
+        r[3] = K::combine(r[3], data[i + 3]);
+        r[4] = K::combine(r[4], data[i + 4]);
+        r[5] = K::combine(r[5], data[i + 5]);
+        r[6] = K::combine(r[6], data[i + 6]);
+        r[7] = K::combine(r[7], data[i + 7]);
+        i += 8;
+    }
+
+    // Combine 8 accumulators in tree pattern (matches NumPy)
+    let mut acc = K::combine(
+        K::combine(K::combine(r[0], r[1]), K::combine(r[2], r[3])),
+        K::combine(K::combine(r[4], r[5]), K::combine(r[6], r[7])),
+    );
 
     // Handle remainder
-    for &v in remainder {
-        acc = K::combine(acc, v);
+    while i < n {
+        acc = K::combine(acc, data[i]);
+        i += 1;
     }
 
     acc
