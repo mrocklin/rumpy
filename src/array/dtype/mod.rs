@@ -249,6 +249,16 @@ pub trait DTypeOps: Send + Sync + 'static {
         None
     }
 
+    /// Read element as i64 (for index operations).
+    /// Returns None if this dtype doesn't support i64 conversion.
+    ///
+    /// # Safety
+    /// Pointer must be valid.
+    unsafe fn read_i64(&self, ptr: *const u8, byte_offset: isize) -> Option<i64> {
+        let _ = (ptr, byte_offset);
+        None
+    }
+
     /// Write f64 at a given byte offset (for strided array access).
     /// Returns false if this dtype doesn't support f64 conversion.
     ///

@@ -39,7 +39,7 @@ pub fn take(arr: &RumpyArray, indices: &RumpyArray, axis: Option<usize>) -> Opti
     let idx_ops = idx_dtype.ops();
     let mut index_values: Vec<usize> = Vec::with_capacity(num_indices);
     for offset in indices.iter_offsets() {
-        let val = unsafe { idx_ops.read_f64(idx_ptr, offset) }.unwrap_or(0.0) as isize;
+        let val = unsafe { idx_ops.read_i64(idx_ptr, offset) }.unwrap_or(0) as isize;
         index_values.push(normalize_index(val, axis_len)?);
     }
 
@@ -191,7 +191,7 @@ pub fn take_along_axis(arr: &RumpyArray, indices: &RumpyArray, axis: usize) -> O
             .map(|(&i, &s)| i as isize * s)
             .sum();
 
-        let idx_val = unsafe { idx_ops.read_f64(idx_ptr, idx_offset) }.unwrap_or(0.0) as isize;
+        let idx_val = unsafe { idx_ops.read_i64(idx_ptr, idx_offset) }.unwrap_or(0) as isize;
         let normalized_idx = normalize_index(idx_val, axis_len)?;
 
         // Build source indices
@@ -556,7 +556,7 @@ pub fn put_along_axis(arr: &mut RumpyArray, indices: &RumpyArray, values: &Rumpy
             .map(|(&i, &s)| i as isize * s)
             .sum();
 
-        let idx_val = unsafe { idx_ops.read_f64(idx_ptr, idx_offset) }.unwrap_or(0.0) as isize;
+        let idx_val = unsafe { idx_ops.read_i64(idx_ptr, idx_offset) }.unwrap_or(0) as isize;
         let normalized_idx = normalize_index(idx_val, axis_len)?;
 
         let val = unsafe { val_ops.read_f64(val_ptr, val_offset) }.unwrap_or(0.0);
@@ -620,7 +620,7 @@ pub fn choose(indices: &RumpyArray, choices: &[RumpyArray]) -> Option<RumpyArray
             .map(|(&i, &s)| i as isize * s)
             .sum();
 
-        let choice_idx = unsafe { idx_ops.read_f64(idx_ptr, idx_offset) }.unwrap_or(0.0) as usize;
+        let choice_idx = unsafe { idx_ops.read_i64(idx_ptr, idx_offset) }.unwrap_or(0) as usize;
         if choice_idx >= num_choices {
             return None;
         }

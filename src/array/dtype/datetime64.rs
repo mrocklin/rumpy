@@ -144,6 +144,10 @@ impl DTypeOps for DateTime64Ops {
         Some(Self::read(ptr, byte_offset) as f64)
     }
 
+    unsafe fn read_i64(&self, ptr: *const u8, byte_offset: isize) -> Option<i64> {
+        Some(Self::read(ptr, byte_offset))
+    }
+
     unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
         *(ptr.offset(byte_offset) as *mut i64) = val as i64;
         true

@@ -134,9 +134,9 @@ pub fn put(
         let size = arr.inner.size();
         let mut result = Vec::with_capacity(size);
         for offset in arr.inner.iter_offsets() {
-            let val = unsafe { arr.inner.dtype().ops().read_f64(arr.inner.data_ptr(), offset) }
-                .unwrap_or(0.0);
-            result.push(val as i64);
+            let val = unsafe { arr.inner.dtype().ops().read_i64(arr.inner.data_ptr(), offset) }
+                .unwrap_or(0);
+            result.push(val);
         }
         result
     } else {

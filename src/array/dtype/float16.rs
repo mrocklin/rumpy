@@ -176,6 +176,10 @@ impl DTypeOps for Float16Ops {
         Some(Self::read(ptr, byte_offset).to_f64())
     }
 
+    unsafe fn read_i64(&self, ptr: *const u8, byte_offset: isize) -> Option<i64> {
+        Some(Self::read(ptr, byte_offset).to_f64() as i64)
+    }
+
     unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
         *(ptr.offset(byte_offset) as *mut f16) = f16::from_f64(val);
         true

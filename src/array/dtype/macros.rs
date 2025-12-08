@@ -184,6 +184,10 @@ macro_rules! impl_float_dtype {
                 Some(Self::read(ptr, byte_offset) as f64)
             }
 
+            unsafe fn read_i64(&self, ptr: *const u8, byte_offset: isize) -> Option<i64> {
+                Some(Self::read(ptr, byte_offset) as i64)
+            }
+
             unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
                 Self::write_at_offset(ptr, byte_offset, val as $T);
                 true
@@ -351,6 +355,10 @@ macro_rules! impl_signed_int_dtype {
 
             unsafe fn read_f64(&self, ptr: *const u8, byte_offset: isize) -> Option<f64> {
                 Some(Self::read(ptr, byte_offset) as f64)
+            }
+
+            unsafe fn read_i64(&self, ptr: *const u8, byte_offset: isize) -> Option<i64> {
+                Some(Self::read(ptr, byte_offset) as i64)
             }
 
             unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
@@ -540,6 +548,10 @@ macro_rules! impl_unsigned_int_dtype {
 
             unsafe fn read_f64(&self, ptr: *const u8, byte_offset: isize) -> Option<f64> {
                 Some(Self::read(ptr, byte_offset) as f64)
+            }
+
+            unsafe fn read_i64(&self, ptr: *const u8, byte_offset: isize) -> Option<i64> {
+                Some(Self::read(ptr, byte_offset) as i64)
             }
 
             unsafe fn write_f64_at_byte_offset(&self, ptr: *mut u8, byte_offset: isize, val: f64) -> bool {
