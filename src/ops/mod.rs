@@ -219,6 +219,12 @@ impl RumpyArray {
 
     /// Clip values to a range.
     pub fn clip(&self, a_min: Option<f64>, a_max: Option<f64>) -> RumpyArray {
+        // Try typed dispatch first
+        if let Some(result) = crate::ops::dispatch::dispatch_clip(self, a_min, a_max) {
+            return result;
+        }
+
+        // Fallback for complex, bool, datetime
         let dtype = self.dtype();
         let mut result = RumpyArray::zeros(self.shape().to_vec(), dtype.clone());
         let size = result.size();
@@ -252,6 +258,12 @@ impl RumpyArray {
 
     /// Round to the given number of decimals.
     pub fn round(&self, decimals: i32) -> RumpyArray {
+        // Try typed dispatch first
+        if let Some(result) = crate::ops::dispatch::dispatch_round(self, decimals) {
+            return result;
+        }
+
+        // Fallback for complex, bool, datetime
         let dtype = self.dtype();
         let mut result = RumpyArray::zeros(self.shape().to_vec(), dtype.clone());
         let size = result.size();
@@ -319,12 +331,19 @@ pub fn where_select(condition: &RumpyArray, x: &RumpyArray, y: &RumpyArray) -> O
     let shape_cx = broadcast_shapes(condition.shape(), x.shape())?;
     let out_shape = broadcast_shapes(&shape_cx, y.shape())?;
 
+    // Result dtype is promoted from x and y
+    let result_dtype = promote_dtype(&x.dtype(), &y.dtype());
+
+    // Try typed dispatch first (same-dtype x, y, result)
+    if let Some(result) = crate::ops::dispatch::dispatch_where(condition, x, y, &result_dtype, &out_shape) {
+        return Some(result);
+    }
+
+    // Fallback for mixed dtypes
     let cond = condition.broadcast_to(&out_shape)?;
     let x_bc = x.broadcast_to(&out_shape)?;
     let y_bc = y.broadcast_to(&out_shape)?;
 
-    // Result dtype is promoted from x and y
-    let result_dtype = promote_dtype(&x_bc.dtype(), &y_bc.dtype());
     let mut result = RumpyArray::zeros(out_shape.clone(), result_dtype);
     let size = result.size();
 
@@ -344,7 +363,7 @@ pub fn where_select(condition: &RumpyArray, x: &RumpyArray, y: &RumpyArray) -> O
     let x_ptr = x_bc.data_ptr();
     let y_ptr = y_bc.data_ptr();
 
-    // Check if all dtypes match for direct copy
+    // Check if all dtypes match for direct copy (shouldn't hit this if dispatch worked)
     let same_dtype = x_bc.dtype() == y_bc.dtype() && x_bc.dtype() == result.dtype();
 
     let mut indices = vec![0usize; out_shape.len()];

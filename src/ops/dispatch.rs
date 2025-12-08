@@ -1234,3 +1234,275 @@ fn dispatch_bitwise_not_bool_typed<K: UnaryKernel<bool>>(
 
     Some(result)
 }
+
+// ============================================================================
+// Parameterized operations (clip, round)
+// ============================================================================
+
+/// Clip array values to [min, max] range with dtype-aware dispatch.
+pub fn dispatch_clip(arr: &RumpyArray, a_min: Option<f64>, a_max: Option<f64>) -> Option<RumpyArray> {
+    match arr.dtype().kind() {
+        DTypeKind::Float64 => dispatch_clip_typed::<f64>(arr, a_min, a_max, DType::float64()),
+        DTypeKind::Float32 => dispatch_clip_typed::<f32>(arr, a_min.map(|v| v as f32), a_max.map(|v| v as f32), DType::float32()),
+        DTypeKind::Float16 => dispatch_clip_typed::<f16>(arr, a_min.map(f16::from_f64), a_max.map(f16::from_f64), DType::float16()),
+        DTypeKind::Int64 => dispatch_clip_typed::<i64>(arr, a_min.map(|v| v as i64), a_max.map(|v| v as i64), DType::int64()),
+        DTypeKind::Int32 => dispatch_clip_typed::<i32>(arr, a_min.map(|v| v as i32), a_max.map(|v| v as i32), DType::int32()),
+        DTypeKind::Int16 => dispatch_clip_typed::<i16>(arr, a_min.map(|v| v as i16), a_max.map(|v| v as i16), DType::int16()),
+        DTypeKind::Uint64 => dispatch_clip_typed::<u64>(arr, a_min.map(|v| v as u64), a_max.map(|v| v as u64), DType::uint64()),
+        DTypeKind::Uint32 => dispatch_clip_typed::<u32>(arr, a_min.map(|v| v as u32), a_max.map(|v| v as u32), DType::uint32()),
+        DTypeKind::Uint16 => dispatch_clip_typed::<u16>(arr, a_min.map(|v| v as u16), a_max.map(|v| v as u16), DType::uint16()),
+        DTypeKind::Uint8 => dispatch_clip_typed::<u8>(arr, a_min.map(|v| v as u8), a_max.map(|v| v as u8), DType::uint8()),
+        _ => None,  // Complex, Bool, DateTime fall back to old path
+    }
+}
+
+fn dispatch_clip_typed<T>(arr: &RumpyArray, a_min: Option<T>, a_max: Option<T>, dtype: DType) -> Option<RumpyArray>
+where
+    T: Copy + PartialOrd,
+{
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(arr.shape().to_vec(), dtype));
+    }
+
+    let mut result = RumpyArray::zeros(arr.shape().to_vec(), dtype);
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+
+    if arr.is_c_contiguous() {
+        let src_slice = unsafe { std::slice::from_raw_parts(arr.data_ptr() as *const T, size) };
+        let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+        for i in 0..size {
+            let mut v = src_slice[i];
+            if let Some(min) = a_min {
+                if v < min { v = min; }
+            }
+            if let Some(max) = a_max {
+                if v > max { v = max; }
+            }
+            out_slice[i] = v;
+        }
+    } else {
+        let itemsize = std::mem::size_of::<T>() as isize;
+        for (i, offset) in arr.iter_offsets().enumerate() {
+            let mut v = unsafe { *(arr.data_ptr() as *const T).byte_offset(offset) };
+            if let Some(min) = a_min {
+                if v < min { v = min; }
+            }
+            if let Some(max) = a_max {
+                if v > max { v = max; }
+            }
+            unsafe { *result_ptr.byte_offset(i as isize * itemsize) = v; }
+        }
+    }
+
+    Some(result)
+}
+
+/// Round array values to given decimal places with dtype-aware dispatch.
+pub fn dispatch_round(arr: &RumpyArray, decimals: i32) -> Option<RumpyArray> {
+    match arr.dtype().kind() {
+        DTypeKind::Float64 => dispatch_round_f64(arr, decimals),
+        DTypeKind::Float32 => dispatch_round_f32(arr, decimals),
+        // For integers, round is a no-op if decimals >= 0
+        DTypeKind::Int64 if decimals >= 0 => Some(arr.clone()),
+        DTypeKind::Int32 if decimals >= 0 => Some(arr.clone()),
+        DTypeKind::Int16 if decimals >= 0 => Some(arr.clone()),
+        DTypeKind::Uint64 if decimals >= 0 => Some(arr.clone()),
+        DTypeKind::Uint32 if decimals >= 0 => Some(arr.clone()),
+        DTypeKind::Uint16 if decimals >= 0 => Some(arr.clone()),
+        DTypeKind::Uint8 if decimals >= 0 => Some(arr.clone()),
+        // Negative decimals on integers: round to tens, hundreds, etc.
+        DTypeKind::Int64 => dispatch_round_i64(arr, decimals),
+        DTypeKind::Int32 => dispatch_round_i32(arr, decimals),
+        DTypeKind::Int16 => dispatch_round_i16(arr, decimals),
+        DTypeKind::Uint64 => dispatch_round_u64(arr, decimals),
+        DTypeKind::Uint32 => dispatch_round_u32(arr, decimals),
+        DTypeKind::Uint16 => dispatch_round_u16(arr, decimals),
+        DTypeKind::Uint8 => dispatch_round_u8(arr, decimals),
+        _ => None,
+    }
+}
+
+/// Dispatch float rounding
+macro_rules! impl_round_float {
+    ($fn_name:ident, $T:ty, $dtype:expr) => {
+        fn $fn_name(arr: &RumpyArray, decimals: i32) -> Option<RumpyArray> {
+            let size = arr.size();
+            if size == 0 {
+                return Some(RumpyArray::zeros(arr.shape().to_vec(), $dtype));
+            }
+
+            let scale = (10.0 as $T).powi(decimals);
+            let mut result = RumpyArray::zeros(arr.shape().to_vec(), $dtype);
+            let buffer = result.buffer_mut();
+            let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+            let result_ptr = result_buffer.as_mut_ptr() as *mut $T;
+
+            if arr.is_c_contiguous() {
+                let src_slice = unsafe { std::slice::from_raw_parts(arr.data_ptr() as *const $T, size) };
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+                for i in 0..size {
+                    out_slice[i] = (src_slice[i] * scale).round() / scale;
+                }
+            } else {
+                let itemsize = std::mem::size_of::<$T>() as isize;
+                for (i, offset) in arr.iter_offsets().enumerate() {
+                    let v = unsafe { *(arr.data_ptr() as *const $T).byte_offset(offset) };
+                    unsafe { *result_ptr.byte_offset(i as isize * itemsize) = (v * scale).round() / scale; }
+                }
+            }
+
+            Some(result)
+        }
+    };
+}
+
+impl_round_float!(dispatch_round_f64, f64, DType::float64());
+impl_round_float!(dispatch_round_f32, f32, DType::float32());
+
+/// Dispatch integer rounding (negative decimals only - rounds to tens, hundreds, etc.)
+macro_rules! impl_round_int {
+    ($fn_name:ident, $T:ty, $dtype:expr) => {
+        fn $fn_name(arr: &RumpyArray, decimals: i32) -> Option<RumpyArray> {
+            let size = arr.size();
+            if size == 0 {
+                return Some(RumpyArray::zeros(arr.shape().to_vec(), $dtype));
+            }
+
+            let scale = 10i64.pow((-decimals) as u32) as $T;
+            let mut result = RumpyArray::zeros(arr.shape().to_vec(), $dtype);
+            let buffer = result.buffer_mut();
+            let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+            let result_ptr = result_buffer.as_mut_ptr() as *mut $T;
+
+            if arr.is_c_contiguous() {
+                let src_slice = unsafe { std::slice::from_raw_parts(arr.data_ptr() as *const $T, size) };
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+                for i in 0..size {
+                    out_slice[i] = (src_slice[i] / scale) * scale;
+                }
+            } else {
+                let itemsize = std::mem::size_of::<$T>() as isize;
+                for (i, offset) in arr.iter_offsets().enumerate() {
+                    let v = unsafe { *(arr.data_ptr() as *const $T).byte_offset(offset) };
+                    unsafe { *result_ptr.byte_offset(i as isize * itemsize) = (v / scale) * scale; }
+                }
+            }
+
+            Some(result)
+        }
+    };
+}
+
+impl_round_int!(dispatch_round_i64, i64, DType::int64());
+impl_round_int!(dispatch_round_i32, i32, DType::int32());
+impl_round_int!(dispatch_round_i16, i16, DType::int16());
+impl_round_int!(dispatch_round_u64, u64, DType::uint64());
+impl_round_int!(dispatch_round_u32, u32, DType::uint32());
+impl_round_int!(dispatch_round_u16, u16, DType::uint16());
+impl_round_int!(dispatch_round_u8, u8, DType::uint8());
+
+/// Dispatch where selection with dtype-aware typed path.
+/// Returns None if result dtype doesn't match x/y dtypes (requires mixed-type fallback).
+pub fn dispatch_where(
+    cond: &RumpyArray,
+    x: &RumpyArray,
+    y: &RumpyArray,
+    result_dtype: &DType,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    // Only dispatch when x, y, and result all have the same dtype
+    if x.dtype() != y.dtype() || x.dtype() != *result_dtype {
+        return None;
+    }
+
+    match result_dtype.kind() {
+        DTypeKind::Float64 => dispatch_where_typed::<f64>(cond, x, y, out_shape, DType::float64()),
+        DTypeKind::Float32 => dispatch_where_typed::<f32>(cond, x, y, out_shape, DType::float32()),
+        DTypeKind::Float16 => dispatch_where_typed::<f16>(cond, x, y, out_shape, DType::float16()),
+        DTypeKind::Int64 => dispatch_where_typed::<i64>(cond, x, y, out_shape, DType::int64()),
+        DTypeKind::Int32 => dispatch_where_typed::<i32>(cond, x, y, out_shape, DType::int32()),
+        DTypeKind::Int16 => dispatch_where_typed::<i16>(cond, x, y, out_shape, DType::int16()),
+        DTypeKind::Uint64 => dispatch_where_typed::<u64>(cond, x, y, out_shape, DType::uint64()),
+        DTypeKind::Uint32 => dispatch_where_typed::<u32>(cond, x, y, out_shape, DType::uint32()),
+        DTypeKind::Uint16 => dispatch_where_typed::<u16>(cond, x, y, out_shape, DType::uint16()),
+        DTypeKind::Uint8 => dispatch_where_typed::<u8>(cond, x, y, out_shape, DType::uint8()),
+        DTypeKind::Bool => dispatch_where_typed::<u8>(cond, x, y, out_shape, DType::bool()),
+        DTypeKind::Complex128 => dispatch_where_typed::<Complex<f64>>(cond, x, y, out_shape, DType::complex128()),
+        DTypeKind::Complex64 => dispatch_where_typed::<Complex<f32>>(cond, x, y, out_shape, DType::complex64()),
+        _ => None,
+    }
+}
+
+fn dispatch_where_typed<T: Copy>(
+    cond: &RumpyArray,
+    x: &RumpyArray,
+    y: &RumpyArray,
+    out_shape: &[usize],
+    dtype: DType,
+) -> Option<RumpyArray> {
+    let size: usize = out_shape.iter().product();
+    if size == 0 {
+        return Some(RumpyArray::zeros(out_shape.to_vec(), dtype));
+    }
+
+    // Broadcast arrays
+    let cond_bc = cond.broadcast_to(out_shape)?;
+    let x_bc = x.broadcast_to(out_shape)?;
+    let y_bc = y.broadcast_to(out_shape)?;
+
+    let mut result = RumpyArray::zeros(out_shape.to_vec(), dtype);
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+
+    let itemsize = std::mem::size_of::<T>() as isize;
+
+    // Check for contiguous fast path: all arrays contiguous and same itemsize
+    let all_contiguous = cond_bc.is_c_contiguous() && x_bc.is_c_contiguous() && y_bc.is_c_contiguous();
+
+    if all_contiguous {
+        let cond_ptr = cond_bc.data_ptr();
+        let x_ptr = x_bc.data_ptr() as *const T;
+        let y_ptr = y_bc.data_ptr() as *const T;
+        let cond_itemsize = cond_bc.dtype().itemsize();
+
+        for i in 0..size {
+            let cond_val = unsafe {
+                match cond_itemsize {
+                    1 => *cond_ptr.add(i) != 0,
+                    _ => {
+                        // For other dtypes, check if any byte is non-zero
+                        let ptr = cond_ptr.add(i * cond_itemsize);
+                        (0..cond_itemsize).any(|j| *ptr.add(j) != 0)
+                    }
+                }
+            };
+            let val = if cond_val {
+                unsafe { *x_ptr.add(i) }
+            } else {
+                unsafe { *y_ptr.add(i) }
+            };
+            unsafe { *result_ptr.add(i) = val; }
+        }
+    } else {
+        // Strided path using offset iterators
+        for (i, ((cond_off, x_off), y_off)) in cond_bc.iter_offsets()
+            .zip(x_bc.iter_offsets())
+            .zip(y_bc.iter_offsets())
+            .enumerate()
+        {
+            let cond_val = unsafe { *cond_bc.data_ptr().byte_offset(cond_off) != 0 };
+            let val = if cond_val {
+                unsafe { *(x_bc.data_ptr() as *const T).byte_offset(x_off) }
+            } else {
+                unsafe { *(y_bc.data_ptr() as *const T).byte_offset(y_off) }
+            };
+            unsafe { *result_ptr.byte_offset(i as isize * itemsize) = val; }
+        }
+    }
+
+    Some(result)
+}
