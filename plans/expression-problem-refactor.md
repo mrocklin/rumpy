@@ -233,7 +233,7 @@ To fully delete registry.rs:
 
 ## Current State
 
-**New orthogonal system**: 2009 lines
+**New orthogonal system**: ~2009 lines
 - dispatch.rs: 749 lines
 - kernels/arithmetic.rs: 426 lines
 - kernels/comparison.rs: 107 lines
@@ -243,7 +243,8 @@ To fully delete registry.rs:
 - loops/strided.rs: 90 lines
 - loops/mod.rs: 12 lines
 
-**Old registry (fallback)**: 1754 lines (reduced from 1840, still used for axis reductions, bitwise ops)
+**Old registry**: 975 lines (reduced from 1754 → removed 779 lines of dead binary/unary code)
+- Now only contains: reduce loops (axis reductions), bitwise ops
 
 All 2191 tests pass. The new system handles ALL dtypes including complex:
 - All 18 binary ops for f64, f32, i64, i32, i16, u64, u32, u16, u8, Complex<f64>, Complex<f32>
@@ -275,45 +276,37 @@ All 2191 tests pass. The new system handles ALL dtypes including complex:
 - ✅ Comparison ops now use kernel/loop architecture
 - ⚠️ registry.rs still exists for axis reductions
 
-## Next Steps: Remove Dead Registry Code
+## Completed: Dead Registry Code Removal
 
-The new dispatch system is called FIRST in ufunc.rs. Registry is only fallback.
-Most registry loops are now dead code:
+✅ **Steps 1-3 DONE** - Removed 779 lines of dead code:
+- Removed `binary_loops` HashMap and `lookup_binary`, `register_binary` methods
+- Removed `unary_loops` HashMap and `lookup_unary`, `register_unary` methods
+- Removed all binary registration macros and invocations
+- Removed all unary registration macros and invocations
+- Cleaned up ufunc.rs - removed registry fallback for binary/unary ops
+- Updated cumulative.rs to use kernel/loop system directly for `diff()`
 
-### Step 1: Remove dead binary registrations (~580 lines)
-- `register_strided_binary!` macro and all invocations
-- `register_arithmetic!`, `register_float_binary!`, `register_stream2_binary!`
-- `register_f16_binary!`, `register_complex_loops!`
-- Remove `lookup_binary`, `register_binary` from UFuncRegistry
-- Remove `binary_loops` HashMap
+Registry now only contains (975 lines):
+- Reduce loops (needed for axis reductions)
+- Bitwise operations
 
-### Step 2: Remove dead unary registrations (~120 lines)
-- `register_strided_unary!` macro and invocations
-- `register_float_unary!`, `register_f16_unary!`, `register_signed_int_unary!`
-- Keep ONLY: Isnan, Isinf, Isfinite, Signbit (bool-returning, not in dispatch)
-- Remove `lookup_unary`, `register_unary` from UFuncRegistry
-- Remove `unary_loops` HashMap
+## Next Steps
 
-### Step 3: Clean up ufunc.rs fallback paths
-- Remove registry lookup code for binary/unary (dispatch handles it)
-- Keep trait fallback for bool-returning ops and unsupported dtypes
+### 1. Migrate Axis Reductions to Kernel System
+Registry still has ~600 lines of reduce loops. To migrate:
+- Add `dispatch_reduce_axis` using existing `ReduceKernel` traits
+- Handle per-axis output shape logic in dispatch layer
+- Remove `reduce_loops`, `reduce_strided_loops` from registry
 
-## Future Work: Delete registry.rs entirely
+### 2. Add SIMD to Reduction Loops
+Current reductions use scalar 4/8-accumulator patterns. Could add:
+- Platform-specific SIMD for sum/max/min
+- Or rely on LLVM auto-vectorization (current approach)
 
-After steps 1-3, registry.rs will only contain:
-- Axis reductions (~400 lines) - need dispatch_reduce_axis
-- Bitwise ops (~150 lines) - could migrate to kernel system
-- Bool-returning unary fallback (~50 lines) - need UnaryKernel<In,Out>
-
-1. ~~**Comparison ops**~~: ✅ DONE
-
-2. **Axis reductions** (more complex):
-   - Need per-axis output shape logic
-   - Consider: extend dispatch_reduce with axis parameter
-
-3. **Bool-returning unary ops** (Isnan, Isinf, Isfinite, Signbit):
-   - Already handled by trait fallback (DTypeOps::unary_op)
-   - Could add `UnaryKernel<In, Out>` for type-changing ops
+### 3. Migrate Bitwise Ops to Kernel System (optional)
+Registry has ~200 lines of bitwise ops. Could add:
+- `BitwiseKernel<T>` trait for And, Or, Xor, Not, shifts
+- Lower priority since bitwise ops are less common
 
 ## Architectural Limitations
 
@@ -358,29 +351,13 @@ NumPy's solution studied from `numpy/` checkout:
 
 ## Current Code Locations
 
-- `src/ops/registry.rs` (1840 lines) - loop registrations, embeds layout checks
-- `src/ops/ufunc.rs` - orchestration (map_unary_op, map_binary_op)
-- `src/array/dtype/macros.rs` - generates DTypeOps impls with embedded ops
-- `src/array/dtype/mod.rs` - DTypeOps trait, UnaryOp/BinaryOp/ReduceOp enums
+**New kernel/dispatch system** (primary path):
+- `src/ops/kernels/` - Pure operation definitions (BinaryKernel, UnaryKernel, ReduceKernel, CompareKernel)
+- `src/ops/loops/` - Layout strategies (contiguous SIMD-friendly, strided pointer arithmetic)
+- `src/ops/dispatch.rs` - Type resolution + layout detection
 
-## Example Current Pattern (to refactor)
+**Legacy registry** (fallback for axis reductions, bitwise):
+- `src/ops/registry.rs` (975 lines) - reduce loops, bitwise ops only
 
-```rust
-// registry.rs line 265-296 - repeated for every (op, dtype) pair
-macro_rules! register_strided_binary {
-    ($reg:expr, $op:expr, $kind:expr, $T:ty, $f:expr) => {
-        $reg.register_binary($op, TypeSignature::binary(...),
-            |a_ptr, b_ptr, out_ptr, n, strides| unsafe {
-                if sa == itemsize && sb == itemsize && so == itemsize {
-                    // Contiguous - REPEATED in every registration
-                    for i in 0..n { out[i] = $f(a[i], b[i]); }
-                } else {
-                    // Strided - REPEATED in every registration
-                    for _ in 0..n { ... pointer arithmetic ... }
-                }
-            });
-    };
-}
-```
-
-Target: Extract the contiguous/strided logic ONCE, parameterize by operation.
+**Orchestration**:
+- `src/ops/ufunc.rs` - map_unary_op, map_binary_op, reduce_all_op, reduce_axis_op

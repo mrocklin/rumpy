@@ -1,41 +1,52 @@
 //! Cumulative operations on RumpyArray (cumsum, cumprod, diff).
 
+use crate::array::dtype::DTypeKind;
 use crate::array::{increment_indices, DType, RumpyArray};
-use crate::ops::BinaryOp;
-use crate::ops::registry::registry;
+use crate::ops::kernels::arithmetic::Sub;
+use crate::ops::loops;
+use num_complex::Complex;
 use std::sync::Arc;
 
 // ============================================================================
 // diff helper functions
 // ============================================================================
 
-/// Fast 1D contiguous diff using registry's Sub loop.
+/// Fast 1D contiguous diff using kernel/loop system.
 /// result[i] = src[i+1] - src[i]
 #[inline]
 fn diff_1d_contiguous(src_ptr: *const u8, result_ptr: *mut u8, n: usize, dtype: &DType) {
-    let itemsize = dtype.itemsize() as isize;
+    // Use kernel/loop system for subtraction
+    macro_rules! diff_typed {
+        ($T:ty) => {{
+            let a_slice = unsafe { std::slice::from_raw_parts((src_ptr as *const $T).add(1), n) };
+            let b_slice = unsafe { std::slice::from_raw_parts(src_ptr as *const $T, n) };
+            let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr as *mut $T, n) };
+            loops::map_binary(a_slice, b_slice, out_slice, Sub);
+        }};
+    }
 
-    // Try registry's vectorized Sub loop
-    if let Some((loop_fn, _)) = registry().read().unwrap()
-        .lookup_binary(BinaryOp::Sub, dtype.kind(), dtype.kind())
-    {
-        unsafe {
-            loop_fn(
-                src_ptr.offset(itemsize),  // a = src[i+1]
-                src_ptr,                    // b = src[i]
-                result_ptr,
-                n,
-                (itemsize, itemsize, itemsize),
-            );
-        }
-    } else {
-        // Fallback for unsupported dtypes
-        let ops = dtype.ops();
-        for i in 0..n {
-            unsafe {
-                let v1 = ops.read_f64(src_ptr, (i as isize) * itemsize).unwrap_or(0.0);
-                let v2 = ops.read_f64(src_ptr, (i as isize + 1) * itemsize).unwrap_or(0.0);
-                ops.write_f64(result_ptr, i, v2 - v1);
+    match dtype.kind() {
+        DTypeKind::Float64 => diff_typed!(f64),
+        DTypeKind::Float32 => diff_typed!(f32),
+        DTypeKind::Int64 => diff_typed!(i64),
+        DTypeKind::Int32 => diff_typed!(i32),
+        DTypeKind::Int16 => diff_typed!(i16),
+        DTypeKind::Uint64 => diff_typed!(u64),
+        DTypeKind::Uint32 => diff_typed!(u32),
+        DTypeKind::Uint16 => diff_typed!(u16),
+        DTypeKind::Uint8 => diff_typed!(u8),
+        DTypeKind::Complex128 => diff_typed!(Complex<f64>),
+        DTypeKind::Complex64 => diff_typed!(Complex<f32>),
+        _ => {
+            // Fallback for unsupported dtypes (Float16, Bool, DateTime64)
+            let itemsize = dtype.itemsize() as isize;
+            let ops = dtype.ops();
+            for i in 0..n {
+                unsafe {
+                    let v1 = ops.read_f64(src_ptr, (i as isize) * itemsize).unwrap_or(0.0);
+                    let v2 = ops.read_f64(src_ptr, (i as isize + 1) * itemsize).unwrap_or(0.0);
+                    ops.write_f64(result_ptr, i, v2 - v1);
+                }
             }
         }
     }

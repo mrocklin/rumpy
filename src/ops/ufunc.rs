@@ -20,12 +20,6 @@ use std::sync::Arc;
 // Helper functions
 // ============================================================================
 
-/// Compute byte offset from indices and strides.
-#[inline]
-pub(crate) fn linear_offset(indices: &[usize], strides: &[isize]) -> isize {
-    indices.iter().zip(strides).map(|(&i, &s)| i as isize * s).sum()
-}
-
 /// Two-pass variance for contiguous f64 data - vectorizable.
 /// Pass 1: compute mean, Pass 2: compute sum of squared deviations.
 #[inline]
@@ -137,6 +131,7 @@ pub fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOp
         }
     }
 
+    // Fallback: trait-based dispatch (for Float16, Bool, DateTime64, and Isnan/Isinf/Isfinite/Signbit)
     let mut result = RumpyArray::zeros(arr.shape().to_vec(), dtype.clone());
     let size = arr.size();
     if size == 0 {
@@ -147,54 +142,7 @@ pub fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOp
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
     let src_ptr = arr.data_ptr();
-    let itemsize = dtype.itemsize() as isize;
 
-    // Try registry first
-    {
-        let reg = registry().read().unwrap();
-        if let Some((loop_fn, _)) = reg.lookup_unary(op, kind.clone()) {
-            if arr.is_c_contiguous() {
-                // Fast path: call loop once for entire array
-                let strides = (itemsize, itemsize);
-                unsafe { loop_fn(src_ptr, result_ptr, size, strides); }
-            } else {
-                // Strided path: call loop once per innermost row with actual strides
-                let ndim = arr.ndim();
-                let src_strides = arr.strides();
-
-                if ndim == 0 {
-                    // Scalar
-                    unsafe { loop_fn(src_ptr, result_ptr, 1, (itemsize, itemsize)); }
-                } else if ndim == 1 {
-                    // 1D: single call with actual stride
-                    unsafe { loop_fn(src_ptr, result_ptr, size, (src_strides[0], itemsize)); }
-                } else {
-                    // nD: iterate over all but last dimension, call once per row
-                    let inner_size = arr.shape()[ndim - 1];
-                    let inner_stride = src_strides[ndim - 1];
-                    let outer_shape = &arr.shape()[..ndim - 1];
-                    let outer_size: usize = outer_shape.iter().product();
-
-                    let mut outer_indices = vec![0usize; ndim - 1];
-                    for i in 0..outer_size {
-                        let src_offset = linear_offset(&outer_indices, src_strides);
-                        unsafe {
-                            loop_fn(
-                                src_ptr.offset(src_offset),
-                                result_ptr.offset(i as isize * inner_size as isize * itemsize),
-                                inner_size,
-                                (inner_stride, itemsize),
-                            );
-                        }
-                        increment_indices(&mut outer_indices, outer_shape);
-                    }
-                }
-            }
-            return Ok(result);
-        }
-    }
-
-    // Fallback: trait-based dispatch
     let ops = dtype.ops();
     for (i, offset) in arr.iter_offsets().enumerate() {
         unsafe { ops.unary_op(op, src_ptr, offset, result_ptr, i); }
@@ -320,60 +268,9 @@ pub fn map_binary_op_inplace(
     let result_dtype_ref = result.dtype();
     let result_ops = result_dtype_ref.ops();
 
-    let a_kind = a_bc.dtype().kind();
-    let b_kind = b_bc.dtype().kind();
-
     let mut indices = vec![0usize; out_shape.len()];
-    let itemsize = result_dtype_ref.itemsize() as isize;
 
-    // Try registry first for same-type operations
-    if a_kind == b_kind {
-        let reg = registry().read().unwrap();
-        if let Some((loop_fn, _)) = reg.lookup_binary(op, a_kind.clone(), b_kind) {
-            let a_contig = a_bc.is_c_contiguous() && a.shape() == out_shape.as_slice();
-            let b_contig = b_bc.is_c_contiguous() && b.shape() == out_shape.as_slice();
-
-            if a_contig && b_contig {
-                let strides = (itemsize, itemsize, itemsize);
-                unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, strides); }
-            } else {
-                let ndim = out_shape.len();
-                let a_strides = a_bc.strides();
-                let b_strides = b_bc.strides();
-
-                if ndim == 0 {
-                    unsafe { loop_fn(a_ptr, b_ptr, result_ptr, 1, (itemsize, itemsize, itemsize)); }
-                } else if ndim == 1 {
-                    unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, (a_strides[0], b_strides[0], itemsize)); }
-                } else {
-                    let inner_size = out_shape[ndim - 1];
-                    let a_inner_stride = a_strides[ndim - 1];
-                    let b_inner_stride = b_strides[ndim - 1];
-                    let outer_shape = &out_shape[..ndim - 1];
-                    let outer_size: usize = outer_shape.iter().product();
-
-                    let mut outer_indices = vec![0usize; ndim - 1];
-                    for i in 0..outer_size {
-                        let a_offset = linear_offset(&outer_indices, a_strides);
-                        let b_offset = linear_offset(&outer_indices, b_strides);
-                        unsafe {
-                            loop_fn(
-                                a_ptr.offset(a_offset),
-                                b_ptr.offset(b_offset),
-                                result_ptr.offset(i as isize * inner_size as isize * itemsize),
-                                inner_size,
-                                (a_inner_stride, b_inner_stride, itemsize),
-                            );
-                        }
-                        increment_indices(&mut outer_indices, outer_shape);
-                    }
-                }
-            }
-            return Ok(result);
-        }
-    }
-
-    // Fallback: trait-based dispatch
+    // Fallback: trait-based dispatch (for Float16, Bool, DateTime64, mixed-dtype operations)
     let same_dtype = a_bc.dtype() == b_bc.dtype() && a_bc.dtype() == result.dtype();
 
     if same_dtype {
