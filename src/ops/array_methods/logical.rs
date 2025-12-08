@@ -45,6 +45,12 @@ impl RumpyArray {
 
     /// Test if all elements along axis evaluate to True.
     pub fn all_axis(&self, axis: usize) -> RumpyArray {
+        // Try typed dispatch first
+        if let Some(result) = crate::ops::dispatch::dispatch_all_axis(self, axis) {
+            return result;
+        }
+
+        // Fallback for DateTime64
         let mut out_shape: Vec<usize> = self.shape().to_vec();
         let axis_len = out_shape.remove(axis);
         if out_shape.is_empty() {
@@ -108,6 +114,12 @@ impl RumpyArray {
 
     /// Test if any element along axis evaluates to True.
     pub fn any_axis(&self, axis: usize) -> RumpyArray {
+        // Try typed dispatch first
+        if let Some(result) = crate::ops::dispatch::dispatch_any_axis(self, axis) {
+            return result;
+        }
+
+        // Fallback for DateTime64
         let mut out_shape: Vec<usize> = self.shape().to_vec();
         let axis_len = out_shape.remove(axis);
         if out_shape.is_empty() {

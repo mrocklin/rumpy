@@ -95,9 +95,16 @@ Each phase:
 
 ## Current Status
 
+**All phases complete.** Added typed dispatch for:
+
 - [x] Phase 1: clip - Added `dispatch_clip` in dispatch.rs
 - [x] Phase 2: round - Added `dispatch_round` with f64/f32 and int variants
 - [x] Phase 3: where_ - Added `dispatch_where` with typed path
-- [ ] Phase 4: cumsum/cumprod
-- [ ] Phase 5: all/any
-- [ ] Phase 6: NaN reductions
+- [x] Phase 4: cumsum/cumprod - Added `dispatch_cumsum`, `dispatch_cumprod` with typed path + `loops::cumulative`
+- [x] Phase 5: all/any axis - Added `dispatch_all_axis`, `dispatch_any_axis` with typed path
+- [x] Phase 6: NaN reductions - Already have typed dispatch (dispatch_nan_reduce_axis_*)
+
+Remaining usages of `get_element`/`read_f64` are:
+- Fallback paths for unsupported dtypes (Bool, DateTime, Float16)
+- Non-performance-critical operations (sorting, to_vec)
+- Full-array logical ops (all(), any(), count_nonzero()) - acceptable

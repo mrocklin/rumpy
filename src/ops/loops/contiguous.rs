@@ -117,6 +117,24 @@ pub fn reduce<T: Copy, K: ReduceKernel<T>>(data: &[T], _kernel: K) -> T {
     acc
 }
 
+/// Cumulative operation over contiguous slice.
+///
+/// Writes all intermediate accumulator values to output.
+/// out[i] = K::combine(out[i-1], data[i]) for i > 0
+/// out[0] = K::combine(K::init(), data[0])
+#[inline]
+pub fn cumulative<T: Copy, K: ReduceKernel<T>>(data: &[T], out: &mut [T], _kernel: K) {
+    debug_assert_eq!(data.len(), out.len());
+    if data.is_empty() {
+        return;
+    }
+    let mut acc = K::init();
+    for i in 0..data.len() {
+        acc = K::combine(acc, data[i]);
+        out[i] = acc;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

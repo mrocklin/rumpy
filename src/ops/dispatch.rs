@@ -1506,3 +1506,362 @@ fn dispatch_where_typed<T: Copy>(
 
     Some(result)
 }
+
+// ============================================================================
+// Logical axis operations (all_axis, any_axis)
+// ============================================================================
+
+/// Dispatch all_axis with dtype-aware typed path.
+pub fn dispatch_all_axis(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    match arr.dtype().kind() {
+        DTypeKind::Float64 => dispatch_all_axis_typed::<f64>(arr, axis),
+        DTypeKind::Float32 => dispatch_all_axis_typed::<f32>(arr, axis),
+        DTypeKind::Float16 => dispatch_all_axis_typed::<f16>(arr, axis),
+        DTypeKind::Int64 => dispatch_all_axis_typed::<i64>(arr, axis),
+        DTypeKind::Int32 => dispatch_all_axis_typed::<i32>(arr, axis),
+        DTypeKind::Int16 => dispatch_all_axis_typed::<i16>(arr, axis),
+        DTypeKind::Uint64 => dispatch_all_axis_typed::<u64>(arr, axis),
+        DTypeKind::Uint32 => dispatch_all_axis_typed::<u32>(arr, axis),
+        DTypeKind::Uint16 => dispatch_all_axis_typed::<u16>(arr, axis),
+        DTypeKind::Uint8 => dispatch_all_axis_typed::<u8>(arr, axis),
+        DTypeKind::Bool => dispatch_all_axis_typed::<u8>(arr, axis), // bool stored as u8
+        DTypeKind::Complex128 => dispatch_all_axis_complex::<f64>(arr, axis),
+        DTypeKind::Complex64 => dispatch_all_axis_complex::<f32>(arr, axis),
+        _ => None,
+    }
+}
+
+/// Dispatch any_axis with dtype-aware typed path.
+pub fn dispatch_any_axis(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    match arr.dtype().kind() {
+        DTypeKind::Float64 => dispatch_any_axis_typed::<f64>(arr, axis),
+        DTypeKind::Float32 => dispatch_any_axis_typed::<f32>(arr, axis),
+        DTypeKind::Float16 => dispatch_any_axis_typed::<f16>(arr, axis),
+        DTypeKind::Int64 => dispatch_any_axis_typed::<i64>(arr, axis),
+        DTypeKind::Int32 => dispatch_any_axis_typed::<i32>(arr, axis),
+        DTypeKind::Int16 => dispatch_any_axis_typed::<i16>(arr, axis),
+        DTypeKind::Uint64 => dispatch_any_axis_typed::<u64>(arr, axis),
+        DTypeKind::Uint32 => dispatch_any_axis_typed::<u32>(arr, axis),
+        DTypeKind::Uint16 => dispatch_any_axis_typed::<u16>(arr, axis),
+        DTypeKind::Uint8 => dispatch_any_axis_typed::<u8>(arr, axis),
+        DTypeKind::Bool => dispatch_any_axis_typed::<u8>(arr, axis),
+        DTypeKind::Complex128 => dispatch_any_axis_complex::<f64>(arr, axis),
+        DTypeKind::Complex64 => dispatch_any_axis_complex::<f32>(arr, axis),
+        _ => None,
+    }
+}
+
+/// Helper for all_axis: returns false on first zero, true otherwise.
+fn dispatch_all_axis_typed<T: Copy + Default + PartialEq>(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_logical_axis_typed::<T>(arr, axis, true, |v, zero| v == zero)
+}
+
+/// Helper for any_axis: returns true on first non-zero, false otherwise.
+fn dispatch_any_axis_typed<T: Copy + Default + PartialEq>(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_logical_axis_typed::<T>(arr, axis, false, |v, zero| v != zero)
+}
+
+/// Generic logical axis reduction for numeric types.
+/// `empty_val`: result for empty axis (true for all, false for any)
+/// `stop_pred`: return true to short-circuit (found zero for all, found nonzero for any)
+fn dispatch_logical_axis_typed<T: Copy + Default + PartialEq>(
+    arr: &RumpyArray,
+    axis: usize,
+    empty_val: bool,
+    stop_pred: fn(T, T) -> bool,
+) -> Option<RumpyArray> {
+    let mut out_shape: Vec<usize> = arr.shape().to_vec();
+    let axis_len = out_shape.remove(axis);
+    if out_shape.is_empty() {
+        out_shape = vec![1];
+    }
+
+    let mut result = RumpyArray::zeros(out_shape.clone(), DType::bool());
+    let out_size = result.size();
+    if out_size == 0 {
+        return Some(result);
+    }
+    if axis_len == 0 {
+        // Empty axis: fill with empty_val
+        if empty_val {
+            let buffer = result.buffer_mut();
+            let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+            let result_ptr = result_buffer.as_mut_ptr();
+            for i in 0..out_size {
+                unsafe { *result_ptr.add(i) = 1; }
+            }
+        }
+        return Some(result);
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    let axis_stride = arr.strides()[axis];
+    let zero = T::default();
+
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        let src_start = unsafe { (arr.data_ptr() as *const T).byte_offset(base_offset) };
+        let mut val = empty_val;
+        for j in 0..axis_len {
+            let v = unsafe { *src_start.byte_offset(axis_stride * j as isize) };
+            if stop_pred(v, zero) {
+                val = !empty_val;
+                break;
+            }
+        }
+        unsafe { *result_ptr.add(i) = val as u8; }
+    }
+
+    Some(result)
+}
+
+/// Complex all_axis: truthy if either real or imag is non-zero.
+fn dispatch_all_axis_complex<T: Copy + Default + PartialEq>(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_logical_axis_complex::<T>(arr, axis, true)
+}
+
+/// Complex any_axis.
+fn dispatch_any_axis_complex<T: Copy + Default + PartialEq>(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_logical_axis_complex::<T>(arr, axis, false)
+}
+
+/// Generic logical axis reduction for complex types.
+fn dispatch_logical_axis_complex<T: Copy + Default + PartialEq>(
+    arr: &RumpyArray,
+    axis: usize,
+    is_all: bool, // true for all(), false for any()
+) -> Option<RumpyArray> {
+    let mut out_shape: Vec<usize> = arr.shape().to_vec();
+    let axis_len = out_shape.remove(axis);
+    if out_shape.is_empty() {
+        out_shape = vec![1];
+    }
+
+    let mut result = RumpyArray::zeros(out_shape.clone(), DType::bool());
+    let out_size = result.size();
+    if out_size == 0 {
+        return Some(result);
+    }
+    if axis_len == 0 {
+        if is_all {
+            let buffer = result.buffer_mut();
+            let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+            let result_ptr = result_buffer.as_mut_ptr();
+            for i in 0..out_size {
+                unsafe { *result_ptr.add(i) = 1; }
+            }
+        }
+        return Some(result);
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    let axis_stride = arr.strides()[axis];
+    let zero = T::default();
+
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        let src_start = unsafe { (arr.data_ptr() as *const T).byte_offset(base_offset) };
+        let mut val = is_all;
+        for j in 0..axis_len {
+            let ptr = unsafe { src_start.byte_offset(axis_stride * j as isize) };
+            let re = unsafe { *ptr };
+            let im = unsafe { *ptr.add(1) };
+            let is_zero = re == zero && im == zero;
+            // For all: stop on zero (found false), for any: stop on non-zero (found true)
+            if is_all == is_zero {
+                val = !is_all;
+                break;
+            }
+        }
+        unsafe { *result_ptr.add(i) = val as u8; }
+    }
+
+    Some(result)
+}
+
+// ============================================================================
+// Cumulative operations (cumsum, cumprod)
+// ============================================================================
+
+use crate::ops::kernels::arithmetic::{Sum as SumK, Prod as ProdK};
+
+/// Dispatch cumulative sum with dtype-aware typed path.
+/// axis = None means flatten and cumsum over all elements.
+pub fn dispatch_cumsum(arr: &RumpyArray, axis: Option<usize>) -> Option<RumpyArray> {
+    dispatch_cumulative_kernel(arr, axis, SumK)
+}
+
+/// Dispatch cumulative product with dtype-aware typed path.
+pub fn dispatch_cumprod(arr: &RumpyArray, axis: Option<usize>) -> Option<RumpyArray> {
+    dispatch_cumulative_kernel(arr, axis, ProdK)
+}
+
+/// Generic cumulative dispatch for all numeric dtypes.
+fn dispatch_cumulative_kernel<K>(arr: &RumpyArray, axis: Option<usize>, kernel: K) -> Option<RumpyArray>
+where
+    K: ReduceKernel<f64>
+        + ReduceKernel<f32>
+        + ReduceKernel<i64>
+        + ReduceKernel<i32>
+        + ReduceKernel<i16>
+        + ReduceKernel<u64>
+        + ReduceKernel<u32>
+        + ReduceKernel<u16>
+        + ReduceKernel<u8>
+        + ReduceKernel<Complex<f64>>
+        + ReduceKernel<Complex<f32>>,
+{
+    match arr.dtype().kind() {
+        DTypeKind::Float64 => dispatch_cumulative_typed::<f64, K>(arr, axis, kernel, DType::float64()),
+        DTypeKind::Float32 => dispatch_cumulative_typed::<f32, K>(arr, axis, kernel, DType::float32()),
+        DTypeKind::Int64 => dispatch_cumulative_typed::<i64, K>(arr, axis, kernel, DType::int64()),
+        DTypeKind::Int32 => dispatch_cumulative_typed::<i32, K>(arr, axis, kernel, DType::int32()),
+        DTypeKind::Int16 => dispatch_cumulative_typed::<i16, K>(arr, axis, kernel, DType::int16()),
+        DTypeKind::Uint64 => dispatch_cumulative_typed::<u64, K>(arr, axis, kernel, DType::uint64()),
+        DTypeKind::Uint32 => dispatch_cumulative_typed::<u32, K>(arr, axis, kernel, DType::uint32()),
+        DTypeKind::Uint16 => dispatch_cumulative_typed::<u16, K>(arr, axis, kernel, DType::uint16()),
+        DTypeKind::Uint8 => dispatch_cumulative_typed::<u8, K>(arr, axis, kernel, DType::uint8()),
+        DTypeKind::Complex128 => dispatch_cumulative_typed::<Complex<f64>, K>(arr, axis, kernel, DType::complex128()),
+        DTypeKind::Complex64 => dispatch_cumulative_typed::<Complex<f32>, K>(arr, axis, kernel, DType::complex64()),
+        _ => None, // Bool, DateTime, Float16 fall back to old path
+    }
+}
+
+/// Type-specific cumulative dispatch.
+fn dispatch_cumulative_typed<T: Copy, K: ReduceKernel<T>>(
+    arr: &RumpyArray,
+    axis: Option<usize>,
+    kernel: K,
+    dtype: DType,
+) -> Option<RumpyArray> {
+    match axis {
+        None => dispatch_cumulative_flat::<T, K>(arr, kernel, dtype),
+        Some(ax) => dispatch_cumulative_axis::<T, K>(arr, ax, kernel, dtype),
+    }
+}
+
+/// Cumulative over flattened array.
+fn dispatch_cumulative_flat<T: Copy, K: ReduceKernel<T>>(
+    arr: &RumpyArray,
+    kernel: K,
+    dtype: DType,
+) -> Option<RumpyArray> {
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(vec![0], dtype));
+    }
+
+    let mut result = RumpyArray::zeros(vec![size], dtype);
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+
+    let itemsize = std::mem::size_of::<T>() as isize;
+
+    if arr.is_c_contiguous() {
+        let src_slice = unsafe { std::slice::from_raw_parts(arr.data_ptr() as *const T, size) };
+        let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+        loops::cumulative(src_slice, out_slice, kernel);
+    } else {
+        // Strided: accumulate while iterating offsets
+        let mut acc = K::init();
+        for (i, offset) in arr.iter_offsets().enumerate() {
+            let v = unsafe { *(arr.data_ptr() as *const T).byte_offset(offset) };
+            acc = K::combine(acc, v);
+            unsafe { *result_ptr.byte_offset(i as isize * itemsize) = acc; }
+        }
+    }
+
+    Some(result)
+}
+
+/// Cumulative along a specific axis.
+fn dispatch_cumulative_axis<T: Copy, K: ReduceKernel<T>>(
+    arr: &RumpyArray,
+    axis: usize,
+    kernel: K,
+    dtype: DType,
+) -> Option<RumpyArray> {
+    let shape = arr.shape().to_vec();
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(shape, dtype));
+    }
+
+    let mut result = RumpyArray::zeros(shape.clone(), dtype);
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+
+    let axis_len = shape[axis];
+    let axis_stride = arr.strides()[axis];
+    let itemsize = std::mem::size_of::<T>() as isize;
+
+    // Check if axis is contiguous (common case: cumsum along last axis of C-contiguous array)
+    if axis_stride == itemsize && arr.is_c_contiguous() {
+        // Contiguous axis: process each lane directly
+        let outer_size = size / axis_len;
+        let src_ptr = arr.data_ptr() as *const T;
+
+        for lane in 0..outer_size {
+            let lane_base = lane * axis_len;
+            let src_slice = unsafe { std::slice::from_raw_parts(src_ptr.add(lane_base), axis_len) };
+            let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr.add(lane_base), axis_len) };
+            loops::cumulative(src_slice, out_slice, kernel);
+        }
+    } else {
+        // General strided case: iterate over positions orthogonal to axis
+        // For each starting position, walk along axis with strides
+        let ndim = shape.len();
+        let strides = arr.strides();
+
+        // Compute outer shape (shape without axis dimension)
+        let mut outer_shape: Vec<usize> = shape[..axis].to_vec();
+        outer_shape.extend_from_slice(&shape[axis + 1..]);
+        if outer_shape.is_empty() {
+            outer_shape = vec![1];
+        }
+        let outer_size: usize = outer_shape.iter().product();
+
+        // For each position in outer dimensions
+        let mut outer_indices = vec![0usize; outer_shape.len()];
+        for _ in 0..outer_size {
+            // Compute base offset for this outer position
+            let mut base_offset: isize = 0;
+            let mut outer_idx = 0;
+            for d in 0..ndim {
+                if d != axis {
+                    base_offset += outer_indices[outer_idx] as isize * strides[d];
+                    outer_idx += 1;
+                }
+            }
+
+            // Walk along axis, accumulating
+            let mut acc = K::init();
+            for j in 0..axis_len {
+                let src_offset = base_offset + j as isize * axis_stride;
+                let v = unsafe { *(arr.data_ptr() as *const T).byte_offset(src_offset) };
+                acc = K::combine(acc, v);
+
+                // Write to result at same logical position
+                // Result is C-contiguous, so compute flat index
+                let mut flat_idx = 0usize;
+                let mut stride = 1usize;
+                for d in (0..ndim).rev() {
+                    let idx = if d == axis { j } else if d < axis { outer_indices[d] } else { outer_indices[d - 1] };
+                    flat_idx += idx * stride;
+                    stride *= shape[d];
+                }
+                unsafe { *result_ptr.add(flat_idx) = acc; }
+            }
+
+            crate::array::increment_indices(&mut outer_indices, &outer_shape);
+        }
+    }
+
+    Some(result)
+}

@@ -205,11 +205,21 @@ impl RumpyArray {
 
     /// Cumulative sum along axis (or flattened if axis is None).
     pub fn cumsum(&self, axis: Option<usize>) -> RumpyArray {
+        // Try typed dispatch first
+        if let Some(result) = crate::ops::dispatch::dispatch_cumsum(self, axis) {
+            return result;
+        }
+        // Fallback for Bool, DateTime, Float16
         self.cumulative_op(axis, 0.0, |acc, x| acc + x)
     }
 
     /// Cumulative product along axis (or flattened if axis is None).
     pub fn cumprod(&self, axis: Option<usize>) -> RumpyArray {
+        // Try typed dispatch first
+        if let Some(result) = crate::ops::dispatch::dispatch_cumprod(self, axis) {
+            return result;
+        }
+        // Fallback for Bool, DateTime, Float16
         self.cumulative_op(axis, 1.0, |acc, x| acc * x)
     }
 

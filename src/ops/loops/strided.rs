@@ -139,3 +139,29 @@ pub unsafe fn map_compare_strided<T: Copy, K: CompareKernel<T>>(
         *out_ptr.add(i) = K::apply(a, b) as u8;
     }
 }
+
+/// Cumulative operation over strided array.
+///
+/// Writes all intermediate accumulator values to output.
+///
+/// # Safety
+/// Caller must ensure pointers and strides are valid for n elements.
+#[inline]
+pub unsafe fn cumulative_strided<T: Copy, K: ReduceKernel<T>>(
+    src_ptr: *const T,
+    src_stride: isize,
+    out_ptr: *mut T,
+    out_stride: isize,
+    n: usize,
+    _kernel: K,
+) {
+    if n == 0 {
+        return;
+    }
+    let mut acc = K::init();
+    for i in 0..n {
+        let offset = i as isize;
+        acc = K::combine(acc, *src_ptr.byte_offset(src_stride * offset));
+        *out_ptr.byte_offset(out_stride * offset) = acc;
+    }
+}
