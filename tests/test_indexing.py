@@ -476,3 +476,84 @@ class TestSetitem:
         r[1, 2] = 99.0
         n[1, 2] = 99.0
         assert_eq(r, n)
+
+
+class TestArgwhere:
+    """Test argwhere function."""
+
+    def test_argwhere_1d(self):
+        n = np.array([0, 1, 0, 2, 0])
+        r = rp.asarray(n)
+        assert_eq(rp.argwhere(r), np.argwhere(n))
+
+    def test_argwhere_2d(self):
+        n = np.array([[0, 1], [2, 0]])
+        r = rp.asarray(n)
+        assert_eq(rp.argwhere(r), np.argwhere(n))
+
+
+class TestFlatnonzero:
+    """Test flatnonzero function."""
+
+    def test_flatnonzero(self):
+        n = np.array([0, 1, 0, 2, 3])
+        r = rp.asarray(n)
+        assert_eq(rp.flatnonzero(r), np.flatnonzero(n))
+
+
+class TestNonzero:
+    """Test nonzero function."""
+
+    def test_nonzero_1d(self):
+        n = np.array([0, 1, 0, 2])
+        r = rp.asarray(n)
+        r_result = rp.nonzero(r)
+        n_result = np.nonzero(n)
+        assert len(r_result) == len(n_result)
+        for ri, ni in zip(r_result, n_result):
+            assert_eq(ri, ni)
+
+    def test_nonzero_2d(self):
+        n = np.array([[1, 0], [0, 2]])
+        r = rp.asarray(n)
+        r_result = rp.nonzero(r)
+        n_result = np.nonzero(n)
+        assert len(r_result) == len(n_result)
+        for ri, ni in zip(r_result, n_result):
+            assert_eq(ri, ni)
+
+
+class TestChoose:
+    """Test choose function."""
+
+    def test_choose_basic(self):
+        choices = [rp.array([1, 2, 3]), rp.array([4, 5, 6])]
+        indices = rp.array([0, 1, 0])
+        n_choices = [np.array([1, 2, 3]), np.array([4, 5, 6])]
+        n_indices = np.array([0, 1, 0])
+        assert_eq(rp.choose(indices, choices), np.choose(n_indices, n_choices))
+
+
+class TestPut:
+    """Test put function."""
+
+    def test_put_basic(self):
+        r = rp.zeros(5)
+        n = np.zeros(5)
+        rp.put(r, [0, 2, 4], [10, 20, 30])
+        np.put(n, [0, 2, 4], [10, 20, 30])
+        assert_eq(r, n)
+
+
+class TestTakeAlongAxis:
+    """Test take_along_axis function."""
+
+    def test_take_along_axis(self):
+        n = np.arange(6).reshape(2, 3).astype(float)
+        r = rp.asarray(n)
+        n_idx = np.array([[0], [2]])
+        r_idx = rp.asarray(n_idx)
+        assert_eq(
+            rp.take_along_axis(r, r_idx, axis=1),
+            np.take_along_axis(n, n_idx, axis=1)
+        )

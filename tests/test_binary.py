@@ -384,3 +384,61 @@ class TestIsclose:
             rp.isclose(r1, r2, rtol=0.1),
             np.isclose(n1, n2, rtol=0.1),
         )
+
+
+class TestAllcloseArrayEqual:
+    """Test allclose and array_equal."""
+
+    def test_allclose_true(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0, 2.0, 3.0])
+        assert rp.allclose(a, b)
+
+    def test_allclose_within_tolerance(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0 + 1e-9, 2.0, 3.0])
+        assert rp.allclose(a, b)
+
+    def test_allclose_false(self):
+        a = rp.array([1.0, 2.0, 3.0])
+        b = rp.array([1.0, 2.0, 4.0])
+        assert not rp.allclose(a, b)
+
+    def test_array_equal_true(self):
+        a = rp.array([1, 2, 3])
+        b = rp.array([1, 2, 3])
+        assert rp.array_equal(a, b)
+
+    def test_array_equal_false(self):
+        a = rp.array([1, 2, 3])
+        b = rp.array([1, 2, 4])
+        assert not rp.array_equal(a, b)
+
+    def test_array_equal_different_shape(self):
+        a = rp.array([1, 2, 3])
+        b = rp.array([[1, 2, 3]])
+        assert not rp.array_equal(a, b)
+
+
+class TestPrecisionBinaryOps:
+    """Test copysign, nextafter, logaddexp, logaddexp2."""
+
+    def test_copysign(self):
+        a = np.array([1.0, -2.0, 3.0])
+        b = np.array([-1.0, 1.0, -1.0])
+        assert_eq(rp.copysign(rp.asarray(a), rp.asarray(b)), np.copysign(a, b))
+
+    def test_nextafter(self):
+        a = np.array([1.0, 2.0])
+        b = np.array([2.0, 1.0])
+        assert_eq(rp.nextafter(rp.asarray(a), rp.asarray(b)), np.nextafter(a, b))
+
+    def test_logaddexp(self):
+        a = np.array([1.0, 2.0, 3.0])
+        b = np.array([1.0, 2.0, 3.0])
+        assert_eq(rp.logaddexp(rp.asarray(a), rp.asarray(b)), np.logaddexp(a, b))
+
+    def test_logaddexp2(self):
+        a = np.array([1.0, 2.0, 3.0])
+        b = np.array([1.0, 2.0, 3.0])
+        assert_eq(rp.logaddexp2(rp.asarray(a), rp.asarray(b)), np.logaddexp2(a, b))

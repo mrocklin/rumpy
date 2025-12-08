@@ -706,3 +706,80 @@ class TestCountNonzero:
         n = np.array([[0, 1, 2], [0, 0, 3]], dtype=np.float64)
         r = rp.asarray(n)
         assert rp.count_nonzero(r) == np.count_nonzero(n)
+
+
+# === All/Any ===
+
+
+class TestAll:
+    """Test all reduction."""
+
+    def test_all_true(self):
+        n = np.array([True, True, True])
+        r = rp.asarray(n)
+        assert rp.all(r) == np.all(n)
+
+    def test_all_false(self):
+        n = np.array([True, False, True])
+        r = rp.asarray(n)
+        assert rp.all(r) == np.all(n)
+
+    def test_all_numeric(self):
+        """Non-zero values are truthy."""
+        n = np.array([1, 2, 3])
+        r = rp.asarray(n)
+        assert rp.all(r) == np.all(n)
+
+    def test_all_axis(self):
+        n = np.array([[True, False], [True, True]])
+        r = rp.asarray(n)
+        assert_eq(rp.all(r, axis=0), np.all(n, axis=0))
+        assert_eq(rp.all(r, axis=1), np.all(n, axis=1))
+
+
+class TestAny:
+    """Test any reduction."""
+
+    def test_any_true(self):
+        n = np.array([False, True, False])
+        r = rp.asarray(n)
+        assert rp.any(r) == np.any(n)
+
+    def test_any_false(self):
+        n = np.array([False, False, False])
+        r = rp.asarray(n)
+        assert rp.any(r) == np.any(n)
+
+    def test_any_with_zero(self):
+        n = np.array([0, 0, 1])
+        r = rp.asarray(n)
+        assert rp.any(r) == np.any(n)
+
+    def test_any_axis(self):
+        n = np.array([[False, False], [True, False]])
+        r = rp.asarray(n)
+        assert_eq(rp.any(r, axis=0), np.any(n, axis=0))
+        assert_eq(rp.any(r, axis=1), np.any(n, axis=1))
+
+
+# === Diff ===
+
+
+class TestDiff:
+    """Test diff function."""
+
+    def test_diff_1d(self):
+        n = np.array([1.0, 2.0, 4.0, 7.0, 11.0])
+        r = rp.asarray(n)
+        assert_eq(rp.diff(r), np.diff(n))
+
+    def test_diff_n2(self):
+        n = np.array([1.0, 2.0, 4.0, 7.0, 11.0])
+        r = rp.asarray(n)
+        assert_eq(rp.diff(r, n=2), np.diff(n, n=2))
+
+    def test_diff_2d(self):
+        n = np.array([[1.0, 2.0, 4.0], [1.0, 6.0, 7.0]])
+        r = rp.asarray(n)
+        assert_eq(rp.diff(r), np.diff(n))
+        assert_eq(rp.diff(r, axis=0), np.diff(n, axis=0))

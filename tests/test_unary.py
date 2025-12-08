@@ -321,3 +321,41 @@ class TestIdentities:
         result = rp.cosh(r) ** 2 - rp.sinh(r) ** 2
         expected = np.ones(5)
         assert_eq(result, expected)
+
+
+# === Angle conversion ===
+
+
+class TestAngleConversion:
+    """Test deg2rad, rad2deg, degrees, radians."""
+
+    def test_deg2rad(self):
+        n = np.array([0.0, 90.0, 180.0, 360.0])
+        r = rp.asarray(n)
+        assert_eq(rp.deg2rad(r), np.deg2rad(n))
+
+    def test_rad2deg(self):
+        n = np.array([0.0, np.pi / 2, np.pi, 2 * np.pi])
+        r = rp.asarray(n)
+        assert_eq(rp.rad2deg(r), np.rad2deg(n))
+
+    def test_degrees(self):
+        """degrees is alias for rad2deg."""
+        n = np.array([0.0, np.pi / 2, np.pi])
+        r = rp.asarray(n)
+        assert_eq(rp.degrees(r), np.degrees(n))
+
+    def test_radians(self):
+        """radians is alias for deg2rad."""
+        n = np.array([0.0, 90.0, 180.0])
+        r = rp.asarray(n)
+        assert_eq(rp.radians(r), np.radians(n))
+
+
+class TestFix:
+    """Test fix (truncate toward zero)."""
+
+    def test_fix(self):
+        n = np.array([-2.5, -1.5, -0.5, 0.5, 1.5, 2.5])
+        r = rp.asarray(n)
+        assert_eq(rp.fix(r), np.fix(n))
