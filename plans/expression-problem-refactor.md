@@ -223,33 +223,46 @@ pub fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<Rum
 - Registry fallback only for Float16, Bool (and DateTime64 via trait)
 - Removed 428 lines of dead reduce loops from registry
 
-### Stream 4: Final Cleanup (optional)
+### Stream 4: Final Cleanup
+
+#### 4a. ✅ Bitwise Ops Migrated to Kernel System
+- Added `kernels/bitwise.rs` with And, Or, Xor, LeftShift, RightShift, Not kernels
+- Implements `BinaryKernel<T>` for integer types and bool
+- Implements `UnaryKernel<T>` for Not operation
+- Added `dispatch_bitwise_*` functions in dispatch.rs
+- Updated bitwise.rs to use dispatch first, trait fallback
+- Removed 282 lines of bitwise loops from registry
+
+#### 4b. Remaining Cleanup (optional)
+- Add Float16 to kernel system
 - Slim DTypeOps trait (remove op implementations)
 - Update macros.rs (remove op code generation)
 - Update CLAUDE.md with new architecture
-- Migrate bitwise ops to kernel system
 
 ## Current State
 
-**New orthogonal system**: ~2115 lines
-- dispatch.rs: 855 lines (+106 for axis reduce dispatch)
+**New orthogonal system**: ~2360 lines
+- dispatch.rs: 1103 lines (+248 for bitwise dispatch)
 - kernels/arithmetic.rs: 426 lines
+- kernels/bitwise.rs: 113 lines (NEW)
 - kernels/comparison.rs: 107 lines
 - kernels/math.rs: 471 lines
-- kernels/mod.rs: 37 lines
+- kernels/mod.rs: 39 lines
 - loops/contiguous.rs: 117 lines
 - loops/strided.rs: 90 lines
 - loops/mod.rs: 12 lines
 
-**Old registry**: 547 lines (down from 1754 → removed 1207 lines total)
-- Now only contains: Float16/Bool reduce loops, bitwise ops
-- Strided reduce infrastructure kept but unused for common types
+**Old registry**: 265 lines (down from 1754 → removed 1489 lines total)
+- Now ONLY contains: Float16 reduce loops (4 ops), Bool reduce loops (2 ops)
+- All bitwise ops removed
+- All strided reduce infrastructure removed
 
-All 2191 tests pass. The new system handles ALL dtypes including complex:
+All 2191 tests pass. The new system handles:
 - All 18 binary ops for f64, f32, i64, i32, i16, u64, u32, u16, u8, Complex<f64>, Complex<f32>
 - All 31+ unary ops for float/int/complex types
 - All 4 reduce ops (full-array AND axis) for float/int/complex types
 - All 6 comparison ops for all dtypes including complex
+- All 6 bitwise ops for integer types and bool
 
 ## Performance (release build, 1M f64 elements)
 
@@ -274,7 +287,8 @@ All 2191 tests pass. The new system handles ALL dtypes including complex:
 - ✅ Complex numbers now use kernel/loop architecture (not registry)
 - ✅ Comparison ops now use kernel/loop architecture
 - ✅ Axis reductions use kernel/loop architecture for common types
-- ⚠️ registry.rs still exists for Float16/Bool reductions and bitwise ops
+- ✅ Bitwise ops now use kernel/loop architecture
+- ⚠️ registry.rs still exists for Float16/Bool reductions only (265 lines)
 
 ## Completed: Registry Code Removal
 
@@ -291,34 +305,31 @@ All 2191 tests pass. The new system handles ALL dtypes including complex:
 - Removed float/int/complex reduce loops from registry
 - Removed strided reduce macros for float/int types
 
-Registry now only contains (547 lines):
+✅ **Phase 3: Bitwise Migration** - Removed 282 lines:
+- Added `kernels/bitwise.rs` with And, Or, Xor, LeftShift, RightShift, Not
+- Added dispatch functions for all bitwise ops
+- Removed all bitwise loops and macros from registry
+- Registry reduced from 547 to 265 lines
+
+Registry now only contains (265 lines):
 - Float16 reduce loops (4 ops)
 - Bool reduce loops (2 ops)
-- Bitwise operations (~280 lines)
-- Strided reduce infrastructure (unused for common types)
 
 ## Next Steps
 
-### 1. Migrate Bitwise Ops to Kernel System
-Registry has ~280 lines of bitwise ops. Add:
-- `BitwiseKernel<T>` trait for And, Or, Xor, Not
-- Dispatch functions in dispatch.rs
-- Remove bitwise loops from registry
-
-### 2. Add Float16 to Kernel System
+### 1. Add Float16 to Kernel System
 Add `half::f16` implementations to kernel traits:
 - Binary/unary kernels (convert to f32, compute, convert back)
 - Reduce kernels for Sum, Prod, Max, Min
 - Remove Float16 loops from registry
 
-### 3. Research NumPy SIMD Reductions
+### 2. Research NumPy SIMD Reductions
 Before adding SIMD to reductions, study NumPy's approach:
 - Look at `numpy/_core/src/umath/loops_*.dispatch.c.src`
 - Understand multi-target compilation (SSE, AVX2, AVX512, NEON)
 - Consider whether explicit SIMD is worth the complexity vs LLVM auto-vectorization
 
-### 4. Final Cleanup
-- Remove strided reduce infrastructure from registry (unused)
+### 3. Final Cleanup
 - Update CLAUDE.md to reference new architecture
 - Consider slimming DTypeOps trait
 

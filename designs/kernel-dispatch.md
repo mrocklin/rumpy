@@ -6,9 +6,9 @@ Orthogonal separation of Operations, Layouts, and DTypes for ufuncs.
 
 Three dimensions that vary independently:
 ```
-Operation  (add, sqrt, sum)     → kernels/*.rs
-Layout     (contiguous, strided) → loops/*.rs
-DType      (f64, i32, complex)   → impl Kernel<T> for Op
+Operation  (add, sqrt, sum, bitwise_and)  → kernels/*.rs
+Layout     (contiguous, strided)          → loops/*.rs
+DType      (f64, i32, complex, bool)      → impl Kernel<T> for Op
 ```
 
 Adding a new operation: implement kernel traits in `kernels/`.
@@ -22,6 +22,7 @@ src/ops/
 ├── kernels/
 │   ├── mod.rs         # Traits: BinaryKernel, UnaryKernel, ReduceKernel, CompareKernel
 │   ├── arithmetic.rs  # Add, Sub, Mul, Div, Sum, Prod, Max, Min, Pow, etc.
+│   ├── bitwise.rs     # And, Or, Xor, LeftShift, RightShift, Not
 │   ├── comparison.rs  # Gt, Lt, Ge, Le, Eq, Ne
 │   └── math.rs        # Sqrt, Exp, Log, Sin, Cos, etc.
 ├── loops/
@@ -88,8 +89,8 @@ Compiles to tight scalar or SIMD code. The compiler sees the exact operation.
 
 ## Fallback Chain
 
-1. **Dispatch** (kernel/loop) - handles f64, f32, i64, i32, i16, u64, u32, u16, u8, complex128, complex64
-2. **Registry** - Float16, Bool (niche types with special handling)
+1. **Dispatch** (kernel/loop) - handles f64, f32, i64, i32, i16, u64, u32, u16, u8, complex128, complex64, bool (for bitwise)
+2. **Registry** - Float16, Bool reduce loops only
 3. **Trait dispatch** - DateTime64, any future types
 
 ## Extending the System

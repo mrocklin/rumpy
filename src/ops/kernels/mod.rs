@@ -10,6 +10,7 @@
 //! - Adding a new dtype: add impls for each kernel
 
 pub mod arithmetic;
+pub mod bitwise;
 pub mod comparison;
 pub mod math;
 

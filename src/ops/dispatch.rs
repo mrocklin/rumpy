@@ -11,6 +11,7 @@
 use crate::array::{DType, RumpyArray};
 use crate::array::dtype::DTypeKind;
 use crate::ops::kernels::{BinaryKernel, UnaryKernel, ReduceKernel, CompareKernel};
+use crate::ops::kernels::bitwise::{And, Or, Xor, LeftShift, RightShift, Not};
 use crate::ops::kernels::comparison::{Gt, Lt, Ge, Le, Eq, Ne};
 use crate::ops::kernels::arithmetic::{
     Add, Sub, Mul, Div, Sum, Prod, Max, Min,
@@ -848,6 +849,253 @@ fn dispatch_compare_typed<T: Copy, K: CompareKernel<T>>(
                 }
                 crate::array::increment_indices(&mut outer_indices, outer_shape);
             }
+        }
+    }
+
+    Some(result)
+}
+
+// ============================================================================
+// Bitwise dispatch
+// ============================================================================
+
+/// Dispatch bitwise AND using the kernel/loop architecture.
+pub fn dispatch_bitwise_and(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    dispatch_bitwise_binary_kernel(a, b, out_shape, And)
+}
+
+/// Dispatch bitwise OR using the kernel/loop architecture.
+pub fn dispatch_bitwise_or(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    dispatch_bitwise_binary_kernel(a, b, out_shape, Or)
+}
+
+/// Dispatch bitwise XOR using the kernel/loop architecture.
+pub fn dispatch_bitwise_xor(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    dispatch_bitwise_binary_kernel(a, b, out_shape, Xor)
+}
+
+/// Dispatch left shift using the kernel/loop architecture.
+pub fn dispatch_left_shift(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    dispatch_bitwise_shift_kernel(a, b, out_shape, LeftShift)
+}
+
+/// Dispatch right shift using the kernel/loop architecture.
+pub fn dispatch_right_shift(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    dispatch_bitwise_shift_kernel(a, b, out_shape, RightShift)
+}
+
+/// Dispatch bitwise NOT using the kernel/loop architecture.
+pub fn dispatch_bitwise_not(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_bitwise_not_kernel(arr, Not)
+}
+
+/// Generic dispatch for binary bitwise kernels (And, Or, Xor).
+/// Supports integer types and bool.
+fn dispatch_bitwise_binary_kernel<K>(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+    kernel: K,
+) -> Option<RumpyArray>
+where
+    K: BinaryKernel<i64>
+        + BinaryKernel<i32>
+        + BinaryKernel<i16>
+        + BinaryKernel<u64>
+        + BinaryKernel<u32>
+        + BinaryKernel<u16>
+        + BinaryKernel<u8>
+        + BinaryKernel<bool>,
+{
+    let a_kind = a.dtype().kind();
+    let b_kind = b.dtype().kind();
+
+    // Only handle same-type operations
+    if a_kind != b_kind {
+        return None;
+    }
+
+    match a_kind {
+        DTypeKind::Int64 => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, DType::int64()),
+        DTypeKind::Int32 => dispatch_binary_typed::<i32, K>(a, b, out_shape, kernel, DType::int32()),
+        DTypeKind::Int16 => dispatch_binary_typed::<i16, K>(a, b, out_shape, kernel, DType::int16()),
+        DTypeKind::Uint64 => dispatch_binary_typed::<u64, K>(a, b, out_shape, kernel, DType::uint64()),
+        DTypeKind::Uint32 => dispatch_binary_typed::<u32, K>(a, b, out_shape, kernel, DType::uint32()),
+        DTypeKind::Uint16 => dispatch_binary_typed::<u16, K>(a, b, out_shape, kernel, DType::uint16()),
+        DTypeKind::Uint8 => dispatch_binary_typed::<u8, K>(a, b, out_shape, kernel, DType::uint8()),
+        DTypeKind::Bool => dispatch_bitwise_bool_typed(a, b, out_shape, kernel),
+        _ => None,
+    }
+}
+
+/// Generic dispatch for shift kernels (LeftShift, RightShift).
+/// Only supports integer types (not bool).
+fn dispatch_bitwise_shift_kernel<K>(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+    kernel: K,
+) -> Option<RumpyArray>
+where
+    K: BinaryKernel<i64>
+        + BinaryKernel<i32>
+        + BinaryKernel<i16>
+        + BinaryKernel<u64>
+        + BinaryKernel<u32>
+        + BinaryKernel<u16>
+        + BinaryKernel<u8>,
+{
+    let a_kind = a.dtype().kind();
+    let b_kind = b.dtype().kind();
+
+    // Only handle same-type operations
+    if a_kind != b_kind {
+        return None;
+    }
+
+    match a_kind {
+        DTypeKind::Int64 => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, DType::int64()),
+        DTypeKind::Int32 => dispatch_binary_typed::<i32, K>(a, b, out_shape, kernel, DType::int32()),
+        DTypeKind::Int16 => dispatch_binary_typed::<i16, K>(a, b, out_shape, kernel, DType::int16()),
+        DTypeKind::Uint64 => dispatch_binary_typed::<u64, K>(a, b, out_shape, kernel, DType::uint64()),
+        DTypeKind::Uint32 => dispatch_binary_typed::<u32, K>(a, b, out_shape, kernel, DType::uint32()),
+        DTypeKind::Uint16 => dispatch_binary_typed::<u16, K>(a, b, out_shape, kernel, DType::uint16()),
+        DTypeKind::Uint8 => dispatch_binary_typed::<u8, K>(a, b, out_shape, kernel, DType::uint8()),
+        _ => None, // No shifts for bool or float
+    }
+}
+
+/// Bool-specific binary bitwise dispatch.
+/// Bool is stored as u8 but uses logical operators.
+fn dispatch_bitwise_bool_typed<K: BinaryKernel<bool>>(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+    _kernel: K,
+) -> Option<RumpyArray> {
+    let size: usize = out_shape.iter().product();
+    if size == 0 {
+        return Some(RumpyArray::zeros(out_shape.to_vec(), DType::bool()));
+    }
+
+    let mut result = RumpyArray::zeros(out_shape.to_vec(), DType::bool());
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    // Layout detection
+    let a_full_contig = a.is_c_contiguous() && a.shape() == out_shape;
+    let b_full_contig = b.is_c_contiguous() && b.shape() == out_shape;
+
+    if a_full_contig && b_full_contig {
+        // Fast path: contiguous
+        let a_ptr = a.data_ptr();
+        let b_ptr = b.data_ptr();
+        for i in 0..size {
+            let av = unsafe { *a_ptr.add(i) != 0 };
+            let bv = unsafe { *b_ptr.add(i) != 0 };
+            unsafe { *result_ptr.add(i) = K::apply(av, bv) as u8; }
+        }
+    } else {
+        // Strided path
+        let ndim = out_shape.len();
+        let a_strides = a.strides();
+        let b_strides = b.strides();
+        let a_ptr = a.data_ptr();
+        let b_ptr = b.data_ptr();
+
+        let mut indices = vec![0usize; ndim];
+        for i in 0..size {
+            let a_offset: isize = indices.iter().zip(a_strides).map(|(&idx, &s)| idx as isize * s).sum();
+            let b_offset: isize = indices.iter().zip(b_strides).map(|(&idx, &s)| idx as isize * s).sum();
+            let av = unsafe { *a_ptr.offset(a_offset) != 0 };
+            let bv = unsafe { *b_ptr.offset(b_offset) != 0 };
+            unsafe { *result_ptr.add(i) = K::apply(av, bv) as u8; }
+            crate::array::increment_indices(&mut indices, out_shape);
+        }
+    }
+
+    Some(result)
+}
+
+/// Generic dispatch for bitwise NOT kernel.
+fn dispatch_bitwise_not_kernel<K>(arr: &RumpyArray, kernel: K) -> Option<RumpyArray>
+where
+    K: UnaryKernel<i64>
+        + UnaryKernel<i32>
+        + UnaryKernel<i16>
+        + UnaryKernel<u64>
+        + UnaryKernel<u32>
+        + UnaryKernel<u16>
+        + UnaryKernel<u8>
+        + UnaryKernel<bool>,
+{
+    match arr.dtype().kind() {
+        DTypeKind::Int64 => dispatch_unary_typed::<i64, K>(arr, kernel, DType::int64()),
+        DTypeKind::Int32 => dispatch_unary_typed::<i32, K>(arr, kernel, DType::int32()),
+        DTypeKind::Int16 => dispatch_unary_typed::<i16, K>(arr, kernel, DType::int16()),
+        DTypeKind::Uint64 => dispatch_unary_typed::<u64, K>(arr, kernel, DType::uint64()),
+        DTypeKind::Uint32 => dispatch_unary_typed::<u32, K>(arr, kernel, DType::uint32()),
+        DTypeKind::Uint16 => dispatch_unary_typed::<u16, K>(arr, kernel, DType::uint16()),
+        DTypeKind::Uint8 => dispatch_unary_typed::<u8, K>(arr, kernel, DType::uint8()),
+        DTypeKind::Bool => dispatch_bitwise_not_bool_typed(arr, kernel),
+        _ => None,
+    }
+}
+
+/// Bool-specific NOT dispatch.
+fn dispatch_bitwise_not_bool_typed<K: UnaryKernel<bool>>(
+    arr: &RumpyArray,
+    _kernel: K,
+) -> Option<RumpyArray> {
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(arr.shape().to_vec(), DType::bool()));
+    }
+
+    let mut result = RumpyArray::zeros(arr.shape().to_vec(), DType::bool());
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    if arr.is_c_contiguous() {
+        let src_ptr = arr.data_ptr();
+        for i in 0..size {
+            let v = unsafe { *src_ptr.add(i) != 0 };
+            unsafe { *result_ptr.add(i) = K::apply(v) as u8; }
+        }
+    } else {
+        let src_ptr = arr.data_ptr();
+        let strides = arr.strides();
+        let shape = arr.shape();
+        let ndim = shape.len();
+        let mut indices = vec![0usize; ndim];
+
+        for i in 0..size {
+            let offset: isize = indices.iter().zip(strides).map(|(&idx, &s)| idx as isize * s).sum();
+            let v = unsafe { *src_ptr.offset(offset) != 0 };
+            unsafe { *result_ptr.add(i) = K::apply(v) as u8; }
+            crate::array::increment_indices(&mut indices, shape);
         }
     }
 
