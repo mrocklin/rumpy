@@ -553,10 +553,24 @@ pub fn reduce_all_f64(arr: &RumpyArray, op: ReduceOp) -> f64 {
 
 /// Reduce array along a specific axis.
 ///
-/// Uses strided reduce loops from the registry for efficient axis reductions.
-/// Each loop handles both contiguous (SIMD) and strided cases internally.
-/// See designs/backstride-iteration.md for design rationale.
+/// Uses the kernel/loop dispatch system for most dtypes (f64, f32, i64, i32, i16,
+/// u64, u32, u16, u8, complex128, complex64). Falls back to registry for Float16/Bool,
+/// and trait-based dispatch for other types like DateTime64.
 pub fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray {
+    // Try new kernel/loop dispatch first
+    {
+        use crate::ops::dispatch;
+        let dispatched = match op {
+            ReduceOp::Sum => dispatch::dispatch_reduce_axis_sum(arr, axis),
+            ReduceOp::Prod => dispatch::dispatch_reduce_axis_prod(arr, axis),
+            ReduceOp::Max => dispatch::dispatch_reduce_axis_max(arr, axis),
+            ReduceOp::Min => dispatch::dispatch_reduce_axis_min(arr, axis),
+        };
+        if let Some(result) = dispatched {
+            return result;
+        }
+    }
+
     // Output shape: remove the reduction axis
     let mut out_shape: Vec<usize> = arr.shape().to_vec();
     let axis_len = out_shape.remove(axis);
@@ -582,10 +596,10 @@ pub fn reduce_axis_op(arr: &RumpyArray, axis: usize, op: ReduceOp) -> RumpyArray
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
 
-    // Try registry lookups (single lock acquisition)
+    // Try registry lookups - for Float16, Bool (dispatch handles all other types)
     let reg = registry().read().unwrap();
 
-    // Prefer strided loops (process N elements at once)
+    // Prefer strided loops (process N elements at once) - currently unused
     if let Some((init_fn, loop_fn, _)) = reg.lookup_reduce_strided(op, kind.clone()) {
         for i in 0..out_size {
             unsafe { init_fn(result_ptr, i); }

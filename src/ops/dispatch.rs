@@ -259,7 +259,7 @@ fn dispatch_binary_typed<T: Copy, K: BinaryKernel<T>>(
 }
 
 // ============================================================================
-// Reduce dispatch
+// Reduce dispatch (full-array)
 // ============================================================================
 
 /// Dispatch a reduce operation using the kernel/loop architecture.
@@ -342,6 +342,112 @@ fn dispatch_reduce_typed<T: Copy, K: ReduceKernel<T>>(
             None // Fall back for complex strided patterns
         }
     }
+}
+
+// ============================================================================
+// Reduce dispatch (axis)
+// ============================================================================
+
+/// Dispatch axis reduction for Sum using kernel/loop architecture.
+pub fn dispatch_reduce_axis_sum(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_reduce_axis_kernel(arr, axis, Sum)
+}
+
+/// Dispatch axis reduction for Prod using kernel/loop architecture.
+pub fn dispatch_reduce_axis_prod(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_reduce_axis_kernel(arr, axis, Prod)
+}
+
+/// Dispatch axis reduction for Max using kernel/loop architecture.
+pub fn dispatch_reduce_axis_max(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_reduce_axis_kernel(arr, axis, Max)
+}
+
+/// Dispatch axis reduction for Min using kernel/loop architecture.
+pub fn dispatch_reduce_axis_min(arr: &RumpyArray, axis: usize) -> Option<RumpyArray> {
+    dispatch_reduce_axis_kernel(arr, axis, Min)
+}
+
+/// Generic axis reduce dispatch.
+fn dispatch_reduce_axis_kernel<K>(arr: &RumpyArray, axis: usize, kernel: K) -> Option<RumpyArray>
+where
+    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
+        + ReduceKernel<u64> + ReduceKernel<u32> + ReduceKernel<u16> + ReduceKernel<u8>
+        + ReduceKernel<Complex<f64>> + ReduceKernel<Complex<f32>>,
+{
+    let kind = arr.dtype().kind();
+    match kind {
+        DTypeKind::Float64 => dispatch_reduce_axis_typed::<f64, K>(arr, axis, kernel, DType::float64()),
+        DTypeKind::Float32 => dispatch_reduce_axis_typed::<f32, K>(arr, axis, kernel, DType::float32()),
+        DTypeKind::Int64 => dispatch_reduce_axis_typed::<i64, K>(arr, axis, kernel, DType::int64()),
+        DTypeKind::Int32 => dispatch_reduce_axis_typed::<i32, K>(arr, axis, kernel, DType::int32()),
+        DTypeKind::Int16 => dispatch_reduce_axis_typed::<i16, K>(arr, axis, kernel, DType::int16()),
+        DTypeKind::Uint64 => dispatch_reduce_axis_typed::<u64, K>(arr, axis, kernel, DType::uint64()),
+        DTypeKind::Uint32 => dispatch_reduce_axis_typed::<u32, K>(arr, axis, kernel, DType::uint32()),
+        DTypeKind::Uint16 => dispatch_reduce_axis_typed::<u16, K>(arr, axis, kernel, DType::uint16()),
+        DTypeKind::Uint8 => dispatch_reduce_axis_typed::<u8, K>(arr, axis, kernel, DType::uint8()),
+        DTypeKind::Complex128 => dispatch_reduce_axis_typed::<Complex<f64>, K>(arr, axis, kernel, DType::complex128()),
+        DTypeKind::Complex64 => dispatch_reduce_axis_typed::<Complex<f32>, K>(arr, axis, kernel, DType::complex64()),
+        _ => None, // Float16, Bool, DateTime fall back to registry/trait
+    }
+}
+
+/// Type-specific axis reduce dispatch.
+///
+/// For each output position, reduces along the specified axis using the kernel.
+fn dispatch_reduce_axis_typed<T: Copy, K: ReduceKernel<T>>(
+    arr: &RumpyArray,
+    axis: usize,
+    kernel: K,
+    dtype: DType,
+) -> Option<RumpyArray> {
+    // Output shape: remove the reduction axis
+    let mut out_shape: Vec<usize> = arr.shape().to_vec();
+    let axis_len = out_shape.remove(axis);
+
+    if out_shape.is_empty() {
+        out_shape = vec![1]; // Scalar result wrapped in 1D array
+    }
+
+    let itemsize = std::mem::size_of::<T>() as isize;
+    let axis_stride = arr.strides()[axis];
+
+    let mut result = RumpyArray::zeros(out_shape, dtype);
+    let out_size = result.size();
+
+    if out_size == 0 || axis_len == 0 {
+        // Initialize with identity values for empty axis
+        let buffer = result.buffer_mut();
+        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+        let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+        for i in 0..out_size {
+            unsafe { *result_ptr.add(i) = K::init(); }
+        }
+        return Some(result);
+    }
+
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+
+    // Iterate over output positions using axis_offsets
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        let src_start = unsafe { (arr.data_ptr() as *const T).byte_offset(base_offset) };
+
+        // Check if this reduction slice is contiguous
+        if axis_stride == itemsize {
+            // Contiguous: use slice-based reduce with 4-accumulator pattern
+            let slice = unsafe { std::slice::from_raw_parts(src_start, axis_len) };
+            unsafe { *result_ptr.add(i) = loops::reduce(slice, kernel); }
+        } else {
+            // Strided: use pointer-based reduce
+            unsafe {
+                *result_ptr.add(i) = loops::reduce_strided(src_start, axis_stride, axis_len, kernel);
+            }
+        }
+    }
+
+    Some(result)
 }
 
 // ============================================================================
