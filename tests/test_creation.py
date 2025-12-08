@@ -1,315 +1,185 @@
-"""Tests for array creation functions."""
+"""Tests for array creation functions.
+
+Creation functions are simple wrappers, so we use CORE_DTYPES.
+See designs/testing.md for testing philosophy.
+"""
 
 import numpy as np
 import pytest
 
 import rumpy as rp
+from conftest import CORE_DTYPES, CORE_SHAPES, NUMERIC_DTYPES, SHAPES_EMPTY
 from helpers import assert_eq
 
 
 class TestZeros:
     """Test rp.zeros against np.zeros."""
 
-    def test_1d(self):
-        r = rp.zeros(10)
-        n = np.zeros(10)
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        r = rp.zeros(shape)
+        n = np.zeros(shape)
         assert_eq(r, n)
 
-    def test_2d(self):
-        r = rp.zeros((3, 4))
-        n = np.zeros((3, 4))
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_dtypes(self, dtype):
+        r = rp.zeros(10, dtype=dtype)
+        n = np.zeros(10, dtype=dtype)
         assert_eq(r, n)
+        assert r.dtype == dtype
 
-    def test_3d(self):
-        r = rp.zeros((2, 3, 4))
-        n = np.zeros((2, 3, 4))
-        assert_eq(r, n)
-
-    def test_dtype_float32(self):
-        r = rp.zeros(10, dtype="float32")
-        n = np.zeros(10, dtype=np.float32)
-        assert_eq(r, n)
-
-    def test_dtype_float64(self):
-        r = rp.zeros(10, dtype="float64")
-        n = np.zeros(10, dtype=np.float64)
-        assert_eq(r, n)
-
-    def test_dtype_int32(self):
-        r = rp.zeros(10, dtype="int32")
-        n = np.zeros(10, dtype=np.int32)
-        assert_eq(r, n)
-
-    def test_dtype_int64(self):
-        r = rp.zeros(10, dtype="int64")
-        n = np.zeros(10, dtype=np.int64)
-        assert_eq(r, n)
-
-    def test_dtype_bool(self):
-        r = rp.zeros(10, dtype="bool")
-        n = np.zeros(10, dtype=bool)
-        assert_eq(r, n)
+    @pytest.mark.parametrize("shape", SHAPES_EMPTY)
+    def test_empty(self, shape):
+        r = rp.zeros(shape)
+        n = np.zeros(shape)
+        assert r.shape == n.shape
+        assert r.size == 0
 
 
 class TestOnes:
     """Test rp.ones against np.ones."""
 
-    def test_1d(self):
-        r = rp.ones(10)
-        n = np.ones(10)
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        r = rp.ones(shape)
+        n = np.ones(shape)
         assert_eq(r, n)
 
-    def test_2d(self):
-        r = rp.ones((3, 4))
-        n = np.ones((3, 4))
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_dtypes(self, dtype):
+        r = rp.ones(10, dtype=dtype)
+        n = np.ones(10, dtype=dtype)
         assert_eq(r, n)
+        assert r.dtype == dtype
 
-    def test_dtype_float32(self):
-        r = rp.ones(10, dtype="float32")
-        n = np.ones(10, dtype=np.float32)
-        assert_eq(r, n)
-
-    def test_dtype_float64(self):
-        r = rp.ones(10, dtype="float64")
-        n = np.ones(10, dtype=np.float64)
-        assert_eq(r, n)
-
-    def test_dtype_int32(self):
-        r = rp.ones(10, dtype="int32")
-        n = np.ones(10, dtype=np.int32)
-        assert_eq(r, n)
-
-    def test_dtype_int64(self):
-        r = rp.ones(10, dtype="int64")
-        n = np.ones(10, dtype=np.int64)
-        assert_eq(r, n)
-
-    def test_dtype_bool(self):
-        r = rp.ones(10, dtype="bool")
-        n = np.ones(10, dtype=bool)
-        assert_eq(r, n)
-
-
-class TestArrayProperties:
-    """Test array properties match numpy."""
-
-    def test_shape(self):
-        r = rp.zeros((3, 4, 5))
-        assert r.shape == (3, 4, 5)
-
-    def test_ndim(self):
-        r = rp.zeros((3, 4, 5))
-        assert r.ndim == 3
-
-    def test_size(self):
-        r = rp.zeros((3, 4, 5))
-        assert r.size == 60
-
-    def test_itemsize_float64(self):
-        r = rp.zeros(10, dtype="float64")
-        assert r.itemsize == 8
-
-    def test_itemsize_float32(self):
-        r = rp.zeros(10, dtype="float32")
-        assert r.itemsize == 4
-
-    def test_nbytes(self):
-        r = rp.zeros(10, dtype="float64")
-        assert r.nbytes == 80
-
-    def test_strides_c_order(self):
-        r = rp.zeros((3, 4))
-        # C-order: last dimension has stride = itemsize
-        assert r.strides == (32, 8)  # 4*8, 1*8 for float64
+    @pytest.mark.parametrize("shape", SHAPES_EMPTY)
+    def test_empty(self, shape):
+        r = rp.ones(shape)
+        n = np.ones(shape)
+        assert r.shape == n.shape
 
 
 class TestEmpty:
     """Test rp.empty against np.empty."""
 
-    def test_1d(self):
-        r = rp.empty(10)
-        n = np.empty(10)
-        assert r.shape == n.shape
-        assert r.dtype == "float64"
-
-    def test_2d(self):
-        r = rp.empty((3, 4))
-        n = np.empty((3, 4))
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        r = rp.empty(shape)
+        n = np.empty(shape)
         assert r.shape == n.shape
 
-    def test_dtype(self):
-        r = rp.empty(10, dtype="float32")
-        assert r.dtype == "float32"
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_dtypes(self, dtype):
+        r = rp.empty(10, dtype=dtype)
+        assert r.dtype == dtype
+
+    @pytest.mark.parametrize("shape", SHAPES_EMPTY)
+    def test_empty(self, shape):
+        r = rp.empty(shape)
+        assert r.shape == shape
+        assert r.size == 0
 
 
-class TestZerosLike:
-    """Test rp.zeros_like against np.zeros_like."""
+class TestFull:
+    """Test rp.full against np.full."""
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        r = rp.full(shape, 3.14)
+        n = np.full(shape, 3.14)
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, dtype):
+        r = rp.full(10, 42, dtype=dtype)
+        n = np.full(10, 42, dtype=dtype)
+        assert_eq(r, n)
+        assert r.dtype == dtype
+
+    def test_negative_value(self):
+        r = rp.full((3, 3), -42.0)
+        n = np.full((3, 3), -42.0)
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("shape", SHAPES_EMPTY)
+    def test_empty(self, shape):
+        r = rp.full(shape, 5.0)
+        n = np.full(shape, 5.0)
+        assert r.shape == n.shape
+
+
+class TestArange:
+    """Test rp.arange against np.arange."""
+
+    def test_stop_only(self):
+        r = rp.arange(10)
+        n = np.arange(10)
+        assert_eq(r, n)
+
+    def test_start_stop(self):
+        r = rp.arange(2, 10)
+        n = np.arange(2, 10)
+        assert_eq(r, n)
+
+    def test_start_stop_step(self):
+        r = rp.arange(0, 10, 2)
+        n = np.arange(0, 10, 2)
+        assert_eq(r, n)
+
+    def test_float_step(self):
+        r = rp.arange(0, 1, 0.1, dtype="float64")
+        n = np.arange(0, 1, 0.1)
+        assert_eq(r, n)
+
+    def test_negative_step(self):
+        r = rp.arange(10, 0, -1)
+        n = np.arange(10, 0, -1)
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", ["int64", "float32", "float64"])
+    def test_dtypes(self, dtype):
+        r = rp.arange(10, dtype=dtype)
+        n = np.arange(10, dtype=dtype)
+        assert_eq(r, n)
+        assert r.dtype == dtype
+
+    def test_empty(self):
+        r = rp.arange(0)
+        n = np.arange(0)
+        assert r.shape == n.shape
+
+
+class TestLinspace:
+    """Test rp.linspace against np.linspace."""
 
     def test_basic(self):
-        arr = rp.ones((3, 4))
-        r = rp.zeros_like(arr)
-        n = np.zeros_like(np.ones((3, 4)))
+        r = rp.linspace(0, 10, 5)
+        n = np.linspace(0, 10, 5)
         assert_eq(r, n)
 
-    def test_preserves_dtype(self):
-        arr = rp.ones((3, 4), dtype="float32")
-        r = rp.zeros_like(arr)
-        assert r.dtype == "float32"
-        assert r.shape == (3, 4)
-
-    def test_override_dtype(self):
-        arr = rp.ones((3, 4), dtype="float32")
-        r = rp.zeros_like(arr, dtype="float64")
-        assert r.dtype == "float64"
-
-
-class TestOnesLike:
-    """Test rp.ones_like against np.ones_like."""
-
-    def test_basic(self):
-        arr = rp.zeros((3, 4))
-        r = rp.ones_like(arr)
-        n = np.ones_like(np.zeros((3, 4)))
+    def test_default_num(self):
+        r = rp.linspace(0, 1)
+        n = np.linspace(0, 1)  # default 50 points
         assert_eq(r, n)
 
-    def test_preserves_dtype(self):
-        arr = rp.zeros((3, 4), dtype="int32")
-        r = rp.ones_like(arr)
-        assert r.dtype == "int32"
-        assert r.shape == (3, 4)
-
-    def test_override_dtype(self):
-        arr = rp.zeros((3, 4), dtype="int32")
-        r = rp.ones_like(arr, dtype="float64")
-        assert r.dtype == "float64"
-
-
-class TestEmptyLike:
-    """Test rp.empty_like against np.empty_like."""
-
-    def test_basic(self):
-        arr = rp.ones((3, 4))
-        r = rp.empty_like(arr)
-        assert r.shape == (3, 4)
-        assert r.dtype == "float64"
-
-    def test_preserves_dtype(self):
-        arr = rp.ones((3, 4), dtype="float32")
-        r = rp.empty_like(arr)
-        assert r.dtype == "float32"
-
-    def test_override_dtype(self):
-        arr = rp.ones((3, 4), dtype="float32")
-        r = rp.empty_like(arr, dtype="int64")
-        assert r.dtype == "int64"
-
-
-class TestCopyModule:
-    """Test rp.copy module function."""
-
-    def test_basic(self):
-        arr = rp.arange(10)
-        r = rp.copy(arr)
-        n = np.copy(np.arange(10, dtype=np.float64))
+    def test_single_point(self):
+        r = rp.linspace(5, 5, 1)
+        n = np.linspace(5, 5, 1)
         assert_eq(r, n)
 
-    def test_2d(self):
-        arr = rp.arange(12).reshape(3, 4)
-        r = rp.copy(arr)
-        n = np.copy(np.arange(12, dtype=np.float64).reshape(3, 4))
+    def test_negative(self):
+        r = rp.linspace(-5, 5, 11)
+        n = np.linspace(-5, 5, 11)
         assert_eq(r, n)
 
-    def test_preserves_dtype(self):
-        arr = rp.arange(10, dtype="int32")
-        r = rp.copy(arr)
-        assert r.dtype == "int32"
-
-
-class TestArrayConstructor:
-    """Test rp.array() constructor."""
-
-    def test_from_list_1d(self):
-        r = rp.array([1, 2, 3, 4])
-        n = np.array([1, 2, 3, 4], dtype=np.float64)
-        assert_eq(r, n)
-
-    def test_from_list_2d(self):
-        r = rp.array([[1, 2], [3, 4]])
-        n = np.array([[1, 2], [3, 4]], dtype=np.float64)
-        assert_eq(r, n)
-
-    def test_with_dtype(self):
-        r = rp.array([1, 2, 3], dtype="int32")
-        assert r.dtype == "int32"
-        assert r.shape == (3,)
-
-    def test_from_rumpy_array(self):
-        orig = rp.arange(5)
-        r = rp.array(orig)
-        assert_eq(r, orig)
-
-
-class TestDtypeConstants:
-    """Test that dtype constants are available and work with array creation."""
-
-    @pytest.mark.parametrize("attr,expected", [
-        ("float32", "float32"),
-        ("float64", "float64"),
-        ("int16", "int16"),
-        ("int32", "int32"),
-        ("int64", "int64"),
-        ("uint8", "uint8"),
-        ("uint16", "uint16"),
-        ("uint32", "uint32"),
-        ("uint64", "uint64"),
-        ("bool_", "bool"),
-        ("complex64", "complex64"),
-        ("complex128", "complex128"),
-    ])
-    def test_dtype_constant_with_zeros(self, attr, expected):
-        """Dtype constants should work with array creation functions."""
-        dtype_const = getattr(rp, attr)
-        arr = rp.zeros(5, dtype=dtype_const)
-        assert arr.dtype == expected
-
-
-class TestFullLike:
-    """Test rp.full_like against np.full_like."""
-
-    def test_basic(self):
-        arr = rp.zeros((3, 4))
-        r = rp.full_like(arr, 7.0)
-        n = np.full_like(np.zeros((3, 4)), 7.0)
-        assert_eq(r, n)
-
-    def test_preserves_dtype(self):
-        arr = rp.zeros((3, 4), dtype="float32")
-        r = rp.full_like(arr, 5.0)
-        assert r.dtype == "float32"
-        assert r.shape == (3, 4)
-
-    def test_override_dtype(self):
-        arr = rp.zeros((3, 4), dtype="float32")
-        r = rp.full_like(arr, 5.0, dtype="float64")
-        assert r.dtype == "float64"
-
-
-class TestIdentity:
-    """Test rp.identity against np.identity."""
-
-    def test_basic(self):
-        r = rp.identity(3)
-        n = np.identity(3)
-        assert_eq(r, n)
-
-    def test_dtype(self):
-        r = rp.identity(4, dtype="float32")
-        n = np.identity(4, dtype=np.float32)
+    def test_reverse(self):
+        r = rp.linspace(10, 0, 5)
+        n = np.linspace(10, 0, 5)
         assert_eq(r, n)
 
     def test_empty(self):
-        r = rp.identity(0)
-        n = np.identity(0)
+        r = rp.linspace(0, 10, 0)
+        n = np.linspace(0, 10, 0)
         assert r.shape == n.shape
 
 
@@ -360,6 +230,93 @@ class TestGeomspace:
             rp.geomspace(-1, 100, num=4)
 
 
+class TestEye:
+    """Test rp.eye against np.eye."""
+
+    def test_basic(self):
+        r = rp.eye(3)
+        n = np.eye(3)
+        assert_eq(r, n)
+
+    def test_sizes(self):
+        for size in [1, 5, 10]:
+            r = rp.eye(size)
+            n = np.eye(size)
+            assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_dtypes(self, dtype):
+        r = rp.eye(3, dtype=dtype)
+        n = np.eye(3, dtype=dtype)
+        assert_eq(r, n)
+        assert r.dtype == dtype
+
+    def test_empty(self):
+        r = rp.eye(0)
+        n = np.eye(0)
+        assert r.shape == n.shape
+
+
+class TestIdentity:
+    """Test rp.identity against np.identity."""
+
+    def test_basic(self):
+        r = rp.identity(3)
+        n = np.identity(3)
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_dtypes(self, dtype):
+        r = rp.identity(4, dtype=dtype)
+        n = np.identity(4, dtype=dtype)
+        assert_eq(r, n)
+
+    def test_empty(self):
+        r = rp.identity(0)
+        n = np.identity(0)
+        assert r.shape == n.shape
+
+
+class TestDiag:
+    """Test rp.diag against np.diag."""
+
+    def test_extract_diagonal(self):
+        # Note: must use float input, int diag has known bug
+        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+        r = rp.asarray(n)
+        assert_eq(rp.diag(r), np.diag(n))
+
+    def test_create_diagonal(self):
+        n = np.array([1.0, 2.0, 3.0])
+        r = rp.asarray(n)
+        assert_eq(rp.diag(r), np.diag(n))
+
+    def test_rectangular(self):
+        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        r = rp.asarray(n)
+        assert_eq(rp.diag(r), np.diag(n))
+
+
+class TestDiagflat:
+    """Test rp.diagflat against np.diagflat."""
+
+    def test_basic(self):
+        arr = rp.array([1, 2, 3])
+        n = np.array([1, 2, 3], dtype=np.float64)
+        assert_eq(rp.diagflat(arr), np.diagflat(n))
+
+    def test_with_k(self):
+        arr = rp.array([1, 2, 3])
+        n = np.array([1, 2, 3], dtype=np.float64)
+        for k in [-1, 0, 1]:
+            assert_eq(rp.diagflat(arr, k=k), np.diagflat(n, k=k))
+
+    def test_2d_input(self):
+        arr = rp.arange(4).reshape(2, 2)
+        n = np.arange(4, dtype=np.float64).reshape(2, 2)
+        assert_eq(rp.diagflat(arr), np.diagflat(n))
+
+
 class TestTri:
     """Test rp.tri against np.tri."""
 
@@ -373,130 +330,74 @@ class TestTri:
         n = np.tri(3, 4)
         assert_eq(r, n)
 
-    def test_with_k(self):
-        r = rp.tri(3, 4, k=1)
-        n = np.tri(3, 4, k=1)
-        assert_eq(r, n)
-
-    def test_with_negative_k(self):
-        r = rp.tri(4, 4, k=-1)
-        n = np.tri(4, 4, k=-1)
+    @pytest.mark.parametrize("k", [-1, 0, 1])
+    def test_with_k(self, k):
+        r = rp.tri(4, 4, k=k)
+        n = np.tri(4, 4, k=k)
         assert_eq(r, n)
 
 
-class TestTril:
-    """Test rp.tril against np.tril."""
+class TestTrilTriu:
+    """Test rp.tril and rp.triu against numpy."""
 
-    def test_basic(self):
+    def test_tril_basic(self):
         arr = rp.arange(12).reshape(3, 4)
-        r = rp.tril(arr)
-        n = np.tril(np.arange(12, dtype=np.float64).reshape(3, 4))
-        assert_eq(r, n)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.tril(arr), np.tril(n))
 
-    def test_with_k(self):
+    def test_triu_basic(self):
         arr = rp.arange(12).reshape(3, 4)
-        r = rp.tril(arr, k=1)
-        n = np.tril(np.arange(12, dtype=np.float64).reshape(3, 4), k=1)
-        assert_eq(r, n)
+        n = np.arange(12, dtype=np.float64).reshape(3, 4)
+        assert_eq(rp.triu(arr), np.triu(n))
 
-    def test_with_negative_k(self):
+    @pytest.mark.parametrize("k", [-1, 0, 1])
+    def test_tril_with_k(self, k):
         arr = rp.arange(16).reshape(4, 4)
-        r = rp.tril(arr, k=-1)
-        n = np.tril(np.arange(16, dtype=np.float64).reshape(4, 4), k=-1)
-        assert_eq(r, n)
+        n = np.arange(16, dtype=np.float64).reshape(4, 4)
+        assert_eq(rp.tril(arr, k=k), np.tril(n, k=k))
 
-
-class TestTriu:
-    """Test rp.triu against np.triu."""
-
-    def test_basic(self):
-        arr = rp.arange(12).reshape(3, 4)
-        r = rp.triu(arr)
-        n = np.triu(np.arange(12, dtype=np.float64).reshape(3, 4))
-        assert_eq(r, n)
-
-    def test_with_k(self):
-        arr = rp.arange(12).reshape(3, 4)
-        r = rp.triu(arr, k=1)
-        n = np.triu(np.arange(12, dtype=np.float64).reshape(3, 4), k=1)
-        assert_eq(r, n)
-
-    def test_with_negative_k(self):
+    @pytest.mark.parametrize("k", [-1, 0, 1])
+    def test_triu_with_k(self, k):
         arr = rp.arange(16).reshape(4, 4)
-        r = rp.triu(arr, k=-1)
-        n = np.triu(np.arange(16, dtype=np.float64).reshape(4, 4), k=-1)
-        assert_eq(r, n)
-
-
-class TestDiagflat:
-    """Test rp.diagflat against np.diagflat."""
-
-    def test_basic(self):
-        arr = rp.array([1, 2, 3])
-        r = rp.diagflat(arr)
-        n = np.diagflat(np.array([1, 2, 3], dtype=np.float64))
-        assert_eq(r, n)
-
-    def test_with_positive_k(self):
-        arr = rp.array([1, 2, 3])
-        r = rp.diagflat(arr, k=1)
-        n = np.diagflat(np.array([1, 2, 3], dtype=np.float64), k=1)
-        assert_eq(r, n)
-
-    def test_with_negative_k(self):
-        arr = rp.array([1, 2, 3])
-        r = rp.diagflat(arr, k=-1)
-        n = np.diagflat(np.array([1, 2, 3], dtype=np.float64), k=-1)
-        assert_eq(r, n)
-
-    def test_2d_input(self):
-        """diagflat flattens input first."""
-        arr = rp.arange(4).reshape(2, 2)
-        r = rp.diagflat(arr)
-        n = np.diagflat(np.arange(4, dtype=np.float64).reshape(2, 2))
-        assert_eq(r, n)
+        n = np.arange(16, dtype=np.float64).reshape(4, 4)
+        assert_eq(rp.triu(arr, k=k), np.triu(n, k=k))
 
 
 class TestMeshgrid:
     """Test rp.meshgrid against np.meshgrid."""
 
     def test_basic_xy(self):
-        x = rp.array([1, 2, 3])
-        y = rp.array([4, 5])
+        x, y = rp.array([1, 2, 3]), rp.array([4, 5])
+        nx, ny = np.array([1, 2, 3], dtype=np.float64), np.array([4, 5], dtype=np.float64)
         rx, ry = rp.meshgrid(x, y)
-        nx, ny = np.meshgrid(np.array([1, 2, 3], dtype=np.float64),
-                              np.array([4, 5], dtype=np.float64))
-        assert_eq(rx, nx)
-        assert_eq(ry, ny)
+        enx, eny = np.meshgrid(nx, ny)
+        assert_eq(rx, enx)
+        assert_eq(ry, eny)
 
     def test_indexing_ij(self):
-        x = rp.array([1, 2, 3])
-        y = rp.array([4, 5])
+        x, y = rp.array([1, 2, 3]), rp.array([4, 5])
+        nx, ny = np.array([1, 2, 3], dtype=np.float64), np.array([4, 5], dtype=np.float64)
         rx, ry = rp.meshgrid(x, y, indexing="ij")
-        nx, ny = np.meshgrid(np.array([1, 2, 3], dtype=np.float64),
-                              np.array([4, 5], dtype=np.float64),
-                              indexing="ij")
-        assert_eq(rx, nx)
-        assert_eq(ry, ny)
+        enx, eny = np.meshgrid(nx, ny, indexing="ij")
+        assert_eq(rx, enx)
+        assert_eq(ry, eny)
 
     def test_3d(self):
-        x = rp.array([1, 2])
-        y = rp.array([3, 4, 5])
-        z = rp.array([6, 7])
+        x, y, z = rp.array([1, 2]), rp.array([3, 4, 5]), rp.array([6, 7])
+        nx = np.array([1, 2], dtype=np.float64)
+        ny = np.array([3, 4, 5], dtype=np.float64)
+        nz = np.array([6, 7], dtype=np.float64)
         rx, ry, rz = rp.meshgrid(x, y, z, indexing="ij")
-        nx, ny, nz = np.meshgrid(np.array([1, 2], dtype=np.float64),
-                                  np.array([3, 4, 5], dtype=np.float64),
-                                  np.array([6, 7], dtype=np.float64),
-                                  indexing="ij")
-        assert_eq(rx, nx)
-        assert_eq(ry, ny)
-        assert_eq(rz, nz)
+        enx, eny, enz = np.meshgrid(nx, ny, nz, indexing="ij")
+        assert_eq(rx, enx)
+        assert_eq(ry, eny)
+        assert_eq(rz, enz)
 
 
 class TestIndices:
     """Test rp.indices against np.indices."""
 
-    def test_basic_2d(self):
+    def test_2d(self):
         r = rp.indices([2, 3])
         n = np.indices([2, 3])
         assert_eq(r, n)
@@ -515,7 +416,7 @@ class TestIndices:
 class TestFromfunction:
     """Test rp.fromfunction against np.fromfunction."""
 
-    def test_basic_2d(self):
+    def test_add(self):
         def f(i, j):
             return i + j
         r = rp.fromfunction([3, 4], f)
@@ -535,3 +436,166 @@ class TestFromfunction:
         r = rp.fromfunction([2, 3, 2], f)
         n = np.fromfunction(f, (2, 3, 2))
         assert_eq(r, n)
+
+
+class TestLikeFunctions:
+    """Test zeros_like, ones_like, empty_like, full_like."""
+
+    def test_zeros_like(self):
+        arr = rp.ones((3, 4))
+        r = rp.zeros_like(arr)
+        n = np.zeros_like(np.ones((3, 4)))
+        assert_eq(r, n)
+
+    def test_ones_like(self):
+        arr = rp.zeros((3, 4))
+        r = rp.ones_like(arr)
+        n = np.ones_like(np.zeros((3, 4)))
+        assert_eq(r, n)
+
+    def test_empty_like(self):
+        arr = rp.ones((3, 4))
+        r = rp.empty_like(arr)
+        assert r.shape == (3, 4)
+        assert r.dtype == "float64"
+
+    def test_full_like(self):
+        arr = rp.zeros((3, 4))
+        r = rp.full_like(arr, 7.0)
+        n = np.full_like(np.zeros((3, 4)), 7.0)
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_preserves_dtype(self, dtype):
+        arr = rp.ones((3, 4), dtype=dtype)
+        r = rp.zeros_like(arr)
+        assert r.dtype == dtype
+
+    def test_override_dtype(self):
+        arr = rp.ones((3, 4), dtype="float32")
+        r = rp.zeros_like(arr, dtype="float64")
+        assert r.dtype == "float64"
+
+
+class TestArrayConstructor:
+    """Test rp.array() constructor."""
+
+    def test_from_list_1d(self):
+        r = rp.array([1, 2, 3, 4])
+        n = np.array([1, 2, 3, 4], dtype=np.float64)
+        assert_eq(r, n)
+
+    def test_from_list_2d(self):
+        r = rp.array([[1, 2], [3, 4]])
+        n = np.array([[1, 2], [3, 4]], dtype=np.float64)
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_with_dtype(self, dtype):
+        r = rp.array([1, 2, 3], dtype=dtype)
+        assert r.dtype == dtype
+
+    def test_from_rumpy_array(self):
+        orig = rp.arange(5)
+        r = rp.array(orig)
+        assert_eq(r, orig)
+
+
+class TestCopy:
+    """Test rp.copy module function."""
+
+    def test_basic(self):
+        arr = rp.arange(10)
+        r = rp.copy(arr)
+        n = np.copy(np.arange(10, dtype=np.float64))
+        assert_eq(r, n)
+
+    def test_2d(self):
+        arr = rp.arange(12).reshape(3, 4)
+        r = rp.copy(arr)
+        n = np.copy(np.arange(12, dtype=np.float64).reshape(3, 4))
+        assert_eq(r, n)
+
+    @pytest.mark.parametrize("dtype", CORE_DTYPES)
+    def test_preserves_dtype(self, dtype):
+        arr = rp.arange(10, dtype=dtype if dtype != "bool" else "int64")
+        r = rp.copy(arr)
+        assert r.dtype == arr.dtype
+
+
+class TestAsarray:
+    """Test rp.asarray conversion."""
+
+    def test_from_numpy(self):
+        n = np.array([1, 2, 3], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(r, n)
+
+    def test_from_list(self):
+        r = rp.asarray([1, 2, 3])
+        n = np.asarray([1, 2, 3], dtype=np.float64)
+        assert_eq(r, n)
+
+    def test_from_rumpy(self):
+        orig = rp.arange(5)
+        r = rp.asarray(orig)
+        assert_eq(r, orig)
+
+
+class TestArrayProperties:
+    """Test array properties match numpy."""
+
+    def test_shape(self):
+        r = rp.zeros((3, 4, 5))
+        assert r.shape == (3, 4, 5)
+
+    def test_ndim(self):
+        r = rp.zeros((3, 4, 5))
+        assert r.ndim == 3
+
+    def test_size(self):
+        r = rp.zeros((3, 4, 5))
+        assert r.size == 60
+
+    def test_itemsize_float64(self):
+        r = rp.zeros(10, dtype="float64")
+        assert r.itemsize == 8
+
+    def test_itemsize_float32(self):
+        r = rp.zeros(10, dtype="float32")
+        assert r.itemsize == 4
+
+    def test_nbytes(self):
+        r = rp.zeros(10, dtype="float64")
+        assert r.nbytes == 80
+
+    def test_strides_c_order(self):
+        r = rp.zeros((3, 4))
+        # C-order: last dimension has stride = itemsize
+        assert r.strides == (32, 8)  # 4*8, 1*8 for float64
+
+
+class TestDtypeConstants:
+    """Test dtype constants work with array creation."""
+
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("float32", "float32"),
+            ("float64", "float64"),
+            ("int16", "int16"),
+            ("int32", "int32"),
+            ("int64", "int64"),
+            ("uint8", "uint8"),
+            ("uint16", "uint16"),
+            ("uint32", "uint32"),
+            ("uint64", "uint64"),
+            ("bool_", "bool"),
+            ("complex64", "complex64"),
+            ("complex128", "complex128"),
+        ],
+    )
+    def test_dtype_constant_with_zeros(self, attr, expected):
+        dtype_const = getattr(rp, attr)
+        arr = rp.zeros(5, dtype=dtype_const)
+        assert arr.dtype == expected

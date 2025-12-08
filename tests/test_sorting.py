@@ -1,238 +1,410 @@
-"""Tests for sorting operations: partition, argpartition, lexsort."""
-import pytest
+"""Tests for sorting operations.
+
+Parametrizes over operations for concise comprehensive coverage.
+See designs/testing.md for testing philosophy.
+"""
+
 import numpy as np
+import pytest
+
 import rumpy as rp
-from helpers import assert_eq
+from conftest import CORE_SHAPES, NUMERIC_DTYPES
+from helpers import assert_eq, make_pair
+
+# === Sorting operation categories ===
+
+# Basic sorting operations (return sorted array or indices)
+SORT_OPS = ["sort", "argsort"]
+
+# Partial sorting operations (kth element)
+PARTITION_OPS = ["partition", "argpartition"]
 
 
-class TestPartition:
-    """Tests for rp.partition."""
+# === Parametrized tests by category ===
 
-    def test_basic_1d(self):
-        """Test basic 1D partition."""
-        a = [3, 4, 2, 1, 5]
-        r = rp.partition(rp.asarray(a), 2)
-        n = np.partition(np.array(a), 2)
-        # The kth element should be in its sorted position
-        assert r[2] == n[2]
-        # All elements before kth should be <= kth
-        assert all(r[i] <= r[2] for i in range(2))
-        # All elements after kth should be >= kth
-        assert all(r[i] >= r[2] for i in range(3, 5))
 
-    def test_kth_positions(self):
+class TestSortOps:
+    """Test basic sort and argsort operations."""
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, op, dtype):
+        """Test all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6], dtype=dtype)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, op, shape):
+        """Test different array shapes with default axis."""
+        r, n = make_pair(shape, "float64")
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_axis_last(self, op):
+        """Test sorting along last axis (axis=-1)."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=-1), getattr(np, op)(n, axis=-1))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_axis_0(self, op):
+        """Test sorting along first axis."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=0), getattr(np, op)(n, axis=0))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_axis_1(self, op):
+        """Test sorting along axis 1."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=1), getattr(np, op)(n, axis=1))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_axis_none(self, op):
+        """Test sorting with axis=None (flattened)."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=None), getattr(np, op)(n, axis=None))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_3d_axis_0(self, op):
+        """Test 3D sorting along axis 0 (positive axis only for 3D)."""
+        r, n = make_pair((2, 3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=0), getattr(np, op)(n, axis=0))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_3d_axis_1(self, op):
+        """Test 3D sorting along axis 1 (positive axis only for 3D)."""
+        r, n = make_pair((2, 3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=1), getattr(np, op)(n, axis=1))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_3d_axis_2(self, op):
+        """Test 3D sorting along axis 2 (positive axis only for 3D)."""
+        r, n = make_pair((2, 3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, axis=2), getattr(np, op)(n, axis=2))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_already_sorted(self, op):
+        """Test sorting already sorted array."""
+        n = np.array([1, 2, 3, 4, 5], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_reverse_sorted(self, op):
+        """Test sorting reverse sorted array."""
+        n = np.array([5, 4, 3, 2, 1], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_duplicates(self, op):
+        """Test sorting array with duplicates."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_single_element(self, op):
+        """Test sorting single element array."""
+        n = np.array([42], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    @pytest.mark.parametrize("op", SORT_OPS)
+    def test_empty(self, op):
+        """Test sorting empty array."""
+        n = np.array([], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r), getattr(np, op)(n))
+
+    def test_sort_with_nans(self):
+        """Test sort with NaN values - verify it doesn't crash."""
+        n = np.array([3.0, np.nan, 1.0, 2.0, np.nan])
+        r = rp.asarray(n)
+        # NaN handling may differ from numpy, just verify it doesn't crash
+        result = rp.sort(r)
+        assert result.size == 5
+
+    def test_argsort_with_nans(self):
+        """Test argsort with NaN values."""
+        n = np.array([3.0, np.nan, 1.0, 2.0, np.nan])
+        r = rp.asarray(n)
+        # NaN ordering may differ, just verify it doesn't crash
+        result = rp.argsort(r)
+        assert result.size == 5
+
+
+class TestPartitionOps:
+    """Test partition and argpartition operations."""
+
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, op, dtype):
+        """Test all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6], dtype=dtype)
+        r = rp.asarray(n)
+        # Test with kth in middle
+        kth = 3
+        r_result = getattr(rp, op)(r, kth)
+        n_result = getattr(np, op)(n, kth)
+        # For partition/argpartition, kth element position is deterministic
+        if op == "partition":
+            assert r_result[kth] == n_result[kth]
+        else:  # argpartition
+            assert r[r_result[kth]] == n[n_result[kth]]
+
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_kth_positions(self, op):
         """Test different kth positions."""
-        a = [5, 2, 8, 1, 9, 3]
-        for kth in range(len(a)):
-            r = rp.partition(rp.asarray(a), kth)
-            n = np.partition(np.array(a), kth)
-            # The kth element should match numpy
-            assert r[kth] == n[kth], f"Mismatch at kth={kth}"
+        n = np.array([5, 2, 8, 1, 9, 3], dtype=np.float64)
+        r = rp.asarray(n)
+        for kth in range(len(n)):
+            r_result = getattr(rp, op)(r, kth)
+            n_result = getattr(np, op)(n, kth)
+            if op == "partition":
+                assert r_result[kth] == n_result[kth], f"Mismatch at kth={kth}"
+            else:  # argpartition
+                assert r[r_result[kth]] == n[n_result[kth]], f"Mismatch at kth={kth}"
 
-    def test_2d_axis_1(self):
-        """Test 2D partition along axis 1."""
-        a = [[3, 4, 2], [1, 5, 0]]
-        r = rp.partition(rp.asarray(a), 1, axis=-1)
-        n = np.partition(np.array(a), 1, axis=-1)
-        # kth element in each row should be in sorted position
-        assert r[0, 1] == n[0, 1]
-        assert r[1, 1] == n[1, 1]
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_axis_last(self, op):
+        """Test partition along last axis."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, 1, axis=-1), getattr(np, op)(n, 1, axis=-1))
 
-    def test_2d_axis_0(self):
-        """Test 2D partition along axis 0."""
-        a = [[3, 4, 2], [1, 5, 0]]
-        r = rp.partition(rp.asarray(a), 0, axis=0)
-        n = np.partition(np.array(a), 0, axis=0)
-        # kth element in each column should be in sorted position
-        for col in range(3):
-            assert r[0, col] == n[0, col]
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_axis_0(self, op):
+        """Test partition along axis 0."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, 1, axis=0), getattr(np, op)(n, 1, axis=0))
 
-    def test_axis_none(self):
-        """Test partition with axis=None (flatten)."""
-        a = [[3, 4], [2, 1]]
-        r = rp.partition(rp.asarray(a), 1, axis=None)
-        n = np.partition(np.array(a), 1, axis=None)
-        # Flattened and partitioned
-        assert r[1] == n[1]
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_axis_1(self, op):
+        """Test partition along axis 1."""
+        r, n = make_pair((3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, 1, axis=1), getattr(np, op)(n, 1, axis=1))
 
-    def test_dtypes(self):
-        """Test partition with different dtypes."""
-        for dtype in ["float32", "float64", "int32", "int64"]:
-            a = [5.0, 2.0, 8.0, 1.0, 9.0]
-            r = rp.partition(rp.asarray(a, dtype=dtype), 2)
-            n = np.partition(np.array(a, dtype=dtype), 2)
-            assert r[2] == n[2]
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_axis_none(self, op):
+        """Test partition with axis=None (flattened)."""
+        r, n = make_pair((3, 4), "float64")
+        result_r = getattr(rp, op)(r, 5, axis=None)
+        result_n = getattr(np, op)(n, 5, axis=None)
+        if op == "partition":
+            assert result_r[5] == result_n[5]
+        else:  # argpartition
+            assert r.ravel()[result_r[5]] == n.ravel()[result_n[5]]
+
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_3d_axis_0(self, op):
+        """Test 3D partition along axis 0 (positive axis only for 3D)."""
+        r, n = make_pair((2, 3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, 0, axis=0), getattr(np, op)(n, 0, axis=0))
+
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_3d_axis_1(self, op):
+        """Test 3D partition along axis 1 (positive axis only for 3D)."""
+        r, n = make_pair((2, 3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, 1, axis=1), getattr(np, op)(n, 1, axis=1))
+
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_3d_axis_2(self, op):
+        """Test 3D partition along axis 2 (positive axis only for 3D)."""
+        r, n = make_pair((2, 3, 4), "float64")
+        assert_eq(getattr(rp, op)(r, 1, axis=2), getattr(np, op)(n, 1, axis=2))
+
+    @pytest.mark.parametrize("op", PARTITION_OPS)
+    def test_single_element(self, op):
+        """Test partition of single element."""
+        n = np.array([42], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, op)(r, 0), getattr(np, op)(n, 0))
+
+    def test_partition_with_nans(self):
+        """Test partition with NaN values."""
+        n = np.array([3.0, np.nan, 1.0, 2.0])
+        r = rp.asarray(n)
+        # Just verify it doesn't crash
+        result = rp.partition(r, 1)
+        assert result.size == 4
 
 
-class TestArgpartition:
-    """Tests for rp.argpartition."""
+class TestUnique:
+    """Test unique operation."""
 
-    def test_basic_1d(self):
-        """Test basic 1D argpartition."""
-        a = [3, 4, 2, 1, 5]
-        ra = rp.asarray(a)
-        na = np.array(a)
-        r = rp.argpartition(ra, 2)
-        n = np.argpartition(na, 2)
-        # The value at the kth index should be the kth smallest
-        assert ra[r[2]] == na[n[2]]
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, dtype):
+        """Test all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=dtype)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
 
-    def test_kth_positions(self):
-        """Test different kth positions."""
-        a = [5, 2, 8, 1, 9, 3]
-        ra = rp.asarray(a)
-        na = np.array(a)
-        for kth in range(len(a)):
-            r = rp.argpartition(ra, kth)
-            n = np.argpartition(na, kth)
-            # The value at the kth index should match
-            assert ra[r[kth]] == na[n[kth]], f"Mismatch at kth={kth}"
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test different array shapes (unique always flattens)."""
+        r, n = make_pair(shape, "float64")
+        assert_eq(rp.unique(r), np.unique(n))
 
-    def test_2d_axis_1(self):
-        """Test 2D argpartition along axis 1."""
-        a = [[3, 4, 2], [1, 5, 0]]
-        ra = rp.asarray(a)
-        na = np.array(a)
-        r = rp.argpartition(ra, 1, axis=-1)
-        n = np.argpartition(na, 1, axis=-1)
-        # Check that indexed values match
-        # Use Python indexing since rumpy may not support array indexing
-        for row in range(2):
-            r_idx = int(r[row, 1])
-            n_idx = int(n[row, 1])
-            assert ra[row, r_idx] == na[row, n_idx]
+    def test_already_unique(self):
+        """Test unique on array with no duplicates."""
+        n = np.array([1, 2, 3, 4, 5], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
 
-    def test_axis_none(self):
-        """Test argpartition with axis=None (flatten)."""
-        a = [[3, 4], [2, 1]]
-        ra = rp.asarray(a)
-        na = np.array(a)
-        r = rp.argpartition(ra, 1, axis=None)
-        n = np.argpartition(na, 1, axis=None)
-        # The flattened value at kth index
-        assert ra.ravel()[r[1]] == na.ravel()[n[1]]
+    def test_all_same(self):
+        """Test unique on array with all same values."""
+        n = np.array([7, 7, 7, 7, 7], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
+
+    def test_single_element(self):
+        """Test unique on single element array."""
+        n = np.array([42], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
+
+    def test_empty(self):
+        """Test unique on empty array."""
+        n = np.array([], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
+
+    def test_with_nans(self):
+        """Test unique with NaN values - verify it doesn't crash."""
+        n = np.array([1.0, np.nan, 2.0, np.nan, 1.0])
+        r = rp.asarray(n)
+        # NaN handling may differ from numpy, just verify it doesn't crash
+        result = rp.unique(r)
+        assert result.size > 0
+
+    def test_negative_values(self):
+        """Test unique with negative values."""
+        n = np.array([-3, -1, -3, 0, 1, -1, 2], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
+
+    def test_multidimensional(self):
+        """Test unique on multidimensional array (should flatten)."""
+        n = np.array([[1, 2, 3], [2, 3, 4], [3, 4, 5]], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique(r), np.unique(n))
 
 
 class TestLexsort:
-    """Tests for rp.lexsort."""
+    """Test lexsort operation."""
 
-    def test_basic_numeric(self):
-        """Test basic numeric lexsort."""
-        # Last key is primary
-        keys = ([2, 1, 2, 1], [1, 2, 2, 1])
-        r = rp.lexsort((rp.asarray(keys[0]), rp.asarray(keys[1])))
-        n = np.lexsort(keys)
+    def test_basic_two_keys(self):
+        """Test basic lexsort with two keys."""
+        # Last key is primary sort key
+        k1 = np.array([2, 1, 2, 1])
+        k2 = np.array([1, 2, 2, 1])
+        r = rp.lexsort((rp.asarray(k1), rp.asarray(k2)))
+        n = np.lexsort((k1, k2))
         assert_eq(r, n)
 
     def test_single_key(self):
-        """Test lexsort with single key."""
-        key = [3, 1, 4, 1, 5]
-        r = rp.lexsort((rp.asarray(key),))
-        n = np.lexsort((np.array(key),))
+        """Test lexsort with single key (should behave like argsort)."""
+        k = np.array([3, 1, 4, 1, 5])
+        r = rp.lexsort((rp.asarray(k),))
+        n = np.lexsort((k,))
         assert_eq(r, n)
 
     def test_three_keys(self):
         """Test lexsort with three keys."""
-        k1 = [1, 2, 1, 2]  # tertiary
-        k2 = [1, 1, 2, 2]  # secondary
-        k3 = [1, 1, 1, 1]  # primary (all same)
+        k1 = np.array([1, 2, 1, 2])  # tertiary
+        k2 = np.array([1, 1, 2, 2])  # secondary
+        k3 = np.array([1, 1, 1, 1])  # primary (all same)
         r = rp.lexsort((rp.asarray(k1), rp.asarray(k2), rp.asarray(k3)))
-        n = np.lexsort((np.array(k1), np.array(k2), np.array(k3)))
+        n = np.lexsort((k1, k2, k3))
         assert_eq(r, n)
 
-    def test_reverse_order(self):
-        """Test that last key is indeed primary."""
-        primary = [2, 1, 2, 1]
-        secondary = [1, 1, 2, 2]
+    def test_key_priority(self):
+        """Test that last key is primary sort key."""
+        primary = np.array([2, 1, 2, 1])
+        secondary = np.array([1, 1, 2, 2])
         r = rp.lexsort((rp.asarray(secondary), rp.asarray(primary)))
-        n = np.lexsort((np.array(secondary), np.array(primary)))
+        n = np.lexsort((secondary, primary))
         assert_eq(r, n)
-        # Verify sorted order: primary first, then secondary
-        # primary=[2,1,2,1] means indices 1,3 have primary=1, indices 0,2 have primary=2
-        # Among indices 1,3: secondary=[1,2], so 1 comes before 3
-        # Among indices 0,2: secondary=[1,2], so 0 comes before 2
-        # Result should be [1, 3, 0, 2]
-        expected = [1, 3, 0, 2]
-        assert list(r.tolist()) == expected
+
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, dtype):
+        """Test different numeric dtypes."""
+        k1 = np.array([2, 1, 2, 1], dtype=dtype)
+        k2 = np.array([1, 2, 2, 1], dtype=dtype)
+        r = rp.lexsort((rp.asarray(k1), rp.asarray(k2)))
+        n = np.lexsort((k1, k2))
+        assert_eq(r, n)
 
     def test_float_keys(self):
         """Test lexsort with float keys."""
-        k1 = [1.5, 2.5, 1.5, 2.5]
-        k2 = [0.1, 0.1, 0.2, 0.2]
+        k1 = np.array([1.5, 2.5, 1.5, 2.5])
+        k2 = np.array([0.1, 0.1, 0.2, 0.2])
         r = rp.lexsort((rp.asarray(k1), rp.asarray(k2)))
-        n = np.lexsort((np.array(k1), np.array(k2)))
+        n = np.lexsort((k1, k2))
         assert_eq(r, n)
 
-    def test_with_duplicates(self):
-        """Test lexsort handles duplicates correctly."""
-        k1 = [1, 1, 1, 1]
-        k2 = [2, 2, 2, 2]
+    def test_all_duplicates(self):
+        """Test lexsort with all duplicate values."""
+        k1 = np.array([1, 1, 1, 1])
+        k2 = np.array([2, 2, 2, 2])
         r = rp.lexsort((rp.asarray(k1), rp.asarray(k2)))
-        n = np.lexsort((np.array(k1), np.array(k2)))
-        # All same, so stable sort order
+        n = np.lexsort((k1, k2))
+        # All same, should maintain stable order
         assert_eq(r, n)
 
     def test_empty_keys(self):
         """Test lexsort with empty keys."""
-        k1 = []
-        r = rp.lexsort((rp.asarray(k1),))
-        n = np.lexsort((np.array(k1),))
+        k = np.array([])
+        r = rp.lexsort((rp.asarray(k),))
+        n = np.lexsort((k,))
         assert r.size == 0
         assert n.size == 0
 
-    def test_accepts_lists(self):
-        """Test lexsort accepts Python lists directly."""
-        keys = ([3, 1, 2], [1, 2, 3])
-        r = rp.lexsort((rp.asarray(keys[0]), rp.asarray(keys[1])))
-        n = np.lexsort(keys)
-        assert_eq(r, n)
-
-
-class TestSortingEdgeCases:
-    """Edge cases for sorting functions."""
-
-    def test_partition_single_element(self):
-        """Partition of single element."""
-        a = [5]
-        r = rp.partition(rp.asarray(a), 0)
-        n = np.partition(np.array(a), 0)
-        assert_eq(r, n)
-
-    def test_argpartition_single_element(self):
-        """Argpartition of single element."""
-        a = [5]
-        r = rp.argpartition(rp.asarray(a), 0)
-        n = np.argpartition(np.array(a), 0)
-        assert_eq(r, n)
-
-    def test_partition_with_nans(self):
-        """Partition with NaN values - verify it doesn't crash."""
-        a = [3.0, float('nan'), 1.0, 2.0]
-        # Just verify the operation doesn't crash
-        # NaN handling is implementation-specific
-        r = rp.partition(rp.asarray(a), 1)
-        assert r.size == 4
-
-    def test_already_sorted(self):
-        """Partition of already sorted array."""
-        a = [1, 2, 3, 4, 5]
-        r = rp.partition(rp.asarray(a), 2)
-        n = np.partition(np.array(a), 2)
-        assert_eq(r, n)
-
-    def test_reverse_sorted(self):
-        """Partition of reverse sorted array."""
-        a = [5, 4, 3, 2, 1]
-        r = rp.partition(rp.asarray(a), 2)
-        n = np.partition(np.array(a), 2)
-        assert r[2] == n[2]
-
-    def test_lexsort_single_element_keys(self):
-        """Lexsort with single element keys."""
-        k1 = [5]
+    def test_single_element_keys(self):
+        """Test lexsort with single element."""
+        k1 = np.array([5])
         r = rp.lexsort((rp.asarray(k1),))
-        n = np.lexsort((np.array(k1),))
+        n = np.lexsort((k1,))
         assert_eq(r, n)
+
+    def test_negative_values(self):
+        """Test lexsort with negative values in keys."""
+        k1 = np.array([-2, -1, -2, -1])
+        k2 = np.array([-1, -2, -2, -1])
+        r = rp.lexsort((rp.asarray(k1), rp.asarray(k2)))
+        n = np.lexsort((k1, k2))
+        assert_eq(r, n)
+
+    def test_mixed_positive_negative(self):
+        """Test lexsort with mixed positive and negative values."""
+        k1 = np.array([2, -1, 2, -1])
+        k2 = np.array([1, 2, -2, 1])
+        r = rp.lexsort((rp.asarray(k1), rp.asarray(k2)))
+        n = np.lexsort((k1, k2))
+        assert_eq(r, n)
+
+
+class TestSortingStability:
+    """Test stable sorting behavior."""
+
+    def test_sort_stable(self):
+        """Test that sort is stable (equal elements maintain relative order)."""
+        # Create array with duplicates
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=np.float64)
+        r = rp.asarray(n)
+        # For basic sort, we can't easily test stability without tracking indices
+        # So we just verify the result matches numpy (which is stable)
+        assert_eq(rp.sort(r), np.sort(n))
+
+    def test_argsort_stable(self):
+        """Test that argsort maintains stable order for equal elements."""
+        # Array with duplicates at specific positions
+        n = np.array([1, 2, 1, 2, 1], dtype=np.float64)
+        r = rp.asarray(n)
+        r_idx = rp.argsort(r)
+        n_idx = np.argsort(n)
+        assert_eq(r_idx, n_idx)
 
 
 if __name__ == "__main__":

@@ -1,416 +1,336 @@
-"""Tests for set operations - Stream 12."""
+"""Tests for set operations.
+
+Parametrizes over operations and dtypes for comprehensive coverage.
+See designs/testing.md for testing philosophy.
+"""
 
 import numpy as np
 import pytest
-import rumpy as rp
 
-from helpers import assert_eq
+import rumpy as rp
+from conftest import NUMERIC_DTYPES
+from helpers import assert_eq, make_pair
+
+# === Set operation categories ===
+
+# Binary set operations (two input arrays)
+BINARY_SET_OPS = ["intersect1d", "union1d", "setdiff1d", "setxor1d"]
+
+
+# === Parametrized tests by category ===
 
 
 class TestIsin:
-    """Test isin function."""
+    """Test isin operation (element-wise membership)."""
 
-    def test_basic(self):
-        """Basic isin functionality."""
-        a = rp.array([1, 2, 3, 4, 5])
-        test = rp.array([2, 4])
-        r = rp.isin(a, test)
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, dtype):
+        """Test all numeric dtypes."""
+        a_n = np.array([1, 2, 3, 4, 5], dtype=dtype)
+        test_n = np.array([2, 4], dtype=dtype)
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
-        a_np = np.array([1, 2, 3, 4, 5])
-        test_np = np.array([2, 4])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
+    def test_basic_1d(self):
+        """Basic 1D membership test."""
+        a_n = np.array([1, 2, 3, 4, 5])
+        test_n = np.array([2, 4])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
     def test_2d_element(self):
-        """Test with 2D element array."""
-        a = rp.array([[1, 2], [3, 4]])
-        test = rp.array([2, 3])
-        r = rp.isin(a, test)
+        """Test with 2D element array (should work element-wise)."""
+        a_n = np.array([[1, 2], [3, 4]])
+        test_n = np.array([2, 3])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
-        a_np = np.array([[1, 2], [3, 4]])
-        test_np = np.array([2, 3])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
-
-    def test_no_matches(self):
+    def test_no_overlap(self):
         """Test when no elements match."""
-        a = rp.array([1, 2, 3])
-        test = rp.array([4, 5, 6])
-        r = rp.isin(a, test)
+        a_n = np.array([1, 2, 3])
+        test_n = np.array([4, 5, 6])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
-        a_np = np.array([1, 2, 3])
-        test_np = np.array([4, 5, 6])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
-
-    def test_all_match(self):
+    def test_full_overlap(self):
         """Test when all elements match."""
-        a = rp.array([1, 2, 3])
-        test = rp.array([1, 2, 3, 4, 5])
-        r = rp.isin(a, test)
-
-        a_np = np.array([1, 2, 3])
-        test_np = np.array([1, 2, 3, 4, 5])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
+        a_n = np.array([1, 2, 3])
+        test_n = np.array([1, 2, 3, 4, 5])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
     def test_empty_element(self):
         """Test with empty element array."""
-        a = rp.array([])
-        test = rp.array([1, 2, 3])
-        r = rp.isin(a, test)
-
-        a_np = np.array([])
-        test_np = np.array([1, 2, 3])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
+        a_n = np.array([], dtype=np.int64)
+        test_n = np.array([1, 2, 3], dtype=np.int64)
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
     def test_empty_test(self):
         """Test with empty test array."""
-        a = rp.array([1, 2, 3])
-        test = rp.array([])
-        r = rp.isin(a, test)
-
-        a_np = np.array([1, 2, 3])
-        test_np = np.array([])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
+        a_n = np.array([1, 2, 3])
+        test_n = np.array([], dtype=np.int64)
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
     def test_floats(self):
         """Test with float arrays."""
-        a = rp.array([1.5, 2.5, 3.5, 4.5])
-        test = rp.array([2.5, 4.5])
-        r = rp.isin(a, test)
-
-        a_np = np.array([1.5, 2.5, 3.5, 4.5])
-        test_np = np.array([2.5, 4.5])
-        n = np.isin(a_np, test_np)
-
-        assert_eq(r, n)
+        a_n = np.array([1.5, 2.5, 3.5, 4.5])
+        test_n = np.array([2.5, 4.5])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
     def test_invert(self):
         """Test with invert flag."""
-        a = rp.array([1, 2, 3, 4, 5])
-        test = rp.array([2, 4])
-        r = rp.isin(a, test, invert=True)
+        a_n = np.array([1, 2, 3, 4, 5])
+        test_n = np.array([2, 4])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r, invert=True), np.isin(a_n, test_n, invert=True))
 
-        a_np = np.array([1, 2, 3, 4, 5])
-        test_np = np.array([2, 4])
-        n = np.isin(a_np, test_np, invert=True)
-
-        assert_eq(r, n)
+    def test_single_element(self):
+        """Test with single element arrays."""
+        a_n = np.array([5])
+        test_n = np.array([5])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.isin(a_r, test_r), np.isin(a_n, test_n))
 
 
 class TestIn1d:
-    """Test in1d function (deprecated alias for isin)."""
+    """Test in1d operation (deprecated alias for isin)."""
 
     def test_basic(self):
         """Basic in1d functionality."""
-        a = rp.array([1, 2, 3, 4, 5])
-        test = rp.array([2, 4])
-        r = rp.in1d(a, test)
-
-        # in1d flattens input, so compare with numpy's in1d
-        a_np = np.array([1, 2, 3, 4, 5])
-        test_np = np.array([2, 4])
-        n = np.in1d(a_np, test_np)
-
-        assert_eq(r, n)
+        a_n = np.array([1, 2, 3, 4, 5])
+        test_n = np.array([2, 4])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.in1d(a_r, test_r), np.in1d(a_n, test_n))
 
     def test_2d_input(self):
         """Test with 2D input (should be flattened)."""
-        a = rp.array([[1, 2], [3, 4]])
-        test = rp.array([2, 3])
-        r = rp.in1d(a, test)
+        a_n = np.array([[1, 2], [3, 4]])
+        test_n = np.array([2, 3])
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.in1d(a_r, test_r), np.in1d(a_n, test_n))
 
-        a_np = np.array([[1, 2], [3, 4]])
-        test_np = np.array([2, 3])
-        n = np.in1d(a_np, test_np)
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, dtype):
+        """Test all numeric dtypes."""
+        a_n = np.array([1, 2, 3, 4, 5], dtype=dtype)
+        test_n = np.array([2, 4], dtype=dtype)
+        a_r = rp.asarray(a_n)
+        test_r = rp.asarray(test_n)
+        assert_eq(rp.in1d(a_r, test_r), np.in1d(a_n, test_n))
 
-        assert_eq(r, n)
+
+class TestBinarySetOps:
+    """Test binary set operations: intersect1d, union1d, setdiff1d, setxor1d."""
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_dtypes(self, op, dtype):
+        """Test all numeric dtypes."""
+        a_n = np.array([1, 2, 3, 4, 5], dtype=dtype)
+        b_n = np.array([3, 4, 5, 6, 7], dtype=dtype)
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_basic(self, op):
+        """Basic operation with overlapping arrays."""
+        a_n = np.array([1, 2, 3, 4, 5])
+        b_n = np.array([3, 4, 5, 6, 7])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_no_overlap(self, op):
+        """Test with disjoint arrays."""
+        a_n = np.array([1, 2, 3])
+        b_n = np.array([4, 5, 6])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_full_overlap(self, op):
+        """Test with identical arrays."""
+        a_n = np.array([1, 2, 3])
+        b_n = np.array([1, 2, 3])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_with_duplicates(self, op):
+        """Test with duplicate values in input arrays."""
+        a_n = np.array([1, 1, 2, 2, 3, 3])
+        b_n = np.array([2, 2, 3, 3, 4, 4])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_empty_first(self, op):
+        """Test with empty first array."""
+        a_n = np.array([], dtype=np.int64)
+        b_n = np.array([1, 2, 3], dtype=np.int64)
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_empty_second(self, op):
+        """Test with empty second array."""
+        a_n = np.array([1, 2, 3])
+        b_n = np.array([], dtype=np.int64)
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_both_empty(self, op):
+        """Test with both arrays empty."""
+        a_n = np.array([], dtype=np.int64)
+        b_n = np.array([], dtype=np.int64)
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_single_element(self, op):
+        """Test with single element arrays."""
+        a_n = np.array([5])
+        b_n = np.array([5])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_floats(self, op):
+        """Test with float arrays."""
+        a_n = np.array([1.5, 2.5, 3.5])
+        b_n = np.array([2.5, 3.5, 4.5])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
+
+    @pytest.mark.parametrize("op", BINARY_SET_OPS)
+    def test_negative_values(self, op):
+        """Test with negative values."""
+        a_n = np.array([-3, -1, 0, 1, 2])
+        b_n = np.array([-1, 0, 1, 3, 4])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(getattr(rp, op)(a_r, b_r), getattr(np, op)(a_n, b_n))
 
 
 class TestIntersect1d:
-    """Test intersect1d function."""
+    """Additional specific tests for intersect1d."""
 
-    def test_basic(self):
-        """Basic intersection."""
-        a = rp.array([1, 2, 3, 4, 5])
-        b = rp.array([3, 4, 5, 6, 7])
-        r = rp.intersect1d(a, b)
+    def test_result_is_sorted(self):
+        """Verify result is sorted and unique."""
+        a_n = np.array([5, 2, 8, 3, 1])
+        b_n = np.array([3, 7, 2, 9])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        result = rp.intersect1d(a_r, b_r)
+        expected = np.intersect1d(a_n, b_n)
+        assert_eq(result, expected)
+        # Verify result is sorted
+        assert_eq(result, rp.sort(result))
 
-        a_np = np.array([1, 2, 3, 4, 5])
-        b_np = np.array([3, 4, 5, 6, 7])
-        n = np.intersect1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_no_intersection(self):
-        """Test when there's no intersection."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([4, 5, 6])
-        r = rp.intersect1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([4, 5, 6])
-        n = np.intersect1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_with_duplicates(self):
-        """Test with duplicate values."""
-        a = rp.array([1, 2, 2, 3, 3, 3])
-        b = rp.array([2, 2, 3, 4])
-        r = rp.intersect1d(a, b)
-
-        a_np = np.array([1, 2, 2, 3, 3, 3])
-        b_np = np.array([2, 2, 3, 4])
-        n = np.intersect1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_empty_array(self):
-        """Test with empty array."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([])
-        r = rp.intersect1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([])
-        n = np.intersect1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_floats(self):
-        """Test with float arrays."""
-        a = rp.array([1.5, 2.5, 3.5])
-        b = rp.array([2.5, 3.5, 4.5])
-        r = rp.intersect1d(a, b)
-
-        a_np = np.array([1.5, 2.5, 3.5])
-        b_np = np.array([2.5, 3.5, 4.5])
-        n = np.intersect1d(a_np, b_np)
-
-        assert_eq(r, n)
+    def test_subset_relationship(self):
+        """Test when one array is a subset of the other."""
+        a_n = np.array([1, 2, 3])
+        b_n = np.array([1, 2, 3, 4, 5])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(rp.intersect1d(a_r, b_r), np.intersect1d(a_n, b_n))
 
 
 class TestUnion1d:
-    """Test union1d function."""
+    """Additional specific tests for union1d."""
 
-    def test_basic(self):
-        """Basic union."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([3, 4, 5])
-        r = rp.union1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([3, 4, 5])
-        n = np.union1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_disjoint(self):
-        """Test with disjoint arrays."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([4, 5, 6])
-        r = rp.union1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([4, 5, 6])
-        n = np.union1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_identical(self):
-        """Test with identical arrays."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([1, 2, 3])
-        r = rp.union1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([1, 2, 3])
-        n = np.union1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_with_duplicates(self):
-        """Test with duplicate values."""
-        a = rp.array([1, 1, 2, 2])
-        b = rp.array([2, 2, 3, 3])
-        r = rp.union1d(a, b)
-
-        a_np = np.array([1, 1, 2, 2])
-        b_np = np.array([2, 2, 3, 3])
-        n = np.union1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_empty_array(self):
-        """Test with empty array."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([])
-        r = rp.union1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([])
-        n = np.union1d(a_np, b_np)
-
-        assert_eq(r, n)
+    def test_result_is_sorted_unique(self):
+        """Verify result is sorted and unique."""
+        a_n = np.array([5, 2, 8, 2])
+        b_n = np.array([3, 5, 1, 3])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        result = rp.union1d(a_r, b_r)
+        expected = np.union1d(a_n, b_n)
+        assert_eq(result, expected)
+        # Verify result is sorted and unique
+        assert_eq(result, rp.unique(result))
+        assert_eq(result, rp.sort(result))
 
 
 class TestSetdiff1d:
-    """Test setdiff1d function."""
+    """Additional specific tests for setdiff1d."""
 
-    def test_basic(self):
-        """Basic set difference."""
-        a = rp.array([1, 2, 3, 4, 5])
-        b = rp.array([3, 4, 5, 6, 7])
-        r = rp.setdiff1d(a, b)
+    def test_result_is_sorted_unique(self):
+        """Verify result is sorted and unique."""
+        a_n = np.array([5, 2, 8, 3, 2])
+        b_n = np.array([3, 7])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        result = rp.setdiff1d(a_r, b_r)
+        expected = np.setdiff1d(a_n, b_n)
+        assert_eq(result, expected)
+        # Verify result is sorted and unique
+        assert_eq(result, rp.unique(result))
+        assert_eq(result, rp.sort(result))
 
-        a_np = np.array([1, 2, 3, 4, 5])
-        b_np = np.array([3, 4, 5, 6, 7])
-        n = np.setdiff1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_no_difference(self):
-        """Test when all elements are in second array."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([1, 2, 3, 4, 5])
-        r = rp.setdiff1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([1, 2, 3, 4, 5])
-        n = np.setdiff1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_all_different(self):
-        """Test when arrays are disjoint."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([4, 5, 6])
-        r = rp.setdiff1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([4, 5, 6])
-        n = np.setdiff1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_with_duplicates(self):
-        """Test with duplicate values."""
-        a = rp.array([1, 2, 2, 3, 3, 3])
-        b = rp.array([2, 4])
-        r = rp.setdiff1d(a, b)
-
-        a_np = np.array([1, 2, 2, 3, 3, 3])
-        b_np = np.array([2, 4])
-        n = np.setdiff1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_empty_first(self):
-        """Test with empty first array."""
-        a = rp.array([])
-        b = rp.array([1, 2, 3])
-        r = rp.setdiff1d(a, b)
-
-        a_np = np.array([])
-        b_np = np.array([1, 2, 3])
-        n = np.setdiff1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_empty_second(self):
-        """Test with empty second array."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([])
-        r = rp.setdiff1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([])
-        n = np.setdiff1d(a_np, b_np)
-
-        assert_eq(r, n)
+    def test_complete_removal(self):
+        """Test when all elements of first array are in second."""
+        a_n = np.array([1, 2, 3])
+        b_n = np.array([1, 2, 3, 4, 5])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        result = rp.setdiff1d(a_r, b_r)
+        expected = np.setdiff1d(a_n, b_n)
+        assert_eq(result, expected)
+        assert result.size == 0
 
 
 class TestSetxor1d:
-    """Test setxor1d function."""
+    """Additional specific tests for setxor1d."""
 
-    def test_basic(self):
-        """Basic symmetric difference."""
-        a = rp.array([1, 2, 3, 4])
-        b = rp.array([3, 4, 5, 6])
-        r = rp.setxor1d(a, b)
+    def test_result_is_sorted_unique(self):
+        """Verify result is sorted and unique."""
+        a_n = np.array([5, 2, 8, 3, 2])
+        b_n = np.array([3, 7, 2, 9, 7])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        result = rp.setxor1d(a_r, b_r)
+        expected = np.setxor1d(a_n, b_n)
+        assert_eq(result, expected)
+        # Verify result is sorted and unique
+        assert_eq(result, rp.unique(result))
+        assert_eq(result, rp.sort(result))
 
-        a_np = np.array([1, 2, 3, 4])
-        b_np = np.array([3, 4, 5, 6])
-        n = np.setxor1d(a_np, b_np)
+    def test_symmetric(self):
+        """Verify setxor1d is symmetric (a XOR b == b XOR a)."""
+        a_n = np.array([1, 2, 3, 4])
+        b_n = np.array([3, 4, 5, 6])
+        a_r = rp.asarray(a_n)
+        b_r = rp.asarray(b_n)
+        assert_eq(rp.setxor1d(a_r, b_r), rp.setxor1d(b_r, a_r))
 
-        assert_eq(r, n)
 
-    def test_disjoint(self):
-        """Test with disjoint arrays."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([4, 5, 6])
-        r = rp.setxor1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([4, 5, 6])
-        n = np.setxor1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_identical(self):
-        """Test with identical arrays."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([1, 2, 3])
-        r = rp.setxor1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([1, 2, 3])
-        n = np.setxor1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_with_duplicates(self):
-        """Test with duplicate values."""
-        a = rp.array([1, 1, 2, 2, 3])
-        b = rp.array([2, 3, 3, 4, 4])
-        r = rp.setxor1d(a, b)
-
-        a_np = np.array([1, 1, 2, 2, 3])
-        b_np = np.array([2, 3, 3, 4, 4])
-        n = np.setxor1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_empty_array(self):
-        """Test with empty array."""
-        a = rp.array([1, 2, 3])
-        b = rp.array([])
-        r = rp.setxor1d(a, b)
-
-        a_np = np.array([1, 2, 3])
-        b_np = np.array([])
-        n = np.setxor1d(a_np, b_np)
-
-        assert_eq(r, n)
-
-    def test_both_empty(self):
-        """Test with both arrays empty."""
-        a = rp.array([])
-        b = rp.array([])
-        r = rp.setxor1d(a, b)
-
-        a_np = np.array([])
-        b_np = np.array([])
-        n = np.setxor1d(a_np, b_np)
-
-        assert_eq(r, n)
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

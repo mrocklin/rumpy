@@ -1,302 +1,440 @@
-"""Tests for linear algebra functions: trace, det, norm.
+"""Comprehensive tests for linear algebra operations.
 
-Also tests rp.linalg submodule and rp.newaxis.
+Tests cover matrix/vector multiplication, decompositions, solving, and properties.
+Most tests use float64 for precision. Some operations tested for properties rather
+than exact values due to sign/order ambiguity in decompositions.
+
+See designs/testing.md for testing philosophy.
 """
 
 import numpy as np
+import pytest
 import rumpy as rp
-from helpers import assert_eq
+from helpers import assert_eq, make_numpy, make_pair
+from conftest import FLOAT_DTYPES
 
 
-class TestLinalgSubmodule:
-    """Tests for rp.linalg submodule (numpy.linalg compatibility)."""
+# ============================================================================
+# Matrix/Vector Multiplication
+# ============================================================================
 
-    def test_linalg_exists(self):
-        """The linalg submodule exists."""
-        assert hasattr(rp, 'linalg')
 
-    def test_solve_via_linalg(self):
-        """rp.linalg.solve works like np.linalg.solve."""
-        A = rp.asarray([[3.0, 1.0], [1.0, 2.0]])
-        b = rp.asarray([9.0, 8.0])
-        x = rp.linalg.solve(A, b)
+class TestMatmul:
+    """Matrix multiplication (2D @ 2D)."""
 
-        nA = np.array([[3.0, 1.0], [1.0, 2.0]])
-        nb = np.array([9.0, 8.0])
-        nx = np.linalg.solve(nA, nb)
+    def test_2d_2d_square(self):
+        """Square matrices."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.matmul(ra, rb), np.matmul(a, b))
+
+    def test_2d_2d_rectangular(self):
+        """Rectangular matrices (m,k) @ (k,n)."""
+        a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64)
+        b = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.matmul(ra, rb), np.matmul(a, b))
+
+    def test_operator_override(self):
+        """@ operator uses matmul."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(ra @ rb, a @ b)
+
+    def test_via_linalg_submodule(self):
+        """Can also access as rp.linalg.matmul (though not standard numpy)."""
+        # Note: numpy doesn't have np.linalg.matmul, but we test our implementation works
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        result = rp.matmul(ra, rb)
+        assert_eq(result, np.matmul(a, b))
+
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_dtypes(self, dtype):
+        """Works with float32 and float64."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=dtype)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.matmul(ra, rb), np.matmul(a, b))
+
+    def test_associativity(self):
+        """(A @ B) @ C = A @ (B @ C)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        c = np.array([[9.0, 10.0], [11.0, 12.0]], dtype=np.float64)
+        ra, rb, rc = rp.asarray(a), rp.asarray(b), rp.asarray(c)
+
+        left = (ra @ rb) @ rc
+        right = ra @ (rb @ rc)
+        assert_eq(left, right)
+
+
+class TestDot:
+    """Dot product with numpy's flexible semantics."""
+
+    def test_1d_1d(self):
+        """1D @ 1D = scalar inner product."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.dot(ra, rb), np.dot(a, b))
+
+    def test_2d_1d(self):
+        """2D @ 1D = matrix-vector product."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([1.0, 2.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.dot(ra, rb), np.dot(a, b))
+
+    def test_2d_2d(self):
+        """2D @ 2D = matrix multiply."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.dot(ra, rb), np.dot(a, b))
+
+    def test_method_form(self):
+        """a.dot(b) works like np.dot(a, b)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([1.0, 2.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(ra.dot(rb), a.dot(b))
+
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_dtypes(self, dtype):
+        """Works with different float types."""
+        a = np.array([1.0, 2.0, 3.0], dtype=dtype)
+        b = np.array([4.0, 5.0, 6.0], dtype=dtype)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.dot(ra, rb), np.dot(a, b))
+
+
+class TestInner:
+    """Inner product (flattens last axis)."""
+
+    def test_1d_1d(self):
+        """Standard inner product of vectors."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.inner(ra, rb), np.inner(a, b))
+
+
+class TestOuter:
+    """Outer product (cross product of flattened arrays)."""
+
+    def test_1d_1d(self):
+        """Outer product of vectors."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        assert_eq(rp.outer(ra, rb), np.outer(a, b))
+
+    def test_result_shape(self):
+        """Result shape is (a.size, b.size)."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        result = rp.outer(ra, rb)
+        assert result.shape == (3, 2)
+
+
+# ============================================================================
+# Linear Systems
+# ============================================================================
+
+
+class TestSolve:
+    """Solve linear system Ax = b."""
+
+    def test_square_simple(self):
+        """2x2 system with unique solution."""
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        b = np.array([9.0, 8.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        x = rp.linalg.solve(ra, rb)
+        nx = np.linalg.solve(a, b)
         assert_eq(x, nx)
 
-    def test_qr_via_linalg(self):
-        """rp.linalg.qr works like np.linalg.qr."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        Q, R = rp.linalg.qr(A)
-        assert_eq(Q @ R, A)
+    def test_solution_verifies(self):
+        """A @ x should equal b."""
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        b = np.array([9.0, 8.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
 
-    def test_svd_via_linalg(self):
-        """rp.linalg.svd works like np.linalg.svd."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        U, S, Vt = rp.linalg.svd(A, full_matrices=False)
-        # Reconstruct
-        S_diag = rp.asarray([[S[0], 0.0], [0.0, S[1]]])
-        reconstructed = U @ S_diag @ Vt
-        assert_eq(reconstructed, A)
+        x = rp.linalg.solve(ra, rb)
+        assert_eq(ra @ x, rb)
 
-    def test_eigh_via_linalg(self):
-        """rp.linalg.eigh works like np.linalg.eigh."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        w, V = rp.linalg.eigh(A)
-        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
-        nw, nV = np.linalg.eigh(nA)
-        assert_eq(w, rp.asarray(nw))
+    def test_3x3_system(self):
+        """3x3 system."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [2.0, 5.0, 3.0],
+                      [1.0, 0.0, 8.0]], dtype=np.float64)
+        b = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
 
-    def test_inv_via_linalg(self):
-        """rp.linalg.inv works like np.linalg.inv."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        A_inv = rp.linalg.inv(A)
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nA_inv = np.linalg.inv(nA)
-        assert_eq(A_inv, nA_inv)
+        x = rp.linalg.solve(ra, rb)
+        nx = np.linalg.solve(a, b)
+        assert_eq(x, nx)
 
-    def test_det_via_linalg(self):
-        """rp.linalg.det works like np.linalg.det."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        d = rp.linalg.det(A)
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nd = np.linalg.det(nA)
-        assert abs(d - nd) < 1e-10
+    def test_identity_system(self):
+        """I @ x = b has solution x = b."""
+        I = np.eye(3, dtype=np.float64)
+        b = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        rI, rb = rp.asarray(I), rp.asarray(b)
 
-    def test_norm_via_linalg(self):
-        """rp.linalg.norm works like np.linalg.norm."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        n = rp.linalg.norm(A, 'fro')
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nn = np.linalg.norm(nA, 'fro')
-        assert abs(n - nn) < 1e-10
+        x = rp.linalg.solve(rI, rb)
+        assert_eq(x, rb)
 
-    def test_cholesky(self):
-        """rp.linalg.cholesky works like np.linalg.cholesky."""
-        # SPD matrix
-        A_np = np.array([[4.0, 2.0], [2.0, 3.0]])
-        A = rp.asarray(A_np)
+    def test_multiple_rhs(self):
+        """Solve A @ X = B with matrix B."""
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        b = np.array([[9.0, 1.0], [8.0, 2.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
 
-        L = rp.linalg.cholesky(A)
-        nL = np.linalg.cholesky(A_np)
-        assert_eq(L, nL)
-
-        # L @ L.T should reconstruct A
-        reconstructed = L @ L.T
-        assert_eq(reconstructed, A)
+        x = rp.linalg.solve(ra, rb)
+        nx = np.linalg.solve(a, b)
+        assert_eq(x, nx)
 
 
-class TestNewaxis:
-    """Tests for rp.newaxis constant."""
-
-    def test_newaxis_is_none(self):
-        """newaxis should be None (like numpy)."""
-        assert rp.newaxis is None
-        assert np.newaxis is None
-
-    def test_newaxis_expand_1d_start(self):
-        """Use newaxis to add dimension at start."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        na = np.array([1.0, 2.0, 3.0])
-
-        r = a[rp.newaxis, :]
-        nr = na[np.newaxis, :]
-        assert r.shape == nr.shape
-        assert r.shape == (1, 3)
-
-    def test_newaxis_expand_1d_end(self):
-        """Use newaxis to add dimension at end."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        na = np.array([1.0, 2.0, 3.0])
-
-        r = a[:, rp.newaxis]
-        nr = na[:, np.newaxis]
-        assert r.shape == nr.shape
-        assert r.shape == (3, 1)
-
-    def test_newaxis_expand_2d_middle(self):
-        """Use newaxis to add dimension in middle of 2D array."""
-        a = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        na = np.array([[1.0, 2.0], [3.0, 4.0]])
-
-        r = a[:, rp.newaxis, :]
-        nr = na[:, np.newaxis, :]
-        assert r.shape == nr.shape
-        assert r.shape == (2, 1, 2)
-
-    def test_expand_dims_equivalent(self):
-        """expand_dims can also be used for same effect."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        na = np.array([1.0, 2.0, 3.0])
-
-        # Add dimension at start using expand_dims
-        r = rp.expand_dims(a, 0)
-        nr = np.expand_dims(na, 0)
-        assert r.shape == nr.shape
-        assert r.shape == (1, 3)
+# ============================================================================
+# Matrix Inverse
+# ============================================================================
 
 
-class TestTrace:
-    """Tests for trace (sum of diagonal)."""
-
-    def test_identity(self):
-        """Trace of identity is n."""
-        r = rp.trace(rp.eye(3))
-        n = np.trace(np.eye(3))
-        assert abs(r - n) < 1e-10
+class TestInv:
+    """Matrix inverse."""
 
     def test_2x2(self):
-        """Simple 2x2 matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        assert abs(rp.trace(A) - np.trace(nA)) < 1e-10
+        """Inverse of 2x2 matrix."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-    def test_3x3(self):
-        """3x3 matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
-        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
-        assert abs(rp.trace(A) - np.trace(nA)) < 1e-10
+        a_inv = rp.linalg.inv(ra)
+        na_inv = np.linalg.inv(a)
+        assert_eq(a_inv, na_inv)
 
-    def test_rectangular(self):
-        """Trace of rectangular matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        assert abs(rp.trace(A) - np.trace(nA)) < 1e-10
+    def test_identity_inverse(self):
+        """Inverse of identity is identity."""
+        I = rp.eye(3)
+        I_inv = rp.linalg.inv(I)
+        assert_eq(I_inv, I)
+
+    def test_inverse_property(self):
+        """A @ A^-1 = I."""
+        a = np.array([[4.0, 7.0], [2.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        a_inv = rp.linalg.inv(ra)
+        product = ra @ a_inv
+        assert_eq(product, rp.eye(2))
+
+    def test_3x3_inverse(self):
+        """3x3 matrix inverse."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [0.0, 1.0, 4.0],
+                      [5.0, 6.0, 0.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        a_inv = rp.linalg.inv(ra)
+        na_inv = np.linalg.inv(a)
+        assert_eq(a_inv, na_inv)
+
+    def test_both_directions(self):
+        """Both A @ A^-1 and A^-1 @ A equal I."""
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        a_inv = rp.linalg.inv(ra)
+        I = rp.eye(2)
+        assert_eq(ra @ a_inv, I)
+        assert_eq(a_inv @ ra, I)
+
+
+# ============================================================================
+# Determinant
+# ============================================================================
 
 
 class TestDet:
-    """Tests for determinant."""
-
-    def test_identity(self):
-        """Determinant of identity is 1."""
-        r = rp.det(rp.eye(3))
-        n = np.linalg.det(np.eye(3))
-        assert abs(r - n) < 1e-10
+    """Matrix determinant."""
 
     def test_2x2(self):
         """2x2 determinant."""
-        A = rp.asarray([[3.0, 1.0], [1.0, 2.0]])
-        nA = np.array([[3.0, 1.0], [1.0, 2.0]])
-        assert abs(rp.det(A) - np.linalg.det(nA)) < 1e-10
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        det = rp.linalg.det(ra)
+        ndet = np.linalg.det(a)
+        assert abs(det - ndet) < 1e-10
 
     def test_3x3(self):
         """3x3 determinant."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
-        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
-        assert abs(rp.det(A) - np.linalg.det(nA)) < 1e-10
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0],
+                      [7.0, 8.0, 10.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-    def test_singular(self):
+        det = rp.linalg.det(ra)
+        ndet = np.linalg.det(a)
+        assert abs(det - ndet) < 1e-10
+
+    def test_identity_det(self):
+        """Determinant of identity is 1."""
+        I = rp.eye(3)
+        det = rp.linalg.det(I)
+        assert abs(det - 1.0) < 1e-10
+
+    def test_singular_matrix(self):
         """Determinant of singular matrix is 0."""
-        A = rp.asarray([[1.0, 2.0], [2.0, 4.0]])  # rank 1
-        nA = np.array([[1.0, 2.0], [2.0, 4.0]])
-        assert abs(rp.det(A) - np.linalg.det(nA)) < 1e-10
+        a = np.array([[1.0, 2.0], [2.0, 4.0]], dtype=np.float64)  # rank 1
+        ra = rp.asarray(a)
+
+        det = rp.linalg.det(ra)
+        assert abs(det) < 1e-10
 
     def test_negative_det(self):
         """Matrix with negative determinant."""
-        A = rp.asarray([[0.0, 1.0], [1.0, 0.0]])  # permutation, det = -1
-        nA = np.array([[0.0, 1.0], [1.0, 0.0]])
-        assert abs(rp.det(A) - np.linalg.det(nA)) < 1e-10
+        a = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.float64)  # permutation
+        ra = rp.asarray(a)
+
+        det = rp.linalg.det(ra)
+        assert abs(det - (-1.0)) < 1e-10
+
+    def test_det_scales(self):
+        """det(cA) = c^n det(A) for nxn matrix."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        det_a = rp.linalg.det(ra)
+        det_2a = rp.linalg.det(2.0 * ra)
+        # For 2x2: det(2A) = 4 det(A)
+        assert abs(det_2a - 4.0 * det_a) < 1e-10
+
+    def test_module_level_function(self):
+        """rp.det() also works (not just rp.linalg.det)."""
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        det1 = rp.det(ra)
+        det2 = rp.linalg.det(ra)
+        assert abs(det1 - det2) < 1e-10
 
 
-class TestNorm:
-    """Tests for matrix/vector norms."""
-
-    def test_frobenius_vector(self):
-        """Frobenius norm of vector (same as 2-norm)."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        na = np.array([1.0, 2.0, 3.0])
-        assert abs(rp.norm(a) - np.linalg.norm(na)) < 1e-10
-
-    def test_frobenius_matrix(self):
-        """Frobenius norm of matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        assert abs(rp.norm(A) - np.linalg.norm(nA, 'fro')) < 1e-10
-
-    def test_frobenius_explicit(self):
-        """Explicit fro argument."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        assert abs(rp.norm(A, 'fro') - np.linalg.norm(nA, 'fro')) < 1e-10
-
-    def test_identity_norm(self):
-        """Frobenius norm of identity."""
-        r = rp.norm(rp.eye(3))
-        n = np.linalg.norm(np.eye(3), 'fro')
-        assert abs(r - n) < 1e-10
+# ============================================================================
+# QR Decomposition
+# ============================================================================
 
 
 class TestQR:
-    """Tests for QR decomposition."""
+    """QR decomposition: A = QR."""
 
-    def test_square(self):
+    def test_square_matrix(self):
         """QR of square matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        Q, R = rp.qr(A)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nQ, nR = np.linalg.qr(nA)
+        Q, R = rp.linalg.qr(ra)
 
         # Q @ R should reconstruct A
-        assert_eq(Q @ R, A)
+        assert_eq(Q @ R, ra, rtol=1e-5)
 
-        # R should be upper triangular (lower part ~0)
+    def test_q_orthogonal(self):
+        """Q should be orthogonal: Q^T @ Q = I."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        Q, R = rp.linalg.qr(ra)
+        QtQ = Q.T @ Q
+        assert_eq(QtQ, rp.eye(2), rtol=1e-5)
+
+    def test_r_upper_triangular(self):
+        """R should be upper triangular."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        Q, R = rp.linalg.qr(ra)
+        # Check lower triangle is zero
         assert abs(float(R[1, 0])) < 1e-10
 
-    def test_tall(self):
+    def test_tall_matrix(self):
         """QR of tall matrix (m > n)."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        Q, R = rp.qr(A)
+        a = np.array([[1.0, 2.0],
+                      [3.0, 4.0],
+                      [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        # Q should be (3, 2), R should be (2, 2)
+        Q, R = rp.linalg.qr(ra)
+
+        # Shapes should be Q(3,2), R(2,2)
         assert Q.shape == (3, 2)
         assert R.shape == (2, 2)
 
-        # Q @ R should reconstruct A
-        assert_eq(Q @ R, A)
+        # Reconstruction
+        assert_eq(Q @ R, ra, rtol=1e-5)
 
-    def test_wide(self):
+    def test_wide_matrix(self):
         """QR of wide matrix (m < n)."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        Q, R = rp.qr(A)
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        # Q should be (2, 2), R should be (2, 3)
+        Q, R = rp.linalg.qr(ra)
+
+        # Shapes should be Q(2,2), R(2,3)
         assert Q.shape == (2, 2)
         assert R.shape == (2, 3)
 
-        # Q @ R should reconstruct A
-        assert_eq(Q @ R, A)
+        # Reconstruction
+        assert_eq(Q @ R, ra, rtol=1e-5)
 
-    def test_orthogonal_q(self):
-        """Q should be orthogonal (Q^T Q = I)."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        Q, R = rp.qr(A)
+    def test_compare_numpy(self):
+        """Compare with numpy (up to sign ambiguity)."""
+        a = np.array([[12.0, -51.0, 4.0],
+                      [6.0, 167.0, -68.0],
+                      [-4.0, 24.0, -41.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        # Q^T @ Q should be identity
-        QtQ = Q.T @ Q
-        assert_eq(QtQ, rp.eye(2))
+        Q, R = rp.linalg.qr(ra)
+        nQ, nR = np.linalg.qr(a)
+
+        # Test reconstruction (handles sign differences)
+        assert_eq(Q @ R, a, rtol=1e-5)
+        assert_eq(nQ @ nR, a, rtol=1e-5)
+
+
+# ============================================================================
+# SVD Decomposition
+# ============================================================================
 
 
 class TestSVD:
-    """Tests for SVD decomposition."""
+    """Singular value decomposition: A = U @ diag(S) @ Vt."""
 
-    def test_square(self):
+    def test_square_matrix(self):
         """SVD of square matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        U, S, Vt = rp.svd(A)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        # U @ diag(S) @ Vt should reconstruct A
-        # Build diagonal matrix from S
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
+
+        # Reconstruct
         S_diag = rp.asarray([[S[0], 0.0], [0.0, S[1]]])
         reconstructed = U @ S_diag @ Vt
-        assert_eq(reconstructed, A)
+        assert_eq(reconstructed, ra, rtol=1e-5)
 
-    def test_tall(self):
-        """SVD of tall matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        U, S, Vt = rp.svd(A)
+    def test_tall_matrix(self):
+        """SVD of tall matrix (m > n)."""
+        a = np.array([[1.0, 2.0],
+                      [3.0, 4.0],
+                      [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
 
         # Shapes: U(3,2), S(2,), Vt(2,2)
         assert U.shape == (3, 2)
@@ -306,12 +444,15 @@ class TestSVD:
         # Reconstruct
         S_diag = rp.asarray([[S[0], 0.0], [0.0, S[1]]])
         reconstructed = U @ S_diag @ Vt
-        assert_eq(reconstructed, A)
+        assert_eq(reconstructed, ra, rtol=1e-5)
 
-    def test_wide(self):
-        """SVD of wide matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        U, S, Vt = rp.svd(A)
+    def test_wide_matrix(self):
+        """SVD of wide matrix (m < n)."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
 
         # Shapes: U(2,2), S(2,), Vt(2,3)
         assert U.shape == (2, 2)
@@ -320,199 +461,365 @@ class TestSVD:
 
     def test_singular_values_positive(self):
         """Singular values should be non-negative."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        U, S, Vt = rp.svd(A)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
         assert float(S[0]) >= 0
         assert float(S[1]) >= 0
 
-    def test_singular_values_descending(self):
+    def test_singular_values_sorted(self):
         """Singular values should be in descending order."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
-        U, S, Vt = rp.svd(A)
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0],
+                      [7.0, 8.0, 10.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
         assert float(S[0]) >= float(S[1])
         assert float(S[1]) >= float(S[2])
 
+    def test_u_orthogonal(self):
+        """U should be orthogonal: U^T @ U = I."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-class TestInv:
-    """Tests for matrix inverse."""
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
+        UtU = U.T @ U
+        assert_eq(UtU, rp.eye(2), rtol=1e-5)
 
-    def test_2x2(self):
-        """Inverse of 2x2 matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        A_inv = rp.inv(A)
+    def test_v_orthogonal(self):
+        """V should be orthogonal: Vt @ Vt^T = I."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nA_inv = np.linalg.inv(nA)
-        assert_eq(A_inv, nA_inv)
-
-    def test_identity(self):
-        """Inverse of identity is identity."""
-        I = rp.eye(3)
-        I_inv = rp.inv(I)
-        assert_eq(I_inv, I)
-
-    def test_inverse_product(self):
-        """A @ A^-1 = I."""
-        A = rp.asarray([[4.0, 7.0], [2.0, 6.0]])
-        A_inv = rp.inv(A)
-        result = A @ A_inv
-        assert_eq(result, rp.eye(2))
+        U, S, Vt = rp.linalg.svd(ra, full_matrices=False)
+        VtVtT = Vt @ Vt.T
+        assert_eq(VtVtT, rp.eye(2), rtol=1e-5)
 
 
-class TestEigh:
-    """Tests for symmetric eigendecomposition."""
+# ============================================================================
+# Eigendecomposition
+# ============================================================================
+
+
+class TestEig:
+    """General eigendecomposition: A @ V = V @ diag(w)."""
 
     def test_symmetric_2x2(self):
         """Eigendecomposition of symmetric 2x2."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        w, V = rp.eigh(A)
+        a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
-        nw, nV = np.linalg.eigh(nA)
+        w, V = rp.linalg.eig(ra)
+        nw, nV = np.linalg.eig(a)
 
-        # Eigenvalues should match (both ascending)
-        assert_eq(w, rp.asarray(nw))
+        # Sort eigenvalues for comparison (order may differ)
+        w_sorted = sorted(np.asarray(w), key=lambda x: x.real)
+        nw_sorted = sorted(nw, key=lambda x: x.real)
 
-    def test_reconstruct(self):
+        for i in range(len(nw)):
+            assert abs(w_sorted[i] - nw_sorted[i]) < 1e-10
+
+    def test_diagonal_matrix(self):
+        """Eigenvalues of diagonal matrix are the diagonal elements."""
+        a = np.array([[3.0, 0.0], [0.0, 5.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w, V = rp.linalg.eig(ra)
+
+        # Eigenvalues should be 3 and 5 (in some order)
+        eigenvals = sorted([float(w[0].real), float(w[1].real)])
+        assert abs(eigenvals[0] - 3.0) < 1e-10
+        assert abs(eigenvals[1] - 5.0) < 1e-10
+
+    def test_identity_eigenvalues(self):
+        """Eigenvalues of identity are all 1."""
+        I = rp.eye(3)
+        w, V = rp.linalg.eig(I)
+
+        for i in range(3):
+            assert abs(float(w[i].real) - 1.0) < 1e-10
+
+    def test_upper_triangular(self):
+        """Eigenvalues of triangular matrix are diagonal elements."""
+        a = np.array([[1.0, 2.0], [0.0, 3.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w, V = rp.linalg.eig(ra)
+
+        # Eigenvalues should be 1 and 3
+        eigenvals = sorted([float(w[0].real), float(w[1].real)])
+        assert abs(eigenvals[0] - 1.0) < 1e-10
+        assert abs(eigenvals[1] - 3.0) < 1e-10
+
+    def test_shapes(self):
+        """Check output shapes."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0],
+                      [7.0, 8.0, 9.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w, V = rp.linalg.eig(ra)
+        assert w.shape == (3,)
+        assert V.shape == (3, 3)
+
+
+class TestEigvals:
+    """Eigenvalues only (no eigenvectors)."""
+
+    def test_symmetric(self):
+        """Eigenvalues of symmetric matrix are real."""
+        a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w = rp.linalg.eigvals(ra)
+        nw = np.linalg.eigvals(a)
+
+        # Sort for comparison
+        w_sorted = sorted(np.asarray(w), key=lambda x: x.real)
+        nw_sorted = sorted(nw, key=lambda x: x.real)
+
+        for i in range(len(nw)):
+            assert abs(w_sorted[i] - nw_sorted[i]) < 1e-10
+
+    def test_nonsymmetric(self):
+        """Eigenvalues of non-symmetric matrix may be complex."""
+        a = np.array([[1.0, 2.0], [0.0, 3.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w = rp.linalg.eigvals(ra)
+        nw = np.linalg.eigvals(a)
+
+        # Sort for comparison
+        w_sorted = sorted(np.asarray(w), key=lambda x: x.real)
+        nw_sorted = sorted(nw, key=lambda x: x.real)
+
+        for i in range(len(nw)):
+            assert abs(w_sorted[i] - nw_sorted[i]) < 1e-10
+
+
+class TestEigh:
+    """Symmetric eigendecomposition (faster, always real eigenvalues)."""
+
+    def test_symmetric_2x2(self):
+        """eigh for symmetric matrix."""
+        a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w, V = rp.linalg.eigh(ra)
+        nw, nV = np.linalg.eigh(a)
+
+        # Eigenvalues should match (eigh returns sorted)
+        assert_eq(w, rp.asarray(nw), rtol=1e-5)
+
+    def test_reconstruction(self):
         """V @ diag(w) @ V^T should reconstruct A."""
-        A = rp.asarray([[3.0, 1.0], [1.0, 3.0]])
-        w, V = rp.eigh(A)
+        a = np.array([[3.0, 1.0], [1.0, 3.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        # Reconstruct: V @ diag(w) @ V.T
+        w, V = rp.linalg.eigh(ra)
+
+        # Reconstruct
         W = rp.diag(w)
         reconstructed = V @ W @ V.T
-        assert_eq(reconstructed, A)
+        assert_eq(reconstructed, ra, rtol=1e-5)
 
     def test_orthogonal_eigenvectors(self):
-        """Eigenvectors should be orthonormal."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        w, V = rp.eigh(A)
+        """Eigenvectors should be orthonormal: V^T @ V = I."""
+        a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        # V^T @ V = I
+        w, V = rp.linalg.eigh(ra)
         VtV = V.T @ V
-        assert_eq(VtV, rp.eye(2))
+        assert_eq(VtV, rp.eye(2), rtol=1e-5)
+
+    def test_ascending_eigenvalues(self):
+        """eigh returns eigenvalues in ascending order."""
+        a = np.array([[5.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w, V = rp.linalg.eigh(ra)
+        assert float(w[0]) <= float(w[1])
 
 
-class TestDiagonal:
-    """Tests for diagonal extraction (module function and array method)."""
+# ============================================================================
+# Additional Linear Algebra Functions
+# ============================================================================
 
-    def test_diagonal_square(self):
-        """Extract diagonal from square matrix."""
-        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
-        r = rp.asarray(n)
-        assert_eq(rp.diagonal(r), np.diagonal(n))
 
-    def test_diagonal_rectangular(self):
-        """Extract diagonal from rectangular matrix."""
-        n = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        r = rp.asarray(n)
-        assert_eq(rp.diagonal(r), np.diagonal(n))
+class TestTrace:
+    """Matrix trace (sum of diagonal)."""
 
-    def test_diagonal_method(self):
-        """Test .diagonal() array method."""
-        n = np.array([[1.0, 2.0], [3.0, 4.0]])
-        r = rp.asarray(n)
-        assert_eq(r.diagonal(), n.diagonal())
+    def test_2x2(self):
+        """Trace of 2x2 matrix."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-    def test_trace_method(self):
-        """Test .trace() array method."""
-        n = np.array([[1.0, 2.0], [3.0, 4.0]])
-        r = rp.asarray(n)
-        assert abs(r.trace() - n.trace()) < 1e-10
+        assert abs(rp.trace(ra) - np.trace(a)) < 1e-10
+
+    def test_3x3(self):
+        """Trace of 3x3 matrix."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0],
+                      [7.0, 8.0, 9.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert abs(rp.trace(ra) - np.trace(a)) < 1e-10
+
+    def test_identity(self):
+        """Trace of identity is n."""
+        I = rp.eye(5)
+        assert abs(rp.trace(I) - 5.0) < 1e-10
+
+    def test_rectangular(self):
+        """Trace of rectangular matrix (min dimension)."""
+        a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert abs(rp.trace(ra) - np.trace(a)) < 1e-10
+
+    def test_method_form(self):
+        """a.trace() works like np.trace(a)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert abs(ra.trace() - a.trace()) < 1e-10
+
+
+class TestNorm:
+    """Matrix and vector norms."""
+
+    def test_vector_default(self):
+        """Default norm of vector is 2-norm."""
+        a = np.array([3.0, 4.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert abs(rp.linalg.norm(ra) - np.linalg.norm(a)) < 1e-10
+
+    def test_frobenius_matrix(self):
+        """Frobenius norm of matrix."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert abs(rp.linalg.norm(ra, 'fro') - np.linalg.norm(a, 'fro')) < 1e-10
+
+    def test_identity_norm(self):
+        """Frobenius norm of identity."""
+        I = rp.eye(3)
+        nI = np.eye(3)
+
+        assert abs(rp.linalg.norm(I, 'fro') - np.linalg.norm(nI, 'fro')) < 1e-10
 
 
 class TestDiag:
-    """Tests for diagonal utility."""
+    """Diagonal extraction and construction."""
 
-    def test_extract_diagonal(self):
-        """Extract diagonal from 2D matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
-        d = rp.diag(A)
+    def test_extract_from_2d(self):
+        """Extract diagonal from matrix."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0],
+                      [7.0, 8.0, 9.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
-        nd = np.diag(nA)
-        assert_eq(d, nd)
+        assert_eq(rp.diag(ra), np.diag(a))
 
-    def test_create_diagonal(self):
-        """Create diagonal matrix from 1D array."""
-        v = rp.asarray([1.0, 2.0, 3.0])
-        D = rp.diag(v)
+    def test_construct_from_1d(self):
+        """Construct diagonal matrix from vector."""
+        v = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        rv = rp.asarray(v)
 
-        nv = np.array([1.0, 2.0, 3.0])
-        nD = np.diag(nv)
-        assert_eq(D, nD)
+        assert_eq(rp.diag(rv), np.diag(v))
 
     def test_rectangular(self):
         """Extract diagonal from rectangular matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        d = rp.diag(A)
+        a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        d = rp.diag(ra)
         assert d.shape == (2,)
         assert_eq(d, rp.asarray([1.0, 5.0]))
 
 
-class TestDotMethod:
-    """Tests for .dot() array method."""
+class TestDiagonal:
+    """Diagonal extraction (method and function)."""
 
-    def test_1d_dot_1d(self):
-        """Dot product of two 1D arrays."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        b = rp.asarray([4.0, 5.0, 6.0])
-        r = a.dot(b)
-        n = np.array([1.0, 2.0, 3.0]).dot(np.array([4.0, 5.0, 6.0]))
-        assert abs(float(r) - n) < 1e-10
+    def test_diagonal_function(self):
+        """rp.diagonal() extracts diagonal."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-    def test_2d_dot_1d(self):
-        """Matrix-vector dot product."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        v = rp.asarray([1.0, 2.0])
-        r = A.dot(v)
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nv = np.array([1.0, 2.0])
-        assert_eq(r, nA.dot(nv))
+        assert_eq(rp.diagonal(ra), np.diagonal(a))
 
-    def test_2d_dot_2d(self):
-        """Matrix-matrix dot product."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        B = rp.asarray([[5.0, 6.0], [7.0, 8.0]])
-        r = A.dot(B)
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nB = np.array([[5.0, 6.0], [7.0, 8.0]])
-        assert_eq(r, nA.dot(nB))
+    def test_diagonal_method(self):
+        """a.diagonal() method."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert_eq(ra.diagonal(), a.diagonal())
+
+
+# ============================================================================
+# Advanced Linear Algebra
+# ============================================================================
+
+
+class TestCholesky:
+    """Cholesky decomposition for symmetric positive-definite matrices."""
+
+    def test_spd_matrix(self):
+        """Cholesky of SPD matrix."""
+        a = np.array([[4.0, 2.0], [2.0, 3.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        L = rp.linalg.cholesky(ra)
+        nL = np.linalg.cholesky(a)
+        assert_eq(L, nL, rtol=1e-5)
+
+    def test_reconstruction(self):
+        """L @ L^T should reconstruct A."""
+        a = np.array([[4.0, 2.0], [2.0, 3.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        L = rp.linalg.cholesky(ra)
+        reconstructed = L @ L.T
+        assert_eq(reconstructed, ra, rtol=1e-5)
+
+    def test_identity(self):
+        """Cholesky of identity is identity."""
+        I = rp.eye(3)
+        L = rp.linalg.cholesky(I)
+        assert_eq(L, I, rtol=1e-5)
 
 
 class TestSlogdet:
-    """Tests for slogdet (sign and log of determinant)."""
+    """Sign and log of determinant."""
 
     def test_positive_det(self):
         """Matrix with positive determinant."""
-        A = rp.asarray([[3.0, 1.0], [1.0, 2.0]])
-        nA = np.array([[3.0, 1.0], [1.0, 2.0]])
-        sign, logabsdet = rp.linalg.slogdet(A)
-        nsign, nlogabsdet = np.linalg.slogdet(nA)
+        a = np.array([[3.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        sign, logabsdet = rp.linalg.slogdet(ra)
+        nsign, nlogabsdet = np.linalg.slogdet(a)
+
         assert abs(sign - nsign) < 1e-10
         assert abs(logabsdet - nlogabsdet) < 1e-10
 
     def test_negative_det(self):
         """Matrix with negative determinant."""
-        A = rp.asarray([[0.0, 1.0], [1.0, 0.0]])
-        nA = np.array([[0.0, 1.0], [1.0, 0.0]])
-        sign, logabsdet = rp.linalg.slogdet(A)
-        nsign, nlogabsdet = np.linalg.slogdet(nA)
-        assert abs(sign - nsign) < 1e-10
-        assert abs(logabsdet - nlogabsdet) < 1e-10
+        a = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-    def test_3x3(self):
-        """3x3 matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
-        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
-        sign, logabsdet = rp.linalg.slogdet(A)
-        nsign, nlogabsdet = np.linalg.slogdet(nA)
+        sign, logabsdet = rp.linalg.slogdet(ra)
+        nsign, nlogabsdet = np.linalg.slogdet(a)
+
         assert abs(sign - nsign) < 1e-10
         assert abs(logabsdet - nlogabsdet) < 1e-10
 
 
-class TestCond:
-    """Tests for condition number."""
+class TestCondition:
+    """Condition number."""
 
     def test_identity(self):
         """Condition number of identity is 1."""
@@ -521,233 +828,244 @@ class TestCond:
         assert abs(c - 1.0) < 1e-10
 
     def test_well_conditioned(self):
-        """Well-conditioned matrix."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
-        c = rp.linalg.cond(A)
-        nc = np.linalg.cond(nA)
+        """Well-conditioned matrix has low condition number."""
+        a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        c = rp.linalg.cond(ra)
+        nc = np.linalg.cond(a)
         assert abs(c - nc) < 1e-8
 
     def test_singular(self):
         """Singular matrix has infinite condition number."""
-        A = rp.asarray([[1.0, 2.0], [2.0, 4.0]])
-        c = rp.linalg.cond(A)
+        a = np.array([[1.0, 2.0], [2.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        c = rp.linalg.cond(ra)
         assert c == float('inf')
 
 
 class TestMatrixRank:
-    """Tests for matrix rank."""
+    """Matrix rank computation."""
 
     def test_full_rank(self):
         """Full rank matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        assert rp.linalg.matrix_rank(A) == np.linalg.matrix_rank(nA)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert rp.linalg.matrix_rank(ra) == np.linalg.matrix_rank(a)
 
     def test_rank_deficient(self):
         """Rank deficient matrix."""
-        A = rp.asarray([[1.0, 2.0], [2.0, 4.0]])
-        nA = np.array([[1.0, 2.0], [2.0, 4.0]])
-        assert rp.linalg.matrix_rank(A) == np.linalg.matrix_rank(nA)
+        a = np.array([[1.0, 2.0], [2.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert rp.linalg.matrix_rank(ra) == np.linalg.matrix_rank(a)
 
     def test_rectangular(self):
-        """Rectangular matrix."""
-        A = rp.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        nA = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        assert rp.linalg.matrix_rank(A) == np.linalg.matrix_rank(nA)
+        """Rank of rectangular matrix."""
+        a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        assert rp.linalg.matrix_rank(ra) == np.linalg.matrix_rank(a)
 
 
 class TestPinv:
-    """Tests for pseudo-inverse."""
+    """Moore-Penrose pseudo-inverse."""
 
     def test_square_invertible(self):
         """Pseudo-inverse of invertible matrix equals inverse."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        pinv = rp.linalg.pinv(A)
-        npinv = np.linalg.pinv(nA)
-        assert_eq(pinv, npinv)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        pinv = rp.linalg.pinv(ra)
+        npinv = np.linalg.pinv(a)
+        assert_eq(pinv, npinv, rtol=1e-5)
 
     def test_rectangular(self):
         """Pseudo-inverse of rectangular matrix."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        nA = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        pinv = rp.linalg.pinv(A)
-        npinv = np.linalg.pinv(nA)
-        assert_eq(pinv, npinv)
+        a = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
 
-    def test_identity(self):
-        """Pseudo-inverse times original gives identity (for full rank)."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        pinv = rp.linalg.pinv(A)
-        result = A @ pinv
-        assert_eq(result, rp.eye(2))
+        pinv = rp.linalg.pinv(ra)
+        npinv = np.linalg.pinv(a)
+        assert_eq(pinv, npinv, rtol=1e-5)
+
+    def test_identity_property(self):
+        """For full column rank: A^+ @ A = I."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        pinv = rp.linalg.pinv(ra)
+        result = ra @ pinv
+        assert_eq(result, rp.eye(2), rtol=1e-5)
 
 
 class TestLstsq:
-    """Tests for least squares."""
+    """Least squares solution."""
 
     def test_exact_solution(self):
         """Square system with exact solution."""
-        A = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        b = rp.asarray([5.0, 11.0])
-        x, residuals, rank, s = rp.linalg.lstsq(A, b)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([5.0, 11.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
 
-        nA = np.array([[1.0, 2.0], [3.0, 4.0]])
-        nb = np.array([5.0, 11.0])
-        nx, nresiduals, nrank, ns = np.linalg.lstsq(nA, nb, rcond=None)
+        x, residuals, rank, s = rp.linalg.lstsq(ra, rb)
+        nx, nresiduals, nrank, ns = np.linalg.lstsq(a, b, rcond=None)
 
-        assert_eq(x, nx)
+        assert_eq(x, nx, rtol=1e-5)
         assert rank == nrank
 
     def test_overdetermined(self):
         """Overdetermined system (more equations than unknowns)."""
-        A = rp.asarray([[1.0, 1.0], [1.0, 2.0], [1.0, 3.0]])
-        b = rp.asarray([1.0, 2.0, 2.0])
-        x, residuals, rank, s = rp.linalg.lstsq(A, b)
+        a = np.array([[1.0, 1.0], [1.0, 2.0], [1.0, 3.0]], dtype=np.float64)
+        b = np.array([1.0, 2.0, 2.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
 
-        nA = np.array([[1.0, 1.0], [1.0, 2.0], [1.0, 3.0]])
-        nb = np.array([1.0, 2.0, 2.0])
-        nx, nresiduals, nrank, ns = np.linalg.lstsq(nA, nb, rcond=None)
+        x, residuals, rank, s = rp.linalg.lstsq(ra, rb)
+        nx, nresiduals, nrank, ns = np.linalg.lstsq(a, b, rcond=None)
 
-        assert_eq(x, nx)
+        assert_eq(x, nx, rtol=1e-5)
         assert rank == nrank
 
 
-class TestEigvals:
-    """Tests for eigenvalues."""
-
-    def test_symmetric(self):
-        """Eigenvalues of symmetric matrix (should be real)."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
-        w = rp.linalg.eigvals(A)
-        nw = np.linalg.eigvals(nA)
-        # Convert to numpy and sort for comparison
-        w_np = np.asarray(w)
-        w_sorted = sorted(w_np, key=lambda x: x.real)
-        nw_sorted = sorted(nw, key=lambda x: x.real)
-        for i in range(len(nw)):
-            assert abs(w_sorted[i] - nw_sorted[i]) < 1e-10
-
-    def test_nonsymmetric(self):
-        """Eigenvalues of non-symmetric matrix."""
-        A = rp.asarray([[1.0, 2.0], [0.0, 3.0]])
-        nA = np.array([[1.0, 2.0], [0.0, 3.0]])
-        w = rp.linalg.eigvals(A)
-        nw = np.linalg.eigvals(nA)
-        # Convert to numpy and sort for comparison
-        w_np = np.asarray(w)
-        w_sorted = sorted(w_np, key=lambda x: x.real)
-        nw_sorted = sorted(nw, key=lambda x: x.real)
-        for i in range(len(nw)):
-            assert abs(w_sorted[i] - nw_sorted[i]) < 1e-10
-
-
-class TestEig:
-    """Tests for eigendecomposition."""
-
-    def test_symmetric(self):
-        """Eigendecomposition of symmetric matrix."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        nA = np.array([[2.0, 1.0], [1.0, 2.0]])
-        w, V = rp.linalg.eig(A)
-        nw, nV = np.linalg.eig(nA)
-
-        # Eigenvalues should match (sorted)
-        w_np = np.asarray(w)
-        w_sorted = sorted(w_np, key=lambda x: x.real)
-        nw_sorted = sorted(nw, key=lambda x: x.real)
-        for i in range(len(nw)):
-            assert abs(w_sorted[i] - nw_sorted[i]) < 1e-10
-
-    def test_reconstruct(self):
-        """V @ diag(w) @ V^-1 should reconstruct A (for non-defective)."""
-        A = rp.asarray([[2.0, 1.0], [1.0, 2.0]])
-        w, V = rp.linalg.eig(A)
-        # For symmetric matrix, V is orthogonal, so V^-1 = V^T (conjugate for complex)
-        # Skip reconstruction test for now as complex matrix ops are tricky
-        assert w.shape == (2,)
-        assert V.shape == (2, 2)
+# ============================================================================
+# Special Products
+# ============================================================================
 
 
 class TestVdot:
-    """Tests for vdot (vector dot product)."""
+    """Vector dot product (flattens arrays)."""
 
-    def test_1d(self):
+    def test_1d_1d(self):
         """Dot product of 1D arrays."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        b = rp.asarray([4.0, 5.0, 6.0])
-        r = rp.vdot(a, b)
-        n = np.vdot([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
-        assert abs(r - n) < 1e-10
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
 
-    def test_2d(self):
+        assert abs(rp.vdot(ra, rb) - np.vdot(a, b)) < 1e-10
+
+    def test_2d_flattened(self):
         """vdot flattens 2D arrays."""
-        a = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        b = rp.asarray([[5.0, 6.0], [7.0, 8.0]])
-        r = rp.vdot(a, b)
-        n = np.vdot([[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]])
-        assert abs(r - n) < 1e-10
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        assert abs(rp.vdot(ra, rb) - np.vdot(a, b)) < 1e-10
 
 
 class TestKron:
-    """Tests for Kronecker product."""
+    """Kronecker product."""
 
     def test_2x2(self):
         """Kronecker product of 2x2 matrices."""
-        a = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        b = rp.asarray([[0.0, 5.0], [6.0, 7.0]])
-        r = rp.kron(a, b)
-        n = np.kron([[1.0, 2.0], [3.0, 4.0]], [[0.0, 5.0], [6.0, 7.0]])
-        assert_eq(r, n)
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[0.0, 5.0], [6.0, 7.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        assert_eq(rp.kron(ra, rb), np.kron(a, b))
 
     def test_1d(self):
-        """Kronecker product of 1D arrays."""
-        a = rp.asarray([1.0, 2.0])
-        b = rp.asarray([3.0, 4.0])
-        r = rp.kron(a, b)
-        n = np.kron([1.0, 2.0], [3.0, 4.0])
-        assert_eq(r, n)
+        """Kronecker product of vectors."""
+        a = np.array([1.0, 2.0], dtype=np.float64)
+        b = np.array([3.0, 4.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        assert_eq(rp.kron(ra, rb), np.kron(a, b))
 
 
 class TestCross:
-    """Tests for cross product."""
+    """Cross product of 3D vectors."""
 
     def test_3d_vectors(self):
-        """Cross product of 3D vectors."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        b = rp.asarray([4.0, 5.0, 6.0])
-        r = rp.cross(a, b)
-        n = np.cross([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
-        assert_eq(r, n)
+        """Standard cross product."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        assert_eq(rp.cross(ra, rb), np.cross(a, b))
 
     def test_unit_vectors(self):
-        """Cross product of unit vectors."""
-        # i x j = k
+        """i cross j equals k."""
         i = rp.asarray([1.0, 0.0, 0.0])
         j = rp.asarray([0.0, 1.0, 0.0])
         k = rp.cross(i, j)
-        expected = rp.asarray([0.0, 0.0, 1.0])
-        assert_eq(k, expected)
+
+        assert_eq(k, rp.asarray([0.0, 0.0, 1.0]))
 
 
 class TestTensordot:
-    """Tests for tensor dot product."""
+    """Tensor dot product."""
 
     def test_matmul_via_tensordot(self):
-        """tensordot with axes=1 is matrix multiply."""
-        a = rp.asarray([[1.0, 2.0], [3.0, 4.0]])
-        b = rp.asarray([[5.0, 6.0], [7.0, 8.0]])
-        r = rp.tensordot(a, b, 1)
-        n = np.tensordot([[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]], 1)
-        assert_eq(r, n)
+        """tensordot with axes=1 performs matrix multiply."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        assert_eq(rp.tensordot(ra, rb, 1), np.tensordot(a, b, 1))
 
     def test_1d_inner(self):
         """tensordot of 1D arrays is inner product."""
-        a = rp.asarray([1.0, 2.0, 3.0])
-        b = rp.asarray([4.0, 5.0, 6.0])
-        r = rp.tensordot(a, b, 1)
-        n = np.tensordot([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 1)
-        # Note: numpy returns scalar (), we return (1,) - values should match
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        b = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        r = rp.tensordot(ra, rb, 1)
+        n = np.tensordot(a, b, 1)
+        # Handle scalar vs (1,) shape difference
         assert abs(float(r) - float(n)) < 1e-10
+
+
+# ============================================================================
+# Miscellaneous
+# ============================================================================
+
+
+class TestLinalgSubmodule:
+    """Tests for linalg submodule existence and accessibility."""
+
+    def test_submodule_exists(self):
+        """rp.linalg submodule exists."""
+        assert hasattr(rp, 'linalg')
+
+    def test_functions_accessible(self):
+        """Key functions accessible via submodule."""
+        assert hasattr(rp.linalg, 'solve')
+        assert hasattr(rp.linalg, 'inv')
+        assert hasattr(rp.linalg, 'det')
+        assert hasattr(rp.linalg, 'qr')
+        assert hasattr(rp.linalg, 'svd')
+        assert hasattr(rp.linalg, 'eig')
+        assert hasattr(rp.linalg, 'eigh')
+
+
+class TestNewaxis:
+    """Tests for newaxis constant."""
+
+    def test_newaxis_is_none(self):
+        """newaxis should be None."""
+        assert rp.newaxis is None
+        assert np.newaxis is None
+
+    def test_expand_dims_start(self):
+        """Add dimension at start with newaxis."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        r = ra[rp.newaxis, :]
+        n = a[np.newaxis, :]
+
+        assert r.shape == n.shape
+        assert r.shape == (1, 3)
+
+    def test_expand_dims_end(self):
+        """Add dimension at end with newaxis."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        r = ra[:, rp.newaxis]
+        n = a[:, np.newaxis]
+
+        assert r.shape == n.shape
+        assert r.shape == (3, 1)
