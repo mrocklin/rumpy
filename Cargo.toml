@@ -19,5 +19,6 @@ rand_pcg = "0.9"
 rand_core = "0.9"
 half = "2.4"
 rustfft = "6.2"
+num-complex = "0.4"
 blas-src = { version = "0.10", optional = true }
 blas = { version = "0.22" }

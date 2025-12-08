@@ -900,6 +900,7 @@ dependencies = [
  "blas-src",
  "faer",
  "half",
+ "num-complex",
  "pyo3",
  "rand_core 0.9.3",
  "rand_pcg",

@@ -165,4 +165,23 @@ impl RumpyArray {
         }
         arr
     }
+
+    /// Create array filled with given complex value.
+    pub fn full_complex(shape: Vec<usize>, real: f64, imag: f64, dtype: DType) -> Self {
+        let mut arr = Self::zeros(shape, dtype);
+        let size = arr.size();
+
+        if size == 0 {
+            return arr;
+        }
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+        let ops = arr.dtype.ops();
+
+        for i in 0..size {
+            unsafe { ops.write_complex(ptr, i, real, imag); }
+        }
+        arr
+    }
 }

@@ -5,12 +5,15 @@
 pub mod array_methods;
 pub mod bitwise;
 pub mod comparison;
+pub mod dispatch;
 pub mod dot;
 pub mod fft;
 pub mod gufunc;
 pub mod indexing;
 pub mod inner;
+pub mod kernels;
 pub mod linalg;
+pub mod loops;
 pub mod matmul;
 pub mod numerical;
 pub mod outer;

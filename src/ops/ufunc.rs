@@ -94,6 +94,49 @@ pub fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOp
         }
     }
 
+    // Try new kernel/loop dispatch for all ops
+    {
+        use crate::ops::dispatch;
+        let dispatched = match op {
+            UnaryOp::Neg => dispatch::dispatch_unary_neg(arr),
+            UnaryOp::Abs => dispatch::dispatch_unary_abs(arr),
+            UnaryOp::Square => dispatch::dispatch_unary_square(arr),
+            UnaryOp::Sqrt => dispatch::dispatch_unary_sqrt(arr),
+            UnaryOp::Exp => dispatch::dispatch_unary_exp(arr),
+            UnaryOp::Log => dispatch::dispatch_unary_log(arr),
+            UnaryOp::Log10 => dispatch::dispatch_unary_log10(arr),
+            UnaryOp::Log2 => dispatch::dispatch_unary_log2(arr),
+            UnaryOp::Sin => dispatch::dispatch_unary_sin(arr),
+            UnaryOp::Cos => dispatch::dispatch_unary_cos(arr),
+            UnaryOp::Tan => dispatch::dispatch_unary_tan(arr),
+            UnaryOp::Floor => dispatch::dispatch_unary_floor(arr),
+            UnaryOp::Ceil => dispatch::dispatch_unary_ceil(arr),
+            UnaryOp::Sinh => dispatch::dispatch_unary_sinh(arr),
+            UnaryOp::Cosh => dispatch::dispatch_unary_cosh(arr),
+            UnaryOp::Tanh => dispatch::dispatch_unary_tanh(arr),
+            UnaryOp::Arcsin => dispatch::dispatch_unary_arcsin(arr),
+            UnaryOp::Arccos => dispatch::dispatch_unary_arccos(arr),
+            UnaryOp::Arctan => dispatch::dispatch_unary_arctan(arr),
+            UnaryOp::Sign => dispatch::dispatch_unary_sign(arr),
+            UnaryOp::Positive => dispatch::dispatch_unary_positive(arr),
+            UnaryOp::Reciprocal => dispatch::dispatch_unary_reciprocal(arr),
+            UnaryOp::Exp2 => dispatch::dispatch_unary_exp2(arr),
+            UnaryOp::Expm1 => dispatch::dispatch_unary_expm1(arr),
+            UnaryOp::Log1p => dispatch::dispatch_unary_log1p(arr),
+            UnaryOp::Cbrt => dispatch::dispatch_unary_cbrt(arr),
+            UnaryOp::Trunc => dispatch::dispatch_unary_trunc(arr),
+            UnaryOp::Rint => dispatch::dispatch_unary_rint(arr),
+            UnaryOp::Arcsinh => dispatch::dispatch_unary_arcsinh(arr),
+            UnaryOp::Arccosh => dispatch::dispatch_unary_arccosh(arr),
+            UnaryOp::Arctanh => dispatch::dispatch_unary_arctanh(arr),
+            // These return bool arrays, handled separately by trait dispatch
+            UnaryOp::Isnan | UnaryOp::Isinf | UnaryOp::Isfinite | UnaryOp::Signbit => None,
+        };
+        if let Some(result) = dispatched {
+            return Ok(result);
+        }
+    }
+
     let mut result = RumpyArray::zeros(arr.shape().to_vec(), dtype.clone());
     let size = arr.size();
     if size == 0 {
@@ -220,6 +263,33 @@ pub fn map_binary_op_inplace(
             BinaryOp::Add if a_is_datetime && b_is_datetime => return Err(BinaryOpError::UnsupportedDtype),
             BinaryOp::Mul | BinaryOp::Div | BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => return Err(BinaryOpError::UnsupportedDtype),
             _ => {}
+        }
+    }
+
+    // Try new kernel/loop dispatch (same-type only for now)
+    if out.is_none() && a_bc.dtype() == b_bc.dtype() {
+        use crate::ops::dispatch;
+        let dispatched = match op {
+            BinaryOp::Add => dispatch::dispatch_binary_add(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Sub => dispatch::dispatch_binary_sub(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Mul => dispatch::dispatch_binary_mul(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Div => dispatch::dispatch_binary_div(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Pow => dispatch::dispatch_binary_pow(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Mod => dispatch::dispatch_binary_mod(&a_bc, &b_bc, &out_shape),
+            BinaryOp::FloorDiv => dispatch::dispatch_binary_floor_div(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Maximum => dispatch::dispatch_binary_maximum(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Minimum => dispatch::dispatch_binary_minimum(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Arctan2 => dispatch::dispatch_binary_arctan2(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Hypot => dispatch::dispatch_binary_hypot(&a_bc, &b_bc, &out_shape),
+            BinaryOp::FMax => dispatch::dispatch_binary_fmax(&a_bc, &b_bc, &out_shape),
+            BinaryOp::FMin => dispatch::dispatch_binary_fmin(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Copysign => dispatch::dispatch_binary_copysign(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Logaddexp => dispatch::dispatch_binary_logaddexp(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Logaddexp2 => dispatch::dispatch_binary_logaddexp2(&a_bc, &b_bc, &out_shape),
+            BinaryOp::Nextafter => dispatch::dispatch_binary_nextafter(&a_bc, &b_bc, &out_shape),
+        };
+        if let Some(result) = dispatched {
+            return Ok(result);
         }
     }
 
@@ -450,7 +520,6 @@ pub fn map_binary_op_inplace(
 // ============================================================================
 
 /// Apply a comparison function element-wise, returning bool array.
-/// Note: comparison still uses f64 for now, since ordering on complex is tricky.
 pub fn map_compare_op(a: &RumpyArray, b: &RumpyArray, op: ComparisonOp) -> Option<RumpyArray> {
     let out_shape = broadcast_shapes(a.shape(), b.shape())?;
 
@@ -462,6 +531,23 @@ pub fn map_compare_op(a: &RumpyArray, b: &RumpyArray, op: ComparisonOp) -> Optio
     let a_bc = a_promoted.broadcast_to(&out_shape)?;
     let b_bc = b_promoted.broadcast_to(&out_shape)?;
 
+    // Try new kernel/loop dispatch first
+    {
+        use crate::ops::dispatch;
+        let dispatched = match op {
+            ComparisonOp::Gt => dispatch::dispatch_compare_gt(&a_bc, &b_bc, &out_shape),
+            ComparisonOp::Lt => dispatch::dispatch_compare_lt(&a_bc, &b_bc, &out_shape),
+            ComparisonOp::Ge => dispatch::dispatch_compare_ge(&a_bc, &b_bc, &out_shape),
+            ComparisonOp::Le => dispatch::dispatch_compare_le(&a_bc, &b_bc, &out_shape),
+            ComparisonOp::Eq => dispatch::dispatch_compare_eq(&a_bc, &b_bc, &out_shape),
+            ComparisonOp::Ne => dispatch::dispatch_compare_ne(&a_bc, &b_bc, &out_shape),
+        };
+        if let Some(result) = dispatched {
+            return Some(result);
+        }
+    }
+
+    // Fallback: generic path via get_element (for datetime, bool, etc.)
     let mut result = RumpyArray::zeros(out_shape.clone(), DType::bool());
     let size = result.size();
     if size == 0 {
@@ -471,32 +557,7 @@ pub fn map_compare_op(a: &RumpyArray, b: &RumpyArray, op: ComparisonOp) -> Optio
     let buffer = result.buffer_mut();
     let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
     let result_ptr = result_buffer.as_mut_ptr();
-    let a_ptr = a_bc.data_ptr();
-    let b_ptr = b_bc.data_ptr();
-    let common_kind = common_dtype.kind();
 
-    // Try registry for typed comparison loops (fast path for contiguous arrays)
-    {
-        let reg = registry().read().unwrap();
-        if let Some(loop_fn) = reg.lookup_compare(op, common_kind) {
-            let itemsize = common_dtype.itemsize() as isize;
-            let a_contig = a_bc.is_c_contiguous();
-            let b_contig = b_bc.is_c_contiguous();
-            let a_same_shape = a_promoted.shape() == out_shape.as_slice();
-            let b_same_shape = b_promoted.shape() == out_shape.as_slice();
-            let b_is_scalar = b_promoted.size() == 1;
-
-            // Fast path: contiguous a, and b is either contiguous same-shape or scalar
-            let b_ok = (b_same_shape && b_contig) || b_is_scalar;
-            if a_contig && a_same_shape && b_ok {
-                let b_stride = if b_is_scalar { 0 } else { itemsize };
-                unsafe { loop_fn(a_ptr, b_ptr, result_ptr, size, (itemsize, b_stride, 1)); }
-                return Some(result);
-            }
-        }
-    }
-
-    // Generic path: works for any dtype/stride combination via get_element
     let f: fn(f64, f64) -> bool = match op {
         ComparisonOp::Gt => |a, b| a > b,
         ComparisonOp::Lt => |a, b| a < b,
@@ -521,6 +582,20 @@ pub fn map_compare_op(a: &RumpyArray, b: &RumpyArray, op: ComparisonOp) -> Optio
 
 /// Reduce array along all axes, returning a 0-d array.
 pub fn reduce_all_op(arr: &RumpyArray, op: ReduceOp) -> RumpyArray {
+    // Try new kernel/loop dispatch first
+    {
+        use crate::ops::dispatch;
+        let dispatched = match op {
+            ReduceOp::Sum => dispatch::dispatch_reduce_sum(arr),
+            ReduceOp::Prod => dispatch::dispatch_reduce_prod(arr),
+            ReduceOp::Max => dispatch::dispatch_reduce_max(arr),
+            ReduceOp::Min => dispatch::dispatch_reduce_min(arr),
+        };
+        if let Some(result) = dispatched {
+            return result;
+        }
+    }
+
     let mut result = RumpyArray::zeros(vec![1], arr.dtype());
     let size = arr.size();
 
