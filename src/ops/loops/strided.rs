@@ -77,8 +77,8 @@ pub unsafe fn reduce_strided<T: Copy, K: ReduceKernel<T>>(
 
     // 8-accumulator pattern for ILP (matches NumPy's pairwise sum)
     let mut r = [
-        *ptr.byte_offset(stride * 0),
-        *ptr.byte_offset(stride * 1),
+        *ptr,
+        *ptr.byte_offset(stride),
         *ptr.byte_offset(stride * 2),
         *ptr.byte_offset(stride * 3),
         *ptr.byte_offset(stride * 4),
