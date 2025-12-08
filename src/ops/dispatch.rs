@@ -1705,6 +1705,7 @@ fn dispatch_cumulative_kernel<K>(arr: &RumpyArray, axis: Option<usize>, kernel: 
 where
     K: ReduceKernel<f64>
         + ReduceKernel<f32>
+        + ReduceKernel<f16>
         + ReduceKernel<i64>
         + ReduceKernel<i32>
         + ReduceKernel<i16>
@@ -1718,6 +1719,7 @@ where
     match arr.dtype().kind() {
         DTypeKind::Float64 => dispatch_cumulative_typed::<f64, K>(arr, axis, kernel, DType::float64()),
         DTypeKind::Float32 => dispatch_cumulative_typed::<f32, K>(arr, axis, kernel, DType::float32()),
+        DTypeKind::Float16 => dispatch_cumulative_typed::<f16, K>(arr, axis, kernel, DType::float16()),
         DTypeKind::Int64 => dispatch_cumulative_typed::<i64, K>(arr, axis, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_cumulative_typed::<i32, K>(arr, axis, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_cumulative_typed::<i16, K>(arr, axis, kernel, DType::int16()),
@@ -1727,7 +1729,7 @@ where
         DTypeKind::Uint8 => dispatch_cumulative_typed::<u8, K>(arr, axis, kernel, DType::uint8()),
         DTypeKind::Complex128 => dispatch_cumulative_typed::<Complex<f64>, K>(arr, axis, kernel, DType::complex128()),
         DTypeKind::Complex64 => dispatch_cumulative_typed::<Complex<f32>, K>(arr, axis, kernel, DType::complex64()),
-        _ => None, // Bool, DateTime, Float16 fall back to old path
+        _ => None, // Bool, DateTime fall back to old path
     }
 }
 
