@@ -15,10 +15,8 @@ impl RumpyArray {
         let ops = dtype.ops();
         let mut count = 0;
         for offset in self.iter_offsets() {
-            if let Some(val) = unsafe { ops.read_f64(ptr, offset) } {
-                if val != 0.0 {
-                    count += 1;
-                }
+            if unsafe { ops.is_truthy(ptr, offset) } {
+                count += 1;
             }
         }
         count
@@ -34,10 +32,8 @@ impl RumpyArray {
         let dtype = self.dtype();
         let ops = dtype.ops();
         for offset in self.iter_offsets() {
-            if let Some(val) = unsafe { ops.read_f64(ptr, offset) } {
-                if val == 0.0 {
-                    return false;
-                }
+            if !unsafe { ops.is_truthy(ptr, offset) } {
+                return false;
             }
         }
         true
@@ -103,10 +99,8 @@ impl RumpyArray {
         let dtype = self.dtype();
         let ops = dtype.ops();
         for offset in self.iter_offsets() {
-            if let Some(val) = unsafe { ops.read_f64(ptr, offset) } {
-                if val != 0.0 {
-                    return true;
-                }
+            if unsafe { ops.is_truthy(ptr, offset) } {
+                return true;
             }
         }
         false
