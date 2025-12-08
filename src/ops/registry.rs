@@ -2,10 +2,9 @@
 //!
 //! Most operations are now handled by the kernel/dispatch system.
 //! This registry is kept for:
-//! - Reduce loops for Float16 and Bool (niche types)
+//! - Reduce loops for Bool (niche type)
 
 use crate::array::dtype::{DTypeKind, ReduceOp};
-use half::f16;
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
@@ -56,7 +55,7 @@ pub type ReduceLoopFn = unsafe fn(
 ///
 /// Note: Most operations are now handled by the kernel/dispatch system
 /// in `dispatch.rs`. This registry is kept only for:
-/// - Reduce loops for Float16 and Bool (niche types)
+/// - Reduce loops for Bool (niche type)
 pub struct UFuncRegistry {
     reduce_loops: HashMap<(ReduceOp, TypeSignature), (ReduceInitFn, ReduceAccFn)>,
     /// Strided reduction loops for axis reductions (fast path)
@@ -128,51 +127,11 @@ pub fn registry() -> &'static RwLock<UFuncRegistry> {
     REGISTRY.get_or_init(|| RwLock::new(init_default_loops()))
 }
 
-/// Initialize default loops for Float16 and Bool.
+/// Initialize default loops for Bool.
 ///
 /// All other types are handled by the kernel/dispatch system.
 fn init_default_loops() -> UFuncRegistry {
     let mut reg = UFuncRegistry::new();
-
-    // Float16 reduce loops (convert to f32 for ops)
-    reg.register_reduce(
-        ReduceOp::Sum, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
-        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::ZERO; },
-        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut f16).add(idx);
-            let a = (*acc).to_f32();
-            let v = (*(val_ptr.offset(byte_offset) as *const f16)).to_f32();
-            *acc = f16::from_f32(a + v);
-        },
-    );
-    reg.register_reduce(
-        ReduceOp::Prod, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
-        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::ONE; },
-        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut f16).add(idx);
-            let a = (*acc).to_f32();
-            let v = (*(val_ptr.offset(byte_offset) as *const f16)).to_f32();
-            *acc = f16::from_f32(a * v);
-        },
-    );
-    reg.register_reduce(
-        ReduceOp::Max, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
-        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::NEG_INFINITY; },
-        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut f16).add(idx);
-            let v = *(val_ptr.offset(byte_offset) as *const f16);
-            if v > *acc { *acc = v; }
-        },
-    );
-    reg.register_reduce(
-        ReduceOp::Min, TypeSignature::reduce(DTypeKind::Float16, DTypeKind::Float16),
-        |out_ptr, idx| unsafe { *(out_ptr as *mut f16).add(idx) = f16::INFINITY; },
-        |acc_ptr, idx, val_ptr, byte_offset| unsafe {
-            let acc = (acc_ptr as *mut f16).add(idx);
-            let v = *(val_ptr.offset(byte_offset) as *const f16);
-            if v < *acc { *acc = v; }
-        },
-    );
 
     // Bool reduce loops (Sum=any, Prod=all)
     reg.register_reduce(
@@ -211,31 +170,6 @@ mod tests {
 
         assert_eq!(sig1, sig2);
         assert_ne!(sig1, sig3);
-    }
-
-    #[test]
-    fn test_f16_sum_loop() {
-        let reg = init_default_loops();
-        let (init_fn, acc_fn, _) = reg
-            .lookup_reduce(ReduceOp::Sum, DTypeKind::Float16)
-            .unwrap();
-
-        let values: [f16; 3] = [f16::from_f32(1.0), f16::from_f32(2.0), f16::from_f32(3.0)];
-        let mut acc: f16 = f16::ZERO;
-
-        unsafe {
-            init_fn(&mut acc as *mut f16 as *mut u8, 0);
-            for v in &values {
-                acc_fn(
-                    &mut acc as *mut f16 as *mut u8,
-                    0,
-                    v as *const f16 as *const u8,
-                    0,
-                );
-            }
-        }
-
-        assert_eq!(acc.to_f32(), 6.0);
     }
 
     #[test]

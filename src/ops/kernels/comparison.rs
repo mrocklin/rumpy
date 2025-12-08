@@ -60,6 +60,11 @@ macro_rules! impl_ord_comparison {
 
 impl_ord_comparison!(f64);
 impl_ord_comparison!(f32);
+
+// Float16 comparisons
+use half::f16;
+impl_ord_comparison!(f16);
+
 impl_ord_comparison!(i64);
 impl_ord_comparison!(i32);
 impl_ord_comparison!(i16);

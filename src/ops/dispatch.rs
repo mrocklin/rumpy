@@ -26,6 +26,7 @@ use crate::ops::kernels::math::{
 use crate::ops::loops;
 use std::sync::Arc;
 use num_complex::Complex;
+use half::f16;
 
 /// Dispatch a binary operation using the kernel/loop architecture.
 ///
@@ -122,7 +123,7 @@ fn dispatch_binary_kernel_float<K>(
     kernel: K,
 ) -> Option<RumpyArray>
 where
-    K: BinaryKernel<f64> + BinaryKernel<f32> + BinaryKernel<Complex<f64>> + BinaryKernel<Complex<f32>>,
+    K: BinaryKernel<f64> + BinaryKernel<f32> + BinaryKernel<f16> + BinaryKernel<Complex<f64>> + BinaryKernel<Complex<f32>>,
 {
     let a_kind = a.dtype().kind();
     let b_kind = b.dtype().kind();
@@ -132,6 +133,7 @@ where
     match a_kind {
         DTypeKind::Float64 => dispatch_binary_typed::<f64, K>(a, b, out_shape, kernel, DType::float64()),
         DTypeKind::Float32 => dispatch_binary_typed::<f32, K>(a, b, out_shape, kernel, DType::float32()),
+        DTypeKind::Float16 => dispatch_binary_typed::<f16, K>(a, b, out_shape, kernel, DType::float16()),
         DTypeKind::Complex128 => dispatch_binary_typed::<Complex<f64>, K>(a, b, out_shape, kernel, DType::complex128()),
         DTypeKind::Complex64 => dispatch_binary_typed::<Complex<f32>, K>(a, b, out_shape, kernel, DType::complex64()),
         _ => None,
@@ -148,6 +150,7 @@ fn dispatch_binary_kernel<K>(
 where
     K: BinaryKernel<f64>
         + BinaryKernel<f32>
+        + BinaryKernel<f16>
         + BinaryKernel<i64>
         + BinaryKernel<i32>
         + BinaryKernel<i16>
@@ -169,6 +172,7 @@ where
     match a_kind {
         DTypeKind::Float64 => dispatch_binary_typed::<f64, K>(a, b, out_shape, kernel, DType::float64()),
         DTypeKind::Float32 => dispatch_binary_typed::<f32, K>(a, b, out_shape, kernel, DType::float32()),
+        DTypeKind::Float16 => dispatch_binary_typed::<f16, K>(a, b, out_shape, kernel, DType::float16()),
         DTypeKind::Int64 => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_binary_typed::<i32, K>(a, b, out_shape, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_binary_typed::<i16, K>(a, b, out_shape, kernel, DType::int16()),
@@ -284,7 +288,7 @@ pub fn dispatch_reduce_min(arr: &RumpyArray) -> Option<RumpyArray> {
 /// Generic reduce dispatch returning a 0-d array.
 fn dispatch_reduce_to_array<K>(arr: &RumpyArray, kernel: K) -> Option<RumpyArray>
 where
-    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
+    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<f16> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
         + ReduceKernel<u64> + ReduceKernel<u32> + ReduceKernel<u16> + ReduceKernel<u8>
         + ReduceKernel<Complex<f64>> + ReduceKernel<Complex<f32>>,
 {
@@ -299,6 +303,10 @@ where
         DTypeKind::Float32 => {
             let val = dispatch_reduce_typed::<f32, K>(arr, size, kernel)?;
             Some(RumpyArray::full(vec![1], val as f64, DType::float32()))
+        }
+        DTypeKind::Float16 => {
+            let val = dispatch_reduce_typed::<f16, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val.to_f64(), DType::float16()))
         }
         DTypeKind::Int64 => {
             let val = dispatch_reduce_typed::<i64, K>(arr, size, kernel)?;
@@ -372,7 +380,7 @@ pub fn dispatch_reduce_axis_min(arr: &RumpyArray, axis: usize) -> Option<RumpyAr
 /// Generic axis reduce dispatch.
 fn dispatch_reduce_axis_kernel<K>(arr: &RumpyArray, axis: usize, kernel: K) -> Option<RumpyArray>
 where
-    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
+    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<f16> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
         + ReduceKernel<u64> + ReduceKernel<u32> + ReduceKernel<u16> + ReduceKernel<u8>
         + ReduceKernel<Complex<f64>> + ReduceKernel<Complex<f32>>,
 {
@@ -380,6 +388,7 @@ where
     match kind {
         DTypeKind::Float64 => dispatch_reduce_axis_typed::<f64, K>(arr, axis, kernel, DType::float64()),
         DTypeKind::Float32 => dispatch_reduce_axis_typed::<f32, K>(arr, axis, kernel, DType::float32()),
+        DTypeKind::Float16 => dispatch_reduce_axis_typed::<f16, K>(arr, axis, kernel, DType::float16()),
         DTypeKind::Int64 => dispatch_reduce_axis_typed::<i64, K>(arr, axis, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_reduce_axis_typed::<i32, K>(arr, axis, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_reduce_axis_typed::<i16, K>(arr, axis, kernel, DType::int16()),
@@ -389,7 +398,7 @@ where
         DTypeKind::Uint8 => dispatch_reduce_axis_typed::<u8, K>(arr, axis, kernel, DType::uint8()),
         DTypeKind::Complex128 => dispatch_reduce_axis_typed::<Complex<f64>, K>(arr, axis, kernel, DType::complex128()),
         DTypeKind::Complex64 => dispatch_reduce_axis_typed::<Complex<f32>, K>(arr, axis, kernel, DType::complex64()),
-        _ => None, // Float16, Bool, DateTime fall back to registry/trait
+        _ => None, // Bool, DateTime fall back to registry/trait
     }
 }
 
@@ -582,11 +591,12 @@ pub fn dispatch_unary_arctanh(arr: &RumpyArray) -> Option<RumpyArray> {
 /// Dispatch for kernels that support floats and complex.
 fn dispatch_unary_kernel_float<K>(arr: &RumpyArray, kernel: K) -> Option<RumpyArray>
 where
-    K: UnaryKernel<f64> + UnaryKernel<f32> + UnaryKernel<Complex<f64>> + UnaryKernel<Complex<f32>>,
+    K: UnaryKernel<f64> + UnaryKernel<f32> + UnaryKernel<f16> + UnaryKernel<Complex<f64>> + UnaryKernel<Complex<f32>>,
 {
     match arr.dtype().kind() {
         DTypeKind::Float64 => dispatch_unary_typed::<f64, K>(arr, kernel, DType::float64()),
         DTypeKind::Float32 => dispatch_unary_typed::<f32, K>(arr, kernel, DType::float32()),
+        DTypeKind::Float16 => dispatch_unary_typed::<f16, K>(arr, kernel, DType::float16()),
         DTypeKind::Complex128 => dispatch_unary_typed::<Complex<f64>, K>(arr, kernel, DType::complex128()),
         DTypeKind::Complex64 => dispatch_unary_typed::<Complex<f32>, K>(arr, kernel, DType::complex64()),
         _ => None,
@@ -598,6 +608,7 @@ fn dispatch_unary_kernel_int<K>(arr: &RumpyArray, kernel: K) -> Option<RumpyArra
 where
     K: UnaryKernel<f64>
         + UnaryKernel<f32>
+        + UnaryKernel<f16>
         + UnaryKernel<i64>
         + UnaryKernel<i32>
         + UnaryKernel<i16>
@@ -611,6 +622,7 @@ where
     match arr.dtype().kind() {
         DTypeKind::Float64 => dispatch_unary_typed::<f64, K>(arr, kernel, DType::float64()),
         DTypeKind::Float32 => dispatch_unary_typed::<f32, K>(arr, kernel, DType::float32()),
+        DTypeKind::Float16 => dispatch_unary_typed::<f16, K>(arr, kernel, DType::float16()),
         DTypeKind::Int64 => dispatch_unary_typed::<i64, K>(arr, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_unary_typed::<i32, K>(arr, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_unary_typed::<i16, K>(arr, kernel, DType::int16()),
@@ -746,6 +758,7 @@ fn dispatch_compare_kernel<K>(
 where
     K: CompareKernel<f64>
         + CompareKernel<f32>
+        + CompareKernel<f16>
         + CompareKernel<i64>
         + CompareKernel<i32>
         + CompareKernel<i16>
@@ -767,6 +780,7 @@ where
     match a_kind {
         DTypeKind::Float64 => dispatch_compare_typed::<f64, K>(a, b, out_shape, kernel),
         DTypeKind::Float32 => dispatch_compare_typed::<f32, K>(a, b, out_shape, kernel),
+        DTypeKind::Float16 => dispatch_compare_typed::<f16, K>(a, b, out_shape, kernel),
         DTypeKind::Int64 => dispatch_compare_typed::<i64, K>(a, b, out_shape, kernel),
         DTypeKind::Int32 => dispatch_compare_typed::<i32, K>(a, b, out_shape, kernel),
         DTypeKind::Int16 => dispatch_compare_typed::<i16, K>(a, b, out_shape, kernel),

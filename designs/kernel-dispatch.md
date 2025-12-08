@@ -89,8 +89,8 @@ Compiles to tight scalar or SIMD code. The compiler sees the exact operation.
 
 ## Fallback Chain
 
-1. **Dispatch** (kernel/loop) - handles f64, f32, i64, i32, i16, u64, u32, u16, u8, complex128, complex64, bool (for bitwise)
-2. **Registry** - Float16, Bool reduce loops only
+1. **Dispatch** (kernel/loop) - handles f64, f32, f16, i64, i32, i16, u64, u32, u16, u8, complex128, complex64, bool (for bitwise)
+2. **Registry** - Bool reduce loops only
 3. **Trait dispatch** - DateTime64, any future types
 
 ## Extending the System

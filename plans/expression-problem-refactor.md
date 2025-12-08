@@ -219,8 +219,8 @@ pub fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<Rum
 
 #### 3f. ✅ Axis Reductions Migrated to Kernel System
 - Added `dispatch_reduce_axis_sum/prod/max/min` to dispatch.rs
-- Dispatch handles f64, f32, i64, i32, i16, u64, u32, u16, u8, complex128, complex64
-- Registry fallback only for Float16, Bool (and DateTime64 via trait)
+- Dispatch handles f64, f32, f16, i64, i32, i16, u64, u32, u16, u8, complex128, complex64
+- Registry fallback only for Bool (and DateTime64 via trait)
 - Removed 428 lines of dead reduce loops from registry
 
 ### Stream 4: Final Cleanup
@@ -233,35 +233,43 @@ pub fn map_binary_op(a: &RumpyArray, b: &RumpyArray, op: BinaryOp) -> Result<Rum
 - Updated bitwise.rs to use dispatch first, trait fallback
 - Removed 282 lines of bitwise loops from registry
 
-#### 4b. Remaining Cleanup (optional)
-- Add Float16 to kernel system
+#### 4b. ✅ Float16 Migrated to Kernel System
+- Added f16 implementations to kernels/arithmetic.rs (all binary + reduce kernels)
+- Added f16 implementations to kernels/math.rs (all unary kernels)
+- Added f16 implementations to kernels/comparison.rs (all compare kernels)
+- Added Float16 to all dispatch functions (binary, unary, reduce, compare)
+- Removed Float16 reduce loops from registry (66 lines removed)
+- Registry reduced from 265 to 199 lines
+
+#### 4c. Remaining Cleanup (optional)
 - Slim DTypeOps trait (remove op implementations)
 - Update macros.rs (remove op code generation)
 - Update CLAUDE.md with new architecture
 
 ## Current State
 
-**New orthogonal system**: ~2360 lines
-- dispatch.rs: 1103 lines (+248 for bitwise dispatch)
-- kernels/arithmetic.rs: 426 lines
-- kernels/bitwise.rs: 113 lines (NEW)
-- kernels/comparison.rs: 107 lines
-- kernels/math.rs: 471 lines
-- kernels/mod.rs: 39 lines
+**New orthogonal system**: ~2550 lines
+- dispatch.rs: 1117 lines
+- kernels/arithmetic.rs: 556 lines (+130 for f16)
+- kernels/bitwise.rs: 123 lines
+- kernels/comparison.rs: 112 lines (+5 for f16)
+- kernels/math.rs: 605 lines (+134 for f16)
+- kernels/mod.rs: 38 lines
 - loops/contiguous.rs: 117 lines
 - loops/strided.rs: 90 lines
 - loops/mod.rs: 12 lines
 
-**Old registry**: 265 lines (down from 1754 → removed 1489 lines total)
-- Now ONLY contains: Float16 reduce loops (4 ops), Bool reduce loops (2 ops)
+**Old registry**: 199 lines (down from 1754 → removed 1555 lines total)
+- Now ONLY contains: Bool reduce loops (2 ops)
+- Float16 fully migrated to kernel system
 - All bitwise ops removed
 - All strided reduce infrastructure removed
 
 All 2191 tests pass. The new system handles:
-- All 18 binary ops for f64, f32, i64, i32, i16, u64, u32, u16, u8, Complex<f64>, Complex<f32>
-- All 31+ unary ops for float/int/complex types
-- All 4 reduce ops (full-array AND axis) for float/int/complex types
-- All 6 comparison ops for all dtypes including complex
+- All 18 binary ops for f64, f32, f16, i64, i32, i16, u64, u32, u16, u8, Complex<f64>, Complex<f32>
+- All 31+ unary ops for f64, f32, f16, int, and complex types
+- All 4 reduce ops (full-array AND axis) for f64, f32, f16, int, and complex types
+- All 6 comparison ops for all dtypes including f16 and complex
 - All 6 bitwise ops for integer types and bool
 
 ## Performance (release build, 1M f64 elements)
@@ -288,7 +296,8 @@ All 2191 tests pass. The new system handles:
 - ✅ Comparison ops now use kernel/loop architecture
 - ✅ Axis reductions use kernel/loop architecture for common types
 - ✅ Bitwise ops now use kernel/loop architecture
-- ⚠️ registry.rs still exists for Float16/Bool reductions only (265 lines)
+- ✅ Float16 now uses kernel/loop architecture
+- ⚠️ registry.rs still exists for Bool reductions only (199 lines)
 
 ## Completed: Registry Code Removal
 

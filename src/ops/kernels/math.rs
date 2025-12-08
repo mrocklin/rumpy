@@ -250,6 +250,140 @@ impl_float_math!(f64);
 impl_float_math!(f32);
 
 // ============================================================================
+// Float16 implementations (convert to f32, compute, convert back)
+// ============================================================================
+
+use half::f16;
+
+impl UnaryKernel<f16> for Neg {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(-v.to_f32()) }
+}
+impl UnaryKernel<f16> for Abs {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().abs()) }
+}
+impl UnaryKernel<f16> for Sqrt {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().sqrt()) }
+}
+impl UnaryKernel<f16> for Exp {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().exp()) }
+}
+impl UnaryKernel<f16> for Log {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().ln()) }
+}
+impl UnaryKernel<f16> for Log10 {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().log10()) }
+}
+impl UnaryKernel<f16> for Log2 {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().log2()) }
+}
+impl UnaryKernel<f16> for Sin {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().sin()) }
+}
+impl UnaryKernel<f16> for Cos {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().cos()) }
+}
+impl UnaryKernel<f16> for Tan {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().tan()) }
+}
+impl UnaryKernel<f16> for Floor {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().floor()) }
+}
+impl UnaryKernel<f16> for Ceil {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().ceil()) }
+}
+impl UnaryKernel<f16> for Square {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { let vf = v.to_f32(); f16::from_f32(vf * vf) }
+}
+impl UnaryKernel<f16> for Sinh {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().sinh()) }
+}
+impl UnaryKernel<f16> for Cosh {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().cosh()) }
+}
+impl UnaryKernel<f16> for Tanh {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().tanh()) }
+}
+impl UnaryKernel<f16> for Arcsin {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().asin()) }
+}
+impl UnaryKernel<f16> for Arccos {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().acos()) }
+}
+impl UnaryKernel<f16> for Arctan {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().atan()) }
+}
+impl UnaryKernel<f16> for Sign {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 {
+        let vf = v.to_f32();
+        if vf.is_nan() { v } else if vf > 0.0 { f16::ONE } else if vf < 0.0 { f16::NEG_ONE } else { f16::ZERO }
+    }
+}
+impl UnaryKernel<f16> for Positive {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { v }
+}
+impl UnaryKernel<f16> for Reciprocal {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(1.0 / v.to_f32()) }
+}
+impl UnaryKernel<f16> for Exp2 {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().exp2()) }
+}
+impl UnaryKernel<f16> for Expm1 {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().exp_m1()) }
+}
+impl UnaryKernel<f16> for Log1p {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().ln_1p()) }
+}
+impl UnaryKernel<f16> for Cbrt {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().cbrt()) }
+}
+impl UnaryKernel<f16> for Trunc {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().trunc()) }
+}
+impl UnaryKernel<f16> for Rint {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().round()) }
+}
+impl UnaryKernel<f16> for Arcsinh {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().asinh()) }
+}
+impl UnaryKernel<f16> for Arccosh {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().acosh()) }
+}
+impl UnaryKernel<f16> for Arctanh {
+    #[inline(always)]
+    fn apply(v: f16) -> f16 { f16::from_f32(v.to_f32().atanh()) }
+}
+
+// ============================================================================
 // Integer implementations
 // ============================================================================
 

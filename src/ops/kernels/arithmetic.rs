@@ -195,6 +195,136 @@ impl_float_arithmetic!(f64);
 impl_float_arithmetic!(f32);
 
 // ============================================================================
+// Float16 implementations (convert to f32, compute, convert back)
+// ============================================================================
+
+use half::f16;
+
+impl BinaryKernel<f16> for Add {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32() + b.to_f32()) }
+}
+impl BinaryKernel<f16> for Sub {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32() - b.to_f32()) }
+}
+impl BinaryKernel<f16> for Mul {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32() * b.to_f32()) }
+}
+impl BinaryKernel<f16> for Div {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32() / b.to_f32()) }
+}
+impl ReduceKernel<f16> for Sum {
+    #[inline(always)]
+    fn init() -> f16 { f16::ZERO }
+    #[inline(always)]
+    fn combine(acc: f16, v: f16) -> f16 { f16::from_f32(acc.to_f32() + v.to_f32()) }
+}
+impl ReduceKernel<f16> for Prod {
+    #[inline(always)]
+    fn init() -> f16 { f16::ONE }
+    #[inline(always)]
+    fn combine(acc: f16, v: f16) -> f16 { f16::from_f32(acc.to_f32() * v.to_f32()) }
+}
+impl ReduceKernel<f16> for Max {
+    #[inline(always)]
+    fn init() -> f16 { f16::NEG_INFINITY }
+    #[inline(always)]
+    fn combine(acc: f16, v: f16) -> f16 { if v > acc { v } else { acc } }
+}
+impl ReduceKernel<f16> for Min {
+    #[inline(always)]
+    fn init() -> f16 { f16::INFINITY }
+    #[inline(always)]
+    fn combine(acc: f16, v: f16) -> f16 { if v < acc { v } else { acc } }
+}
+impl BinaryKernel<f16> for Pow {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32().powf(b.to_f32())) }
+}
+impl BinaryKernel<f16> for Mod {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32() % b.to_f32()) }
+}
+impl BinaryKernel<f16> for FloorDiv {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32((a.to_f32() / b.to_f32()).floor()) }
+}
+impl BinaryKernel<f16> for Maximum {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        let af = a.to_f32();
+        let bf = b.to_f32();
+        if af.is_nan() || bf.is_nan() { f16::NAN } else { f16::from_f32(af.max(bf)) }
+    }
+}
+impl BinaryKernel<f16> for Minimum {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        let af = a.to_f32();
+        let bf = b.to_f32();
+        if af.is_nan() || bf.is_nan() { f16::NAN } else { f16::from_f32(af.min(bf)) }
+    }
+}
+impl BinaryKernel<f16> for Arctan2 {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32().atan2(b.to_f32())) }
+}
+impl BinaryKernel<f16> for Hypot {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32().hypot(b.to_f32())) }
+}
+impl BinaryKernel<f16> for FMax {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        let af = a.to_f32();
+        let bf = b.to_f32();
+        if bf.is_nan() { a } else if af.is_nan() { b } else { f16::from_f32(af.max(bf)) }
+    }
+}
+impl BinaryKernel<f16> for FMin {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        let af = a.to_f32();
+        let bf = b.to_f32();
+        if bf.is_nan() { a } else if af.is_nan() { b } else { f16::from_f32(af.min(bf)) }
+    }
+}
+impl BinaryKernel<f16> for Copysign {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32().copysign(b.to_f32())) }
+}
+impl BinaryKernel<f16> for Logaddexp {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        let af = a.to_f32();
+        let bf = b.to_f32();
+        let max = af.max(bf);
+        if max.is_infinite() { f16::from_f32(max) } else { f16::from_f32(max + ((-((af - bf).abs())).exp()).ln_1p()) }
+    }
+}
+impl BinaryKernel<f16> for Logaddexp2 {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        let af = a.to_f32();
+        let bf = b.to_f32();
+        let max = af.max(bf);
+        if max.is_infinite() { f16::from_f32(max) } else { f16::from_f32(max + 2.0f32.powf(-(af - bf).abs()).ln_1p() / 2.0f32.ln()) }
+    }
+}
+impl BinaryKernel<f16> for Nextafter {
+    #[inline(always)]
+    fn apply(a: f16, b: f16) -> f16 {
+        if a == b { b }
+        else if a.is_nan() || b.is_nan() { f16::NAN }
+        else if a < b { f16::from_bits(a.to_bits().wrapping_add(1)) }
+        else { f16::from_bits(a.to_bits().wrapping_sub(1)) }
+    }
+}
+
+// ============================================================================
 // Integer implementations (wrapping arithmetic)
 // ============================================================================
 
