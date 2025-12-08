@@ -50,14 +50,25 @@ src/
 │
 ├── ops/                      # Operations (Rust implementation)
 │   ├── mod.rs                # Core binary/compare ops, re-exports
+│   ├── kernels/              # Pure operation definitions (kernel/dispatch system)
+│   │   ├── mod.rs            # Traits: BinaryKernel, UnaryKernel, ReduceKernel, CompareKernel
+│   │   ├── arithmetic.rs     # Add, Sub, Mul, Div, Sum, Prod, Max, Min, NanSum, etc.
+│   │   ├── bitwise.rs        # And, Or, Xor, LeftShift, RightShift, Not
+│   │   ├── comparison.rs     # Gt, Lt, Ge, Le, Eq, Ne
+│   │   └── math.rs           # Sqrt, Exp, Log, Sin, Cos, etc.
+│   ├── loops/                # Layout strategies (SIMD optimizations live here)
+│   │   ├── mod.rs            # Re-exports
+│   │   ├── contiguous.rs     # Slice-based loops (SIMD-friendly, 8-accumulator reductions)
+│   │   └── strided.rs        # Pointer arithmetic loops for non-contiguous
+│   ├── dispatch.rs           # Type resolution + layout detection → kernel + loop
+│   ├── ufunc.rs              # Public API: map_unary_op, map_binary_op, reduce_axis_op
+│   ├── registry.rs           # Legacy loops (Bool reductions only)
 │   ├── array_methods/        # RumpyArray method implementations by category
 │   │   ├── unary.rs          # sqrt, exp, log, sin, cos, real, imag, nan_to_num
 │   │   ├── reductions.rs     # sum, mean, var, std, argmax + NaN variants
 │   │   ├── sorting.rs        # sort, argsort, partition, unique, lexsort
 │   │   ├── cumulative.rs     # diff, cumsum, cumprod
 │   │   └── logical.rs        # all, any, count_nonzero
-│   ├── ufunc.rs              # Core: map_unary_op, map_binary_op, reduce_axis_op
-│   ├── registry.rs           # Type-specific optimized loops (SIMD)
 │   ├── comparison.rs         # logical_and/or/xor/not, equal, isclose
 │   ├── bitwise.rs            # bitwise_and/or/xor/not, shifts
 │   ├── statistics.rs         # histogram, cov, corrcoef, median
@@ -133,7 +144,7 @@ To add array methods: add to appropriate `pyarray/*.rs` submodule with `#[pymeth
 
 - **Arc<ArrayBuffer>** for views - shared ownership, no copy
 - **DType as trait object** - `DType(Arc<dyn DTypeOps>)` with macro-generated impls
-- **Two-tier dispatch** - registry fast path → trait fallback
+- **Kernel/dispatch architecture** - orthogonal separation of operations, layouts, dtypes (see below)
 - **Signed strides (isize)** - enables negative strides for reversed views
 - **`__array_interface__`** for NumPy interop - zero-copy when possible
 
@@ -141,9 +152,10 @@ To add array methods: add to appropriate `pyarray/*.rs` submodule with `#[pymeth
 
 | Doc | When to Read |
 |-----|--------------|
+| `designs/kernel-dispatch.md` | **Adding operations** - kernel/loop/dispatch architecture |
+| `designs/expression-problem.md` | Why kernel/dispatch exists (N dtypes × M ops) |
 | `designs/dtype-system.md` | Adding new dtypes |
-| `designs/adding-operations.md` | Adding unary/binary/reduce ops |
-| `designs/ufuncs.md` | Understanding ufunc architecture |
+| `designs/ufuncs.md` | Public ufunc API (map_binary_op, reduce_axis_op) |
 | `designs/iteration-performance.md` | Optimizing loops, benchmarks |
 | `designs/gufuncs.md` | Matrix ops like matmul |
 | `designs/linalg.md` | faer integration for linear algebra |
@@ -151,37 +163,36 @@ To add array methods: add to appropriate `pyarray/*.rs` submodule with `#[pymeth
 
 ## Adding New Operations
 
-Use the ufunc machinery in `src/ops/ufunc.rs`:
+Use the kernel/dispatch architecture. See `designs/kernel-dispatch.md` for full details.
+
+**Adding a binary op** (e.g., `lcm`):
 
 ```rust
-// Element-wise unary: use map_unary_op with UnaryOp enum
-pub fn sqrt(&self) -> Result<RumpyArray, UnaryOpError> {
-    map_unary_op(self, UnaryOp::Sqrt)
+// 1. Add kernel in kernels/arithmetic.rs
+pub struct Lcm;
+impl BinaryKernel<i64> for Lcm {
+    fn apply(a: i64, b: i64) -> i64 { /* gcd-based impl */ }
+}
+// Repeat for i32, u64, etc.
+
+// 2. Add dispatch in dispatch.rs
+pub fn dispatch_binary_lcm(a: &RumpyArray, b: &RumpyArray, ...) -> ... {
+    dispatch_binary_kernel(a, b, out_shape, Lcm)
 }
 
-// Element-wise binary: use map_binary_op with BinaryOp enum (handles broadcasting)
-pub fn add(&self, other: &RumpyArray) -> Result<RumpyArray, BinaryOpError> {
-    map_binary_op(self, other, BinaryOp::Add)
-}
-
-// Full reduction: use reduce_all_op with ReduceOp enum
-pub fn sum(&self) -> f64 {
-    reduce_all_op(self, ReduceOp::Sum, false)  // false = not NaN-aware
-}
-
-// Axis reduction: use reduce_axis_op
-pub fn sum_axis(&self, axis: usize) -> RumpyArray {
-    reduce_axis_op(self, axis, ReduceOp::Sum, false)
-}
+// 3. Wire up in ufunc.rs
+BinaryOp::Lcm => dispatch::dispatch_binary_lcm(a, b, out_shape),
 ```
 
-The registry in `src/ops/registry.rs` provides optimized type-specific loops.
-To add a new operation, add the enum variant and register loops for each dtype.
+**Why kernels, not closures**: Kernels are zero-sized types. `K::apply(a, b)` monomorphizes to tight code per (kernel, dtype) pair. Closures prevent this optimization.
+
+**Why dispatch, not get_element**: Dispatch selects contiguous vs strided path once, then runs tight loops. Never use `get_element` in hot paths - it's O(n×ndim) vs O(n).
 
 Then add Python bindings in `pyarray/` and tests.
 
 ## Common Pitfalls
 
+- **Never use `get_element` in loops**: Use dispatch → kernel → loop pattern instead. `get_element` is O(ndim) per call.
 - **Empty arrays**: Always check `size == 0` before buffer operations
 - **Build command**: Must use `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` for Python 3.14+
 - **Closures in match**: Each arm has different type; call function inside each arm instead of returning closure

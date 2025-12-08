@@ -11,9 +11,9 @@ Array operations need to iterate over elements efficiently. Key challenges:
 
 ## Design Principles
 
-1. **One pattern for all dtypes**: No special-case code per type
-2. **Contiguous fast path**: SIMD when stride == itemsize
-3. **Registry-based dispatch**: Consistent with ufunc architecture
+1. **Orthogonal concerns**: Operations, layouts, dtypes factored separately
+2. **Contiguous fast path**: Layout detection in dispatch, not per-element
+3. **Kernel monomorphization**: Zero-sized types enable inlining
 
 ## Components
 
@@ -42,55 +42,49 @@ arr.axis_offsets(axis) -> impl Iterator<Item = isize>
 
 Each offset is a base pointer for reducing along the axis.
 
-### ReduceLoopFn
+## Dispatch Architecture
 
-Registry function type for strided reductions:
-
-```rust
-type ReduceLoopFn = unsafe fn(
-    acc_ptr: *mut u8,
-    src_ptr: *const u8,
-    n: usize,
-    stride: isize,
-);
 ```
-
-Each loop handles contiguous/strided internally:
-```rust
-if stride == itemsize {
-    let slice = from_raw_parts(src_ptr, n);
-    *acc = slice.iter().sum();  // SIMD
-} else {
-    // Strided pointer loop
-}
+reduce_axis_op
+    │
+    ├─► dispatch::dispatch_reduce_axis_*() ──► Kernel + Loop
+    │       │
+    │       ├─► Contiguous axis: loops::reduce() on slice
+    │       │
+    │       └─► Strided: loops::reduce_strided() with pointers
+    │
+    └─► trait fallback (Bool, DateTime64)
 ```
 
 ## Usage
 
 ```rust
-// reduce_axis_op uses registry strided loops
-for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
-    let src = src_ptr.offset(base_offset);
-    let acc = result_ptr.add(i * itemsize);
-    loop_fn(acc, src, axis_len, axis_stride);
+// dispatch handles layout selection
+dispatch_reduce_axis_sum(arr, axis, out_shape)
+    → match dtype {
+        Float64 => dispatch_reduce_axis_typed::<f64, Sum>(...)
+        // ...
+    }
+```
+
+Inside `dispatch_reduce_axis_typed`:
+```rust
+if axis_stride == itemsize {
+    // Contiguous: use slice-based reduce
+    loops::reduce(slice, kernel)
+} else {
+    // Strided: pointer arithmetic
+    unsafe { loops::reduce_strided(ptr, stride, n, kernel) }
 }
-```
-
-## Architecture
-
-```
-reduce_axis_op
-    │
-    ├─► lookup_reduce_strided() ──► ReduceLoopFn (fast)
-    │                                  └── contiguous/strided handled internally
-    │
-    ├─► lookup_reduce() ──► ReduceAccFn (per-element, slower)
-    │
-    └─► trait dispatch (fallback)
 ```
 
 ## Non-Goals
 
 - **Zip/fusion**: Defer until needed
 - **Parallelism**: Rayon can layer on top later
-- **Explicit SIMD**: Rely on LLVM auto-vectorization
+- **Explicit SIMD**: Rely on LLVM auto-vectorization for now
+
+## See Also
+
+- `designs/kernel-dispatch.md` - Full architecture
+- `designs/strided-loops.md` - Loop implementation details

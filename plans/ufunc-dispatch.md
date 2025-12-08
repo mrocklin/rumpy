@@ -1,7 +1,14 @@
 # Hybrid UFunc Dispatch Plan
 
-**Design doc:** `designs/dtype-system.md`
-**Status:** Phase 1-4 complete
+**Status:** SUPERSEDED by kernel/dispatch architecture
+
+See `plans/expression-problem-refactor.md` and `designs/kernel-dispatch.md` for current system.
+The registry approach below was the intermediate step. The kernel/dispatch system now handles most operations.
+
+---
+
+**Original design doc:** `designs/dtype-system.md`
+**Original status:** Phase 1-4 complete
 
 ## Context
 

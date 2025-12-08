@@ -1,74 +1,66 @@
 # Strided Inner Loops
 
-NumPy-style inner loops that handle both contiguous and strided arrays.
+Memory traversal patterns for contiguous and strided arrays.
 
 ## Core Insight
 
-NumPy's inner loop signature passes stride information to the loop itself:
-```c
-void (*loop)(char **args, npy_intp *dimensions, npy_intp *steps, void *data)
+Operations need both contiguous (SIMD-friendly) and strided (view-friendly) paths.
+The kernel/dispatch system separates these in `loops/`:
+
+```
+loops/
+├── contiguous.rs  # Slice-based, LLVM auto-vectorizes
+└── strided.rs     # Pointer arithmetic with byte offsets
 ```
 
-The loop iterates N elements, advancing pointers by their strides. This handles
-contiguous (stride=itemsize) and strided (stride!=itemsize) uniformly.
-
-## Loop Signature
+## Loop Functions
 
 ```rust
-type BinaryLoopFn = unsafe fn(
-    a: *const u8, b: *const u8, out: *mut u8,
-    n: usize,
-    strides: (isize, isize, isize),  // (a_stride, b_stride, out_stride)
-);
-
-type UnaryLoopFn = unsafe fn(
-    src: *const u8, out: *mut u8,
-    n: usize,
-    strides: (isize, isize),  // (src_stride, out_stride)
-);
-```
-
-## Contiguous Fast Path
-
-Loops can check for contiguous case internally:
-```rust
-unsafe fn add_f64(a: *const u8, b: *const u8, out: *mut u8, n: usize, strides: (isize, isize, isize)) {
-    let itemsize = 8isize;
-    if strides == (itemsize, itemsize, itemsize) {
-        // Contiguous: tight loop LLVM can vectorize
-        let a = std::slice::from_raw_parts(a as *const f64, n);
-        let b = std::slice::from_raw_parts(b as *const f64, n);
-        let out = std::slice::from_raw_parts_mut(out as *mut f64, n);
-        for i in 0..n {
-            out[i] = a[i] + b[i];
-        }
-    } else {
-        // Strided: pointer arithmetic
-        let mut ap = a as *const f64;
-        let mut bp = b as *const f64;
-        let mut op = out as *mut f64;
-        for _ in 0..n {
-            *op = *ap + *bp;
-            ap = (ap as *const u8).offset(strides.0) as *const f64;
-            bp = (bp as *const u8).offset(strides.1) as *const f64;
-            op = (op as *mut u8).offset(strides.2) as *mut f64;
-        }
+// Contiguous: operates on slices
+pub fn map_binary<T: Copy, K: BinaryKernel<T>>(
+    a: &[T], b: &[T], out: &mut [T], _kernel: K
+) {
+    for i in 0..a.len() {
+        out[i] = K::apply(a[i], b[i]);
     }
+}
+
+// Strided: pointer arithmetic
+pub unsafe fn map_binary_strided<T: Copy, K: BinaryKernel<T>>(
+    a_ptr: *const T, a_stride: isize,
+    b_ptr: *const T, b_stride: isize,
+    out_ptr: *mut T, out_stride: isize,
+    n: usize, _kernel: K
+) {
+    for i in 0..n {
+        let offset = i as isize;
+        let a = *a_ptr.byte_offset(a_stride * offset);
+        let b = *b_ptr.byte_offset(b_stride * offset);
+        *out_ptr.byte_offset(out_stride * offset) = K::apply(a, b);
+    }
+}
+```
+
+## Dispatch Selects Layout
+
+Layout detection happens once in `dispatch.rs`:
+
+```rust
+if a.is_contiguous() && b.is_contiguous() && out.is_contiguous() {
+    loops::map_binary(a_slice, b_slice, out_slice, kernel);
+} else {
+    unsafe { loops::map_binary_strided(a_ptr, a_stride, ..., kernel); }
 }
 ```
 
 ## Benefits
 
-1. **Single dispatch path** - no contiguous/strided branching in caller
-2. **Loop controls optimization** - can have internal fast paths
-3. **Matches NumPy** - familiar pattern, proven design
-4. **Future SIMD** - easy to add explicit SIMD for contiguous case
+1. **SIMD for contiguous**: Slice loops auto-vectorize
+2. **Correct for strided**: Pointer arithmetic handles views
+3. **Single kernel definition**: Same `K::apply` used by both paths
+4. **Monomorphization**: Zero-sized kernels inline completely
 
-## Registration
+## See Also
 
-Same registry pattern, just different function signature:
-```rust
-registry.register_binary(BinaryOp::Add, DTypeKind::Float64, add_f64);
-```
-
-Macros generate loops to reduce boilerplate.
+- `designs/kernel-dispatch.md` - Full architecture
+- `designs/iteration-performance.md` - Benchmarks

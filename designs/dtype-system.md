@@ -13,7 +13,7 @@ Enable adding new dtypes with minimal code changes, including parametric types l
 **`DTypeOps` trait**: Encapsulates all dtype-specific behavior:
 - `kind()` - returns `DTypeKind` for equality/hashing
 - `itemsize()`, `typestr()`, `format_char()`, `name()` - metadata
-- Buffer-based ops (`add`, `mul`, `neg`, etc.) - each dtype uses its native type internally
+- Buffer-based ops (`add`, `mul`, `neg`, etc.) - fallback implementations
 - `to_pyobject()`, `from_pyobject()` - Python interop (the only universal interface)
 - `promotion_priority()` - type promotion
 
@@ -21,10 +21,7 @@ Enable adding new dtypes with minimal code changes, including parametric types l
 
 **`DTypeKind` enum**: Used for equality, hashing, and pattern matching. Parametric types include their parameters in the enum variant.
 
-**Hybrid dispatch (registry + trait)**: Operations check a global `UFuncRegistry` first for type-specific loops, falling back to `DTypeOps` trait methods. This enables:
-- Optimized loops for common types without touching trait code
-- Type-specific behavior (e.g., bitwise only for ints)
-- New dtypes work immediately via trait fallback
+**Kernel/dispatch for operations**: Primary path uses kernel/dispatch system (see `designs/kernel-dispatch.md`). `DTypeOps` trait provides fallback for unsupported types.
 
 **NumPy-compatible type promotion**: `promote_dtype()` follows NumPy's safe-casting rules (e.g., int64+float32→float64).
 
@@ -37,13 +34,12 @@ Enable adding new dtypes with minimal code changes, including parametric types l
    - Add constructor `DType::newtype()`
    - Add string parsing in `DType::from_str()` (e.g., `"newtype" | "<n8"`)
    - Update `promote_dtype()` if the type participates in promotion
-3. **Add registry loops** (`src/ops/registry.rs`):
-   - Binary ops (Add, Sub, Mul, Div) for same-type operations
-   - Unary ops (Neg, Abs, etc.) as appropriate
-   - Reduce ops (Sum, Prod, Max, Min) as appropriate
-4. **Update ops dispatch** (`src/ops/mod.rs`):
-   - Add to transcendental checks if it's a float-like type
-   - Add to complex checks if it's a complex type
+3. **Add kernel impls** (`src/ops/kernels/*.rs`):
+   - `impl BinaryKernel<NewType> for Add { ... }` etc.
+   - `impl UnaryKernel<NewType> for Sqrt { ... }` etc.
+   - `impl ReduceKernel<NewType> for Sum { ... }` etc.
+4. **Add dispatch arms** (`src/ops/dispatch.rs`):
+   - Add `DTypeKind::NewType` cases to dispatch functions
 5. **Add Python bindings** (`src/python/mod.rs`):
    - Add typestr parsing (e.g., `('n', 8) => Ok(DType::newtype())`)
 6. **Add tests**: Create parametrized tests in `tests/test_*.py` covering the new dtype
@@ -82,17 +78,11 @@ impl DType {
 }
 ```
 
-## Existing Macros
-
-For types that share similar structure, use existing macros in `src/ops/registry.rs`:
-- `register_complex_loops!($reg, $kind, $T)` - registers all binary/unary/reduce ops for complex types (used for Complex64 and Complex128)
-- `register_strided_unary!` - registers unary ops with contiguous fast path
-- `register_float_reduce!`, `register_int_reduce!` - reduce ops for numeric types
-
 ## Key Files
 
 - `src/array/dtype/mod.rs` - `DType`, `DTypeKind`, `DTypeOps` trait, `promote_dtype()`
 - `src/array/dtype/*.rs` - dtype implementations via macros (floats.rs, integers.rs, complex64.rs, etc.)
-- `src/ops/registry.rs` - `UFuncRegistry` for type-specific inner loops
-- `src/ops/ufunc.rs` - `map_binary_op`, `map_unary_op` with registry dispatch
+- `src/ops/kernels/*.rs` - kernel implementations per dtype
+- `src/ops/dispatch.rs` - type resolution and layout selection
+- `src/ops/ufunc.rs` - `map_binary_op`, `map_unary_op` with dispatch
 - `src/python/mod.rs` - Python typestr parsing in `dtype_from_typestr()`
