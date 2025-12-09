@@ -18,16 +18,32 @@ pytest tests/ -v
 
 ## Testing Philosophy
 
-- **TDD**: Write tests first, compare against numpy
-- **Pattern**: Do same operation in rumpy and numpy, use `assert_eq(r, n)`
-- **Location**: `tests/helpers.py` has `assert_eq` utility
+See `designs/testing.md` for full details. Key points:
+
+- **NumPy is truth**: Every test compares rumpy against numpy
+- **Parametrize over operations**: Group by domain, test all variants
+- **Tiered dtypes**: Core dtypes for wrappers, full coverage for custom code
+- **Use fixtures**: `conftest.py` has dtype/shape constants and fixtures
 
 ```python
-def test_feature():
-    r = rp.some_op(...)
-    n = np.some_op(...)
-    assert_eq(r, n)
+from conftest import FLOAT_DTYPES, NUMERIC_DTYPES, CORE_SHAPES
+
+# Pattern: parametrize over operations
+POSITIVE_UFUNCS = ["sqrt", "log", "log10"]
+
+class TestPositiveUfuncs:
+    @pytest.mark.parametrize("ufunc", POSITIVE_UFUNCS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_dtypes(self, ufunc, dtype):
+        n = np.array([1, 4, 9], dtype=dtype)
+        r = rp.asarray(n)
+        assert_eq(getattr(rp, ufunc)(r), getattr(np, ufunc)(n))
 ```
+
+**Helpers** (`tests/helpers.py`):
+- `assert_eq(r, n)` - compare rumpy vs numpy arrays
+- `make_numpy(shape, dtype)` - generate test array with non-trivial values
+- `make_pair(shape, dtype)` - returns (rumpy, numpy) pair
 
 ## File Structure
 
@@ -104,13 +120,21 @@ src/
     └── pcg64.rs              # PCG64DXSM implementation
 
 tests/                        # pytest tests (compare against numpy)
-├── helpers.py                # assert_eq utility
-├── test_creation.py          # Array creation tests
-├── test_math.py              # Unary/binary math ops
-├── test_reductions.py        # sum, mean, std, etc.
-├── test_shape.py             # reshape, transpose, stack
-├── test_linalg.py            # Linear algebra
-├── test_random.py            # Random number generation
+├── conftest.py               # Dtype tiers, shape constants, fixtures
+├── helpers.py                # assert_eq, make_numpy, make_pair utilities
+├── test_creation.py          # zeros, ones, arange, linspace, eye, full
+├── test_unary.py             # sqrt, exp, log, sin, cos, abs, sign...
+├── test_binary.py            # add, sub, mul, div, pow, maximum...
+├── test_reductions.py        # sum, mean, max, min, argmax, var, std...
+├── test_dtypes.py            # dtype creation, interop, promotion
+├── test_shape.py             # reshape, transpose, stack, split, flip
+├── test_indexing.py          # slicing, take, put, searchsorted
+├── test_bitwise.py           # &, |, ^, ~, <<, >>
+├── test_logical.py           # all, any, logical_and/or/xor/not
+├── test_sorting.py           # sort, argsort, unique, partition
+├── test_linalg.py            # matmul, solve, det, inv, svd, qr
+├── test_fft.py               # fft, ifft, fft2
+├── test_random.py            # Generator, random, integers
 └── ...
 
 designs/                      # Architecture docs (why decisions were made)
@@ -152,6 +176,7 @@ To add array methods: add to appropriate `pyarray/*.rs` submodule with `#[pymeth
 
 | Doc | When to Read |
 |-----|--------------|
+| `designs/testing.md` | **Writing tests** - dtype tiers, shape strategy, patterns |
 | `designs/kernel-dispatch.md` | **Adding operations** - kernel/loop/dispatch architecture |
 | `designs/expression-problem.md` | Why kernel/dispatch exists (N dtypes × M ops) |
 | `designs/dtype-system.md` | Adding new dtypes |
