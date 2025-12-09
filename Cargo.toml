@@ -22,3 +22,4 @@ rustfft = "6.2"
 num-complex = "0.4"
 blas-src = { version = "0.10", optional = true }
 blas = { version = "0.22" }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

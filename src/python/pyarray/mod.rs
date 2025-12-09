@@ -636,6 +636,19 @@ impl PyRumpyArray {
         Ok(pyo3::types::PyBytes::new(py, bytes))
     }
 
+    /// Write array to a file as binary or text.
+    #[pyo3(signature = (fid, sep=None, format=None))]
+    fn tofile(&self, fid: &str, sep: Option<&str>, format: Option<&str>) -> PyResult<()> {
+        let path = std::path::PathBuf::from(fid);
+        let sep = sep.unwrap_or("");
+        let format = format.unwrap_or("");
+
+        crate::ops::io::tofile(&self.inner, &path, sep, format)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e))?;
+
+        Ok(())
+    }
+
     /// View array with a different dtype.
     fn view(&self, dtype: &str) -> PyResult<Self> {
         let new_dtype = parse_dtype(dtype)?;

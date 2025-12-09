@@ -1,6 +1,7 @@
 pub mod creation;
 pub mod fft;
 pub mod indexing;
+pub mod io;
 pub mod linalg;
 pub mod numerical;
 pub mod poly;
@@ -267,6 +268,16 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(poly::polyint, m)?)?;
     m.add_function(wrap_pyfunction!(poly::polyfit, m)?)?;
     m.add_function(wrap_pyfunction!(poly::roots_fn, m)?)?;
+    // I/O operations (from io module)
+    m.add_function(wrap_pyfunction!(io::loadtxt, m)?)?;
+    m.add_function(wrap_pyfunction!(io::savetxt, m)?)?;
+    m.add_function(wrap_pyfunction!(io::genfromtxt, m)?)?;
+    m.add_function(wrap_pyfunction!(io::save, m)?)?;
+    m.add_function(wrap_pyfunction!(io::load, m)?)?;
+    m.add_function(wrap_pyfunction!(io::savez, m)?)?;
+    m.add_function(wrap_pyfunction!(io::savez_compressed, m)?)?;
+    m.add_function(wrap_pyfunction!(io::frombuffer, m)?)?;
+    m.add_function(wrap_pyfunction!(io::fromfile, m)?)?;
     // Dtype constants (as strings, compatible with our dtype= parameters)
     m.add("float32", "float32")?;
     m.add("float64", "float64")?;
