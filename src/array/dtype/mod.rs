@@ -23,7 +23,7 @@ use datetime64::DateTime64Ops;
 pub use datetime64::TimeUnit;
 use float16::Float16Ops;
 use floats::{Float32Ops, Float64Ops};
-use integers::{Int16Ops, Int32Ops, Int64Ops, Uint8Ops, Uint16Ops, Uint32Ops, Uint64Ops};
+use integers::{Int8Ops, Int16Ops, Int32Ops, Int64Ops, Uint8Ops, Uint16Ops, Uint32Ops, Uint64Ops};
 
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
@@ -36,6 +36,7 @@ pub enum DTypeKind {
     Float16,
     Float32,
     Float64,
+    Int8,
     Int16,
     Int32,
     Int64,
@@ -158,7 +159,7 @@ pub trait DTypeOps: Send + Sync + 'static {
 
     /// Whether this is an integer type.
     fn is_integer(&self) -> bool {
-        matches!(self.kind(), DTypeKind::Int16 | DTypeKind::Int32 | DTypeKind::Int64 |
+        matches!(self.kind(), DTypeKind::Int8 | DTypeKind::Int16 | DTypeKind::Int32 | DTypeKind::Int64 |
                  DTypeKind::Uint8 | DTypeKind::Uint16 | DTypeKind::Uint32 | DTypeKind::Uint64)
     }
 
@@ -354,6 +355,7 @@ impl DType {
     pub fn float16() -> Self { DType(Arc::new(Float16Ops)) }
     pub fn float32() -> Self { DType(Arc::new(Float32Ops)) }
     pub fn float64() -> Self { DType(Arc::new(Float64Ops)) }
+    pub fn int8() -> Self { DType(Arc::new(Int8Ops)) }
     pub fn int16() -> Self { DType(Arc::new(Int16Ops)) }
     pub fn int32() -> Self { DType(Arc::new(Int32Ops)) }
     pub fn int64() -> Self { DType(Arc::new(Int64Ops)) }
@@ -395,6 +397,7 @@ impl FromStr for DType {
             "float16" | "f2" | "<f2" => Ok(Self::float16()),
             "float32" | "f4" | "<f4" => Ok(Self::float32()),
             "float64" | "f8" | "<f8" | "float" => Ok(Self::float64()),
+            "int8" | "i1" | "|i1" => Ok(Self::int8()),
             "int16" | "i2" | "<i2" => Ok(Self::int16()),
             "int32" | "i4" | "<i4" => Ok(Self::int32()),
             "int64" | "i8" | "<i8" | "int" => Ok(Self::int64()),
@@ -520,7 +523,7 @@ pub fn promote_dtype(a: &DType, b: &DType) -> DType {
 
     // Both are integers (or bool)
     // NumPy promotes signed+unsigned to a type that can hold both ranges
-    let is_signed = |k: &DTypeKind| matches!(k, Int16 | Int32 | Int64);
+    let is_signed = |k: &DTypeKind| matches!(k, Int8 | Int16 | Int32 | Int64);
     let is_unsigned = |k: &DTypeKind| matches!(k, Uint8 | Uint16 | Uint32 | Uint64);
 
     if (is_signed(&ak) && is_unsigned(&bk)) || (is_unsigned(&ak) && is_signed(&bk)) {

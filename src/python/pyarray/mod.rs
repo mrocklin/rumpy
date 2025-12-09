@@ -778,6 +778,15 @@ fn normalize_index(idx: isize, len: usize) -> usize {
     }
 }
 
+/// Resolve a potentially negative axis to a positive index.
+fn resolve_axis(axis: isize, ndim: usize) -> usize {
+    if axis < 0 {
+        (ndim as isize + axis) as usize
+    } else {
+        axis as usize
+    }
+}
+
 /// Normalize axis for sort/argsort operations.
 /// - If axis is None and default_last is false, returns None (flatten behavior)
 /// - If axis is None and default_last is true, returns last axis

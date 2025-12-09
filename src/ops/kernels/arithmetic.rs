@@ -451,6 +451,7 @@ macro_rules! impl_int_arithmetic {
 impl_int_arithmetic!(i64, 0i64, 1i64);
 impl_int_arithmetic!(i32, 0i32, 1i32);
 impl_int_arithmetic!(i16, 0i16, 1i16);
+impl_int_arithmetic!(i8, 0i8, 1i8);
 impl_int_arithmetic!(u64, 0u64, 1u64);
 impl_int_arithmetic!(u32, 0u32, 1u32);
 impl_int_arithmetic!(u16, 0u16, 1u16);

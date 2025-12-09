@@ -440,6 +440,7 @@ macro_rules! impl_unsigned_int_math {
 impl_signed_int_math!(i64);
 impl_signed_int_math!(i32);
 impl_signed_int_math!(i16);
+impl_signed_int_math!(i8);
 
 impl_unsigned_int_math!(u64);
 impl_unsigned_int_math!(u32);

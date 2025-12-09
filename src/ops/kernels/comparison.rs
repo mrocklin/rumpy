@@ -68,6 +68,7 @@ impl_ord_comparison!(f16);
 impl_ord_comparison!(i64);
 impl_ord_comparison!(i32);
 impl_ord_comparison!(i16);
+impl_ord_comparison!(i8);
 impl_ord_comparison!(u64);
 impl_ord_comparison!(u32);
 impl_ord_comparison!(u16);

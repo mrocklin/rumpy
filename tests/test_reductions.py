@@ -63,14 +63,13 @@ class TestStandardReductions:
         assert_eq(rp_fn(axis=1), np_fn(axis=1))
 
     @pytest.mark.parametrize("reduction", STANDARD_REDUCTIONS)
-    def test_negative_axis(self, reduction):
-        # Note: negative axis only works reliably for 2D arrays
+    def test_negative_axis_2d(self, reduction):
         n = np.arange(12, dtype=np.float64).reshape(3, 4)
         r = rp.asarray(n)
         rp_fn = getattr(r, reduction)
         np_fn = getattr(n, reduction)
-        # Use axis=1 instead of -1 due to known bug with negative axis
-        assert_eq(rp_fn(axis=1), np_fn(axis=1))
+        assert_eq(rp_fn(axis=-1), np_fn(axis=-1))
+        assert_eq(rp_fn(axis=-2), np_fn(axis=-2))
 
     @pytest.mark.parametrize("reduction", STANDARD_REDUCTIONS)
     def test_keepdims(self, reduction):
@@ -86,9 +85,17 @@ class TestStandardReductions:
         r = rp.asarray(n)
         rp_fn = getattr(r, reduction)
         np_fn = getattr(n, reduction)
-        # Note: negative axis has known bugs, use only positive axes
-        for axis in [0, 1, 2]:
+        for axis in [0, 1, 2, -1, -2, -3]:
             assert_eq(rp_fn(axis=axis), np_fn(axis=axis))
+
+    @pytest.mark.parametrize("reduction", STANDARD_REDUCTIONS)
+    def test_tuple_axis(self, reduction):
+        n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        r = rp.asarray(n)
+        rp_fn = getattr(rp, reduction)
+        np_fn = getattr(np, reduction)
+        assert_eq(rp_fn(r, axis=(0, 2)), np_fn(n, axis=(0, 2)))
+        assert_eq(rp_fn(r, axis=(1, 2)), np_fn(n, axis=(1, 2)))
 
 
 class TestStatReductions:
@@ -134,6 +141,21 @@ class TestStatReductions:
         rp_fn = getattr(r, reduction)
         np_fn = getattr(n, reduction)
         assert_eq(rp_fn(axis=0, keepdims=True), np_fn(axis=0, keepdims=True))
+
+    @pytest.mark.parametrize("reduction", STAT_REDUCTIONS)
+    def test_negative_axis_3d(self, reduction):
+        n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        r = rp.asarray(n)
+        rp_fn = getattr(r, reduction)
+        np_fn = getattr(n, reduction)
+        for axis in [-1, -2, -3]:
+            assert_eq(rp_fn(axis=axis), np_fn(axis=axis))
+
+    def test_mean_tuple_axis(self):
+        """Mean supports tuple axis."""
+        n = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        r = rp.asarray(n)
+        assert_eq(rp.mean(r, axis=(0, 1)), np.mean(n, axis=(0, 1)))
 
 
 class TestArgReductions:

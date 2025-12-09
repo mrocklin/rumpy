@@ -1,8 +1,10 @@
 // Python bindings for reduction operations (sum, mean, etc.)
 
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 
 use super::{pyarray, PyRumpyArray};
+use crate::array::RumpyArray;
 
 /// Helper for axis bounds checking.
 fn check_axis(axis: usize, ndim: usize) -> PyResult<()> {
@@ -25,6 +27,71 @@ pub fn resolve_axis(axis: isize, ndim: usize) -> usize {
     }
 }
 
+/// Parse axis parameter - can be None, a single int, or a tuple of ints.
+/// Returns None if axis is None, or Some(Vec<usize>) with normalized axes.
+fn parse_axis(axis: Option<&Bound<'_, pyo3::PyAny>>, ndim: usize) -> PyResult<Option<Vec<usize>>> {
+    match axis {
+        None => Ok(None),
+        Some(obj) => {
+            // Try to extract as a single integer
+            if let Ok(single) = obj.extract::<isize>() {
+                let normalized = resolve_axis(single, ndim);
+                check_axis(normalized, ndim)?;
+                Ok(Some(vec![normalized]))
+            }
+            // Try to extract as a tuple
+            else if let Ok(tuple) = obj.downcast::<PyTuple>() {
+                let mut axes = Vec::new();
+                for item in tuple.iter() {
+                    let ax = item.extract::<isize>()?;
+                    let normalized = resolve_axis(ax, ndim);
+                    check_axis(normalized, ndim)?;
+                    axes.push(normalized);
+                }
+                if axes.is_empty() {
+                    return Err(pyo3::exceptions::PyValueError::new_err("axis tuple cannot be empty"));
+                }
+                Ok(Some(axes))
+            }
+            // Try to extract as a list
+            else if let Ok(list) = obj.extract::<Vec<isize>>() {
+                let mut axes = Vec::new();
+                for ax in list {
+                    let normalized = resolve_axis(ax, ndim);
+                    check_axis(normalized, ndim)?;
+                    axes.push(normalized);
+                }
+                if axes.is_empty() {
+                    return Err(pyo3::exceptions::PyValueError::new_err("axis list cannot be empty"));
+                }
+                Ok(Some(axes))
+            }
+            else {
+                Err(pyo3::exceptions::PyTypeError::new_err(
+                    "axis must be an integer, tuple of integers, or None"
+                ))
+            }
+        }
+    }
+}
+
+/// Perform sequential reductions over multiple axes.
+/// When reducing axis N, all subsequent axes with index > N shift down by 1.
+/// To match NumPy, we sort axes in descending order and reduce from highest to lowest.
+fn reduce_multi_axis<F>(arr: &RumpyArray, mut axes: Vec<usize>, reduce_fn: F) -> RumpyArray
+where
+    F: Fn(&RumpyArray, usize) -> RumpyArray,
+{
+    // Sort axes in descending order to avoid index shifting issues
+    axes.sort_by(|a, b| b.cmp(a));
+
+    let mut result = arr.clone();
+    for &axis in &axes {
+        result = reduce_fn(&result, axis);
+    }
+    result
+}
+
 // ============================================================================
 // Basic reductions
 // ============================================================================
@@ -32,12 +99,16 @@ pub fn resolve_axis(axis: isize, ndim: usize) -> usize {
 /// Sum of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn sum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn sum(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.sum())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.sum_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.sum_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.sum_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -45,12 +116,16 @@ pub fn sum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 /// Product of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn prod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn prod(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.prod())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.prod_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.prod_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.prod_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -58,12 +133,16 @@ pub fn prod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reductio
 /// Mean of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn mean(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn mean(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.mean())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.mean_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.mean_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.mean_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -71,12 +150,16 @@ pub fn mean(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reductio
 /// Variance of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn var(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn var(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.var())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.var_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.var_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.var_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -84,12 +167,16 @@ pub fn var(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 /// Standard deviation of array elements.
 #[pyfunction]
 #[pyo3(name = "std", signature = (x, axis=None))]
-pub fn std_fn(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn std_fn(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.std())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.std_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.std_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.std_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -97,12 +184,16 @@ pub fn std_fn(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Maximum of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn max(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn max(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.max())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.max_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.max_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.max_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -110,12 +201,16 @@ pub fn max(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 /// Minimum of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn min(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn min(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.min())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.min_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.min_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.min_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -123,12 +218,16 @@ pub fn min(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 /// Index of maximum element.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn argmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn argmax(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.argmax() as f64)),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.argmax_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.argmax_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.argmax_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -136,12 +235,16 @@ pub fn argmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Index of minimum element.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn argmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn argmin(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.argmin() as f64)),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.argmin_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.argmin_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.argmin_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -153,12 +256,16 @@ pub fn argmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Sum ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nansum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nansum(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nansum())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nansum_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nansum_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nansum_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -166,12 +273,16 @@ pub fn nansum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Product ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nanprod(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanprod())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanprod_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanprod_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanprod_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -179,12 +290,16 @@ pub fn nanprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduc
 /// Mean ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanmean(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nanmean(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmean())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmean_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmean_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanmean_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -192,12 +307,16 @@ pub fn nanmean(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduc
 /// Variance ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanvar(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nanvar(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanvar())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanvar_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanvar_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanvar_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -205,12 +324,16 @@ pub fn nanvar(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Standard deviation ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanstd(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nanstd(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanstd())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanstd_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanstd_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanstd_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -218,12 +341,16 @@ pub fn nanstd(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Minimum ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nanmin(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmin())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmin_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmin_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanmin_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -231,12 +358,16 @@ pub fn nanmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Maximum ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn nanmax(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmax())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmax_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmax_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanmax_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -244,7 +375,7 @@ pub fn nanmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 /// Index of minimum ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanargmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+pub fn nanargmin(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<pyarray::ReductionResult> {
     match axis {
         None => {
             match x.inner.nanargmin() {
@@ -255,6 +386,7 @@ pub fn nanargmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Red
             }
         }
         Some(ax) => {
+            let ax = resolve_axis(ax, x.inner.ndim());
             check_axis(ax, x.inner.ndim())?;
             Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanargmin_axis(ax))))
         }
@@ -264,7 +396,7 @@ pub fn nanargmin(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Red
 /// Index of maximum ignoring NaN values.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn nanargmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
+pub fn nanargmax(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<pyarray::ReductionResult> {
     match axis {
         None => {
             match x.inner.nanargmax() {
@@ -275,6 +407,7 @@ pub fn nanargmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Red
             }
         }
         Some(ax) => {
+            let ax = resolve_axis(ax, x.inner.ndim());
             check_axis(ax, x.inner.ndim())?;
             Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanargmax_axis(ax))))
         }
@@ -288,12 +421,16 @@ pub fn nanargmax(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Red
 /// Test if all elements evaluate to True.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn all(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn all(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(if x.inner.all() { 1.0 } else { 0.0 })),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.all_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.all_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.all_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -301,12 +438,16 @@ pub fn all(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 /// Test if any element evaluates to True.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn any(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn any(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(if x.inner.any() { 1.0 } else { 0.0 })),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.any_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.any_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.any_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -318,31 +459,23 @@ pub fn any(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduction
 /// Cumulative sum along axis (or flattened if axis is None).
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn cumsum(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<PyRumpyArray> {
-    if let Some(ax) = axis {
-        if ax >= x.inner.ndim() {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "axis {} is out of bounds for array of dimension {}",
-                ax, x.inner.ndim()
-            )));
-        }
-    }
-    Ok(PyRumpyArray::new(x.inner.cumsum(axis)))
+pub fn cumsum(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    let normalized_axis = axis.map(|ax| {
+        let ax = resolve_axis(ax, x.inner.ndim());
+        check_axis(ax, x.inner.ndim()).map(|_| ax)
+    }).transpose()?;
+    Ok(PyRumpyArray::new(x.inner.cumsum(normalized_axis)))
 }
 
 /// Cumulative product along axis (or flattened if axis is None).
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn cumprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<PyRumpyArray> {
-    if let Some(ax) = axis {
-        if ax >= x.inner.ndim() {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "axis {} is out of bounds for array of dimension {}",
-                ax, x.inner.ndim()
-            )));
-        }
-    }
-    Ok(PyRumpyArray::new(x.inner.cumprod(axis)))
+pub fn cumprod(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    let normalized_axis = axis.map(|ax| {
+        let ax = resolve_axis(ax, x.inner.ndim());
+        check_axis(ax, x.inner.ndim()).map(|_| ax)
+    }).transpose()?;
+    Ok(PyRumpyArray::new(x.inner.cumprod(normalized_axis)))
 }
 
 // ============================================================================
@@ -352,12 +485,16 @@ pub fn cumprod(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<PyRumpyArray> 
 /// Median of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn median(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn median(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.median())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.median_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.median_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.median_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }
@@ -367,7 +504,7 @@ pub fn median(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::Reduct
 #[pyo3(signature = (x, axis=None, weights=None))]
 pub fn average(
     x: &PyRumpyArray,
-    axis: Option<usize>,
+    axis: Option<isize>,
     weights: Option<&PyRumpyArray>,
 ) -> PyResult<pyarray::ReductionResult> {
     match axis {
@@ -376,6 +513,7 @@ pub fn average(
             Ok(pyarray::ReductionResult::Scalar(x.inner.average(weights_inner)))
         }
         Some(ax) => {
+            let ax = resolve_axis(ax, x.inner.ndim());
             check_axis(ax, x.inner.ndim())?;
             let weights_inner = weights.map(|w| &w.inner);
             Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(
@@ -388,12 +526,16 @@ pub fn average(
 /// Peak to peak (max - min) of array elements.
 #[pyfunction]
 #[pyo3(signature = (x, axis=None))]
-pub fn ptp(x: &PyRumpyArray, axis: Option<usize>) -> PyResult<pyarray::ReductionResult> {
-    match axis {
+pub fn ptp(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
         None => Ok(pyarray::ReductionResult::Scalar(x.inner.ptp())),
-        Some(ax) => {
-            check_axis(ax, x.inner.ndim())?;
-            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.ptp_axis(ax))))
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.ptp_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.ptp_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
         }
     }
 }

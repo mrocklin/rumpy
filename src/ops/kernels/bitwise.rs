@@ -85,6 +85,7 @@ macro_rules! impl_bitwise_int {
 impl_bitwise_int!(i64);
 impl_bitwise_int!(i32);
 impl_bitwise_int!(i16);
+impl_bitwise_int!(i8);
 impl_bitwise_int!(u64);
 impl_bitwise_int!(u32);
 impl_bitwise_int!(u16);

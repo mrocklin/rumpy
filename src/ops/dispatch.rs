@@ -155,6 +155,7 @@ where
         + BinaryKernel<i64>
         + BinaryKernel<i32>
         + BinaryKernel<i16>
+        + BinaryKernel<i8>
         + BinaryKernel<u64>
         + BinaryKernel<u32>
         + BinaryKernel<u16>
@@ -177,6 +178,7 @@ where
         DTypeKind::Int64 => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_binary_typed::<i32, K>(a, b, out_shape, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_binary_typed::<i16, K>(a, b, out_shape, kernel, DType::int16()),
+        DTypeKind::Int8 => dispatch_binary_typed::<i8, K>(a, b, out_shape, kernel, DType::int8()),
         DTypeKind::Uint64 => dispatch_binary_typed::<u64, K>(a, b, out_shape, kernel, DType::uint64()),
         DTypeKind::Uint32 => dispatch_binary_typed::<u32, K>(a, b, out_shape, kernel, DType::uint32()),
         DTypeKind::Uint16 => dispatch_binary_typed::<u16, K>(a, b, out_shape, kernel, DType::uint16()),
@@ -289,7 +291,7 @@ pub fn dispatch_reduce_min(arr: &RumpyArray) -> Option<RumpyArray> {
 /// Generic reduce dispatch returning a 0-d array.
 fn dispatch_reduce_to_array<K>(arr: &RumpyArray, kernel: K) -> Option<RumpyArray>
 where
-    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<f16> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
+    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<f16> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16> + ReduceKernel<i8>
         + ReduceKernel<u64> + ReduceKernel<u32> + ReduceKernel<u16> + ReduceKernel<u8>
         + ReduceKernel<Complex<f64>> + ReduceKernel<Complex<f32>>,
 {
@@ -316,6 +318,30 @@ where
         DTypeKind::Int32 => {
             let val = dispatch_reduce_typed::<i32, K>(arr, size, kernel)?;
             Some(RumpyArray::full(vec![1], val as f64, DType::int32()))
+        }
+        DTypeKind::Int16 => {
+            let val = dispatch_reduce_typed::<i16, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val as f64, DType::int16()))
+        }
+        DTypeKind::Int8 => {
+            let val = dispatch_reduce_typed::<i8, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val as f64, DType::int8()))
+        }
+        DTypeKind::Uint64 => {
+            let val = dispatch_reduce_typed::<u64, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val as f64, DType::uint64()))
+        }
+        DTypeKind::Uint32 => {
+            let val = dispatch_reduce_typed::<u32, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val as f64, DType::uint32()))
+        }
+        DTypeKind::Uint16 => {
+            let val = dispatch_reduce_typed::<u16, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val as f64, DType::uint16()))
+        }
+        DTypeKind::Uint8 => {
+            let val = dispatch_reduce_typed::<u8, K>(arr, size, kernel)?;
+            Some(RumpyArray::full(vec![1], val as f64, DType::uint8()))
         }
         DTypeKind::Complex128 => {
             let val = dispatch_reduce_typed::<Complex<f64>, K>(arr, size, kernel)?;
@@ -381,7 +407,7 @@ pub fn dispatch_reduce_axis_min(arr: &RumpyArray, axis: usize) -> Option<RumpyAr
 /// Generic axis reduce dispatch.
 fn dispatch_reduce_axis_kernel<K>(arr: &RumpyArray, axis: usize, kernel: K) -> Option<RumpyArray>
 where
-    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<f16> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16>
+    K: ReduceKernel<f64> + ReduceKernel<f32> + ReduceKernel<f16> + ReduceKernel<i64> + ReduceKernel<i32> + ReduceKernel<i16> + ReduceKernel<i8>
         + ReduceKernel<u64> + ReduceKernel<u32> + ReduceKernel<u16> + ReduceKernel<u8>
         + ReduceKernel<Complex<f64>> + ReduceKernel<Complex<f32>>,
 {
@@ -393,6 +419,7 @@ where
         DTypeKind::Int64 => dispatch_reduce_axis_typed::<i64, K>(arr, axis, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_reduce_axis_typed::<i32, K>(arr, axis, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_reduce_axis_typed::<i16, K>(arr, axis, kernel, DType::int16()),
+        DTypeKind::Int8 => dispatch_reduce_axis_typed::<i8, K>(arr, axis, kernel, DType::int8()),
         DTypeKind::Uint64 => dispatch_reduce_axis_typed::<u64, K>(arr, axis, kernel, DType::uint64()),
         DTypeKind::Uint32 => dispatch_reduce_axis_typed::<u32, K>(arr, axis, kernel, DType::uint32()),
         DTypeKind::Uint16 => dispatch_reduce_axis_typed::<u16, K>(arr, axis, kernel, DType::uint16()),
@@ -731,6 +758,7 @@ where
         + UnaryKernel<i64>
         + UnaryKernel<i32>
         + UnaryKernel<i16>
+        + UnaryKernel<i8>
         + UnaryKernel<u64>
         + UnaryKernel<u32>
         + UnaryKernel<u16>
@@ -745,6 +773,7 @@ where
         DTypeKind::Int64 => dispatch_unary_typed::<i64, K>(arr, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_unary_typed::<i32, K>(arr, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_unary_typed::<i16, K>(arr, kernel, DType::int16()),
+        DTypeKind::Int8 => dispatch_unary_typed::<i8, K>(arr, kernel, DType::int8()),
         DTypeKind::Uint64 => dispatch_unary_typed::<u64, K>(arr, kernel, DType::uint64()),
         DTypeKind::Uint32 => dispatch_unary_typed::<u32, K>(arr, kernel, DType::uint32()),
         DTypeKind::Uint16 => dispatch_unary_typed::<u16, K>(arr, kernel, DType::uint16()),
@@ -881,6 +910,7 @@ where
         + CompareKernel<i64>
         + CompareKernel<i32>
         + CompareKernel<i16>
+        + CompareKernel<i8>
         + CompareKernel<u64>
         + CompareKernel<u32>
         + CompareKernel<u16>
@@ -903,6 +933,7 @@ where
         DTypeKind::Int64 => dispatch_compare_typed::<i64, K>(a, b, out_shape, kernel),
         DTypeKind::Int32 => dispatch_compare_typed::<i32, K>(a, b, out_shape, kernel),
         DTypeKind::Int16 => dispatch_compare_typed::<i16, K>(a, b, out_shape, kernel),
+        DTypeKind::Int8 => dispatch_compare_typed::<i8, K>(a, b, out_shape, kernel),
         DTypeKind::Uint64 => dispatch_compare_typed::<u64, K>(a, b, out_shape, kernel),
         DTypeKind::Uint32 => dispatch_compare_typed::<u32, K>(a, b, out_shape, kernel),
         DTypeKind::Uint16 => dispatch_compare_typed::<u16, K>(a, b, out_shape, kernel),
@@ -1054,6 +1085,7 @@ where
     K: BinaryKernel<i64>
         + BinaryKernel<i32>
         + BinaryKernel<i16>
+        + BinaryKernel<i8>
         + BinaryKernel<u64>
         + BinaryKernel<u32>
         + BinaryKernel<u16>
@@ -1072,6 +1104,7 @@ where
         DTypeKind::Int64 => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_binary_typed::<i32, K>(a, b, out_shape, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_binary_typed::<i16, K>(a, b, out_shape, kernel, DType::int16()),
+        DTypeKind::Int8 => dispatch_binary_typed::<i8, K>(a, b, out_shape, kernel, DType::int8()),
         DTypeKind::Uint64 => dispatch_binary_typed::<u64, K>(a, b, out_shape, kernel, DType::uint64()),
         DTypeKind::Uint32 => dispatch_binary_typed::<u32, K>(a, b, out_shape, kernel, DType::uint32()),
         DTypeKind::Uint16 => dispatch_binary_typed::<u16, K>(a, b, out_shape, kernel, DType::uint16()),
@@ -1093,6 +1126,7 @@ where
     K: BinaryKernel<i64>
         + BinaryKernel<i32>
         + BinaryKernel<i16>
+        + BinaryKernel<i8>
         + BinaryKernel<u64>
         + BinaryKernel<u32>
         + BinaryKernel<u16>
@@ -1110,6 +1144,7 @@ where
         DTypeKind::Int64 => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_binary_typed::<i32, K>(a, b, out_shape, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_binary_typed::<i16, K>(a, b, out_shape, kernel, DType::int16()),
+        DTypeKind::Int8 => dispatch_binary_typed::<i8, K>(a, b, out_shape, kernel, DType::int8()),
         DTypeKind::Uint64 => dispatch_binary_typed::<u64, K>(a, b, out_shape, kernel, DType::uint64()),
         DTypeKind::Uint32 => dispatch_binary_typed::<u32, K>(a, b, out_shape, kernel, DType::uint32()),
         DTypeKind::Uint16 => dispatch_binary_typed::<u16, K>(a, b, out_shape, kernel, DType::uint16()),
@@ -1177,6 +1212,7 @@ where
     K: UnaryKernel<i64>
         + UnaryKernel<i32>
         + UnaryKernel<i16>
+        + UnaryKernel<i8>
         + UnaryKernel<u64>
         + UnaryKernel<u32>
         + UnaryKernel<u16>
@@ -1187,6 +1223,7 @@ where
         DTypeKind::Int64 => dispatch_unary_typed::<i64, K>(arr, kernel, DType::int64()),
         DTypeKind::Int32 => dispatch_unary_typed::<i32, K>(arr, kernel, DType::int32()),
         DTypeKind::Int16 => dispatch_unary_typed::<i16, K>(arr, kernel, DType::int16()),
+        DTypeKind::Int8 => dispatch_unary_typed::<i8, K>(arr, kernel, DType::int8()),
         DTypeKind::Uint64 => dispatch_unary_typed::<u64, K>(arr, kernel, DType::uint64()),
         DTypeKind::Uint32 => dispatch_unary_typed::<u32, K>(arr, kernel, DType::uint32()),
         DTypeKind::Uint16 => dispatch_unary_typed::<u16, K>(arr, kernel, DType::uint16()),

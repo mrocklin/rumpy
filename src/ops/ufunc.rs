@@ -51,7 +51,7 @@ fn is_transcendental(op: UnaryOp) -> bool {
 
 /// Check if dtype is an integer type.
 pub(crate) fn is_integer_kind(kind: &DTypeKind) -> bool {
-    matches!(kind, DTypeKind::Int16 | DTypeKind::Int32 | DTypeKind::Int64 |
+    matches!(kind, DTypeKind::Int8 | DTypeKind::Int16 | DTypeKind::Int32 | DTypeKind::Int64 |
              DTypeKind::Uint8 | DTypeKind::Uint16 | DTypeKind::Uint32 | DTypeKind::Uint64)
 }
 

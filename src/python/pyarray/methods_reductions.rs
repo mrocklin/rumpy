@@ -11,7 +11,7 @@ use crate::array::DType;
 #[pymethods]
 impl PyRumpyArray {
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn sum(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn sum(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -20,6 +20,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.sum_axis(ax),
@@ -31,7 +32,7 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn prod(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn prod(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -40,6 +41,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.prod_axis(ax),
@@ -51,7 +53,7 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn max(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn max(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -60,6 +62,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.max_axis(ax),
@@ -71,7 +74,7 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn min(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn min(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -80,6 +83,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.min_axis(ax),
@@ -91,7 +95,7 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn mean(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn mean(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -100,6 +104,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.mean_axis(ax),
@@ -111,7 +116,7 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn var(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn var(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -120,6 +125,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.var_axis(ax),
@@ -131,7 +137,7 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn std(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn std(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -140,6 +146,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.std_axis(ax),
@@ -152,7 +159,7 @@ impl PyRumpyArray {
 
     /// Central moment of order k.
     #[pyo3(signature = (k, axis=None, keepdims=false))]
-    fn moment(&self, k: usize, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn moment(&self, k: usize, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -161,6 +168,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.moment_axis(k, ax),
@@ -173,7 +181,7 @@ impl PyRumpyArray {
 
     /// Skewness (Fisher's definition).
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn skew(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn skew(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -182,6 +190,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.skew_axis(ax),
@@ -194,7 +203,7 @@ impl PyRumpyArray {
 
     /// Kurtosis (Fisher's definition: excess kurtosis, normal = 0).
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn kurtosis(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn kurtosis(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
                 &self.inner,
@@ -203,6 +212,7 @@ impl PyRumpyArray {
                 self.inner.dtype(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.kurtosis_axis(ax),
@@ -214,10 +224,11 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None))]
-    fn argmax(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    fn argmax(&self, axis: Option<isize>) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(ReductionResult::Scalar(self.inner.argmax() as f64)),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(ReductionResult::Array(Self::new(
                     self.inner.argmax_axis(ax),
@@ -227,10 +238,11 @@ impl PyRumpyArray {
     }
 
     #[pyo3(signature = (axis=None))]
-    fn argmin(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+    fn argmin(&self, axis: Option<isize>) -> PyResult<ReductionResult> {
         match axis {
             None => Ok(ReductionResult::Scalar(self.inner.argmin() as f64)),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(ReductionResult::Array(Self::new(
                     self.inner.argmin_axis(ax),
@@ -241,7 +253,7 @@ impl PyRumpyArray {
 
     /// Test if all elements evaluate to True.
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn all(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn all(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         let val = if self.inner.all() { 1.0 } else { 0.0 };
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
@@ -251,6 +263,7 @@ impl PyRumpyArray {
                 DType::bool(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.all_axis(ax),
@@ -263,7 +276,7 @@ impl PyRumpyArray {
 
     /// Test if any element evaluates to True.
     #[pyo3(signature = (axis=None, keepdims=false))]
-    fn any(&self, axis: Option<usize>, keepdims: bool) -> PyResult<ReductionResult> {
+    fn any(&self, axis: Option<isize>, keepdims: bool) -> PyResult<ReductionResult> {
         let val = if self.inner.any() { 1.0 } else { 0.0 };
         match axis {
             None => Ok(scalar_reduction_with_keepdims(
@@ -273,6 +286,7 @@ impl PyRumpyArray {
                 DType::bool(),
             )),
             Some(ax) => {
+                let ax = super::resolve_axis(ax, self.inner.ndim());
                 check_axis(ax, self.inner.ndim())?;
                 Ok(axis_reduction_with_keepdims(
                     self.inner.any_axis(ax),

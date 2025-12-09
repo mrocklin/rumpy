@@ -68,6 +68,54 @@ class TestUnsignedIntegers:
         assert r.itemsize == 8
 
 
+class TestSmallIntegerDtypes:
+    """Test int8, int16, uint16 dtypes."""
+
+    def test_int8_from_numpy(self):
+        n = np.array([1, 2, 3], dtype=np.int8)
+        r = rp.asarray(n)
+        assert_eq(r, n)
+
+    def test_int16_from_numpy(self):
+        n = np.array([1, 2, 3], dtype=np.int16)
+        r = rp.asarray(n)
+        assert_eq(r, n)
+
+    def test_uint16_from_numpy(self):
+        n = np.array([1, 2, 3], dtype=np.uint16)
+        r = rp.asarray(n)
+        assert_eq(r, n)
+
+    def test_int8_creation(self):
+        r = rp.zeros(5, dtype="int8")
+        n = np.zeros(5, dtype=np.int8)
+        assert_eq(r, n)
+
+    def test_int16_creation(self):
+        r = rp.zeros(5, dtype="int16")
+        n = np.zeros(5, dtype=np.int16)
+        assert_eq(r, n)
+
+    def test_uint16_creation(self):
+        r = rp.zeros(5, dtype="uint16")
+        n = np.zeros(5, dtype=np.uint16)
+        assert_eq(r, n)
+
+
+class TestFloat16Interop:
+    """Test float16 numpy interop."""
+
+    def test_float16_from_numpy(self):
+        n = np.array([1.0, 2.0, 3.0], dtype=np.float16)
+        r = rp.asarray(n)
+        assert_eq(r, n)
+
+    def test_float16_creation(self):
+        r = rp.zeros(5, dtype="float16")
+        n = np.zeros(5, dtype=np.float16)
+        assert_eq(r, n)
+
+
 class TestUnsignedInterop:
     """Test numpy interop with unsigned types."""
 

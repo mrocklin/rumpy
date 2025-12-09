@@ -7,6 +7,7 @@ use super::{BinaryOp, BitwiseOp, DTypeKind, DTypeOps, ReduceOp, UnaryOp};
 impl_signed_int_dtype!(Int64Ops, i64, 8, Int64, "int64", "<i8", "q", 80);
 impl_signed_int_dtype!(Int32Ops, i32, 4, Int32, "int32", "<i4", "i", 70);
 impl_signed_int_dtype!(Int16Ops, i16, 2, Int16, "int16", "<i2", "h", 60);
+impl_signed_int_dtype!(Int8Ops, i8, 1, Int8, "int8", "|i1", "b", 50);
 
 // Unsigned integers
 impl_unsigned_int_dtype!(Uint64Ops, u64, 8, Uint64, "uint64", "<u8", "Q", 75);
