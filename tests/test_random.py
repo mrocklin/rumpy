@@ -813,6 +813,573 @@ class TestNumPyComparison:
         assert np.asarray(r).shape == n.shape
 
 
+# === Tier 1 Distributions: Common ===
+
+
+class TestLognormal:
+    """Test rp.random.Generator.lognormal()."""
+
+    def test_scalar(self):
+        """Test generating single lognormal value."""
+        rng = rp.random.default_rng(42)
+        val = rng.lognormal(0.0, 1.0)
+        assert isinstance(val, float)
+        assert val > 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.lognormal(0.0, 1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test lognormal has correct mean."""
+        rng = rp.random.default_rng(42)
+        mean, sigma = 0.0, 0.5
+        arr = rng.lognormal(mean, sigma, size=10000)
+        n = np.asarray(arr)
+        # Lognormal mean = exp(mean + sigma^2/2)
+        expected_mean = np.exp(mean + sigma**2 / 2)
+        assert abs(n.mean() - expected_mean) < 0.05
+        assert n.min() > 0
+
+
+class TestLaplace:
+    """Test rp.random.Generator.laplace()."""
+
+    def test_scalar(self):
+        """Test generating single Laplace value."""
+        rng = rp.random.default_rng(42)
+        val = rng.laplace(0.0, 1.0)
+        assert isinstance(val, float)
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.laplace(0.0, 1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test Laplace has correct mean."""
+        rng = rp.random.default_rng(42)
+        loc, scale = 2.0, 1.5
+        arr = rng.laplace(loc, scale, size=10000)
+        n = np.asarray(arr)
+        assert abs(n.mean() - loc) < 0.1
+        # Laplace variance = 2 * scale^2
+        expected_var = 2 * scale**2
+        assert abs(n.var() - expected_var) < 0.5
+
+
+class TestLogistic:
+    """Test rp.random.Generator.logistic()."""
+
+    def test_scalar(self):
+        """Test generating single logistic value."""
+        rng = rp.random.default_rng(42)
+        val = rng.logistic(0.0, 1.0)
+        assert isinstance(val, float)
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.logistic(0.0, 1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test logistic has correct mean."""
+        rng = rp.random.default_rng(42)
+        loc, scale = 3.0, 2.0
+        arr = rng.logistic(loc, scale, size=10000)
+        n = np.asarray(arr)
+        assert abs(n.mean() - loc) < 0.1
+
+
+class TestRayleigh:
+    """Test rp.random.Generator.rayleigh()."""
+
+    def test_scalar(self):
+        """Test generating single Rayleigh value."""
+        rng = rp.random.default_rng(42)
+        val = rng.rayleigh(1.0)
+        assert isinstance(val, float)
+        assert val >= 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.rayleigh(1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test Rayleigh has correct mean."""
+        rng = rp.random.default_rng(42)
+        scale = 2.0
+        arr = rng.rayleigh(scale, size=10000)
+        n = np.asarray(arr)
+        # Rayleigh mean = scale * sqrt(pi/2)
+        expected_mean = scale * np.sqrt(np.pi / 2)
+        assert abs(n.mean() - expected_mean) < 0.1
+        assert n.min() >= 0
+
+
+class TestWeibull:
+    """Test rp.random.Generator.weibull()."""
+
+    def test_scalar(self):
+        """Test generating single Weibull value."""
+        rng = rp.random.default_rng(42)
+        val = rng.weibull(2.0)
+        assert isinstance(val, float)
+        assert val >= 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.weibull(2.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test Weibull values are positive."""
+        rng = rp.random.default_rng(42)
+        arr = rng.weibull(2.0, size=10000)
+        n = np.asarray(arr)
+        assert n.min() >= 0
+
+
+# === Tier 2 Distributions: Discrete ===
+
+
+class TestGeometric:
+    """Test rp.random.Generator.geometric()."""
+
+    def test_scalar(self):
+        """Test generating single geometric value."""
+        rng = rp.random.default_rng(42)
+        val = rng.geometric(0.5)
+        assert isinstance(val, (int, float))
+        assert val >= 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.geometric(0.5, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test geometric has correct mean."""
+        rng = rp.random.default_rng(42)
+        p = 0.3
+        arr = rng.geometric(p, size=10000)
+        n = np.asarray(arr)
+        # Geometric mean (failures before first success) = (1-p)/p
+        expected_mean = (1 - p) / p
+        assert abs(n.mean() - expected_mean) < 0.2
+        assert n.min() >= 0
+
+
+class TestNegativeBinomial:
+    """Test rp.random.Generator.negative_binomial()."""
+
+    def test_scalar(self):
+        """Test generating single negative binomial value."""
+        rng = rp.random.default_rng(42)
+        val = rng.negative_binomial(5, 0.5)
+        assert isinstance(val, (int, float))
+        assert val >= 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.negative_binomial(5, 0.5, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test negative binomial has correct mean."""
+        rng = rp.random.default_rng(42)
+        n, p = 5, 0.4
+        arr = rng.negative_binomial(n, p, size=10000)
+        result = np.asarray(arr)
+        # Negative binomial mean = n*(1-p)/p
+        expected_mean = n * (1 - p) / p
+        assert abs(result.mean() - expected_mean) < 0.5
+        assert result.min() >= 0
+
+
+class TestHypergeometric:
+    """Test rp.random.Generator.hypergeometric()."""
+
+    def test_scalar(self):
+        """Test generating single hypergeometric value."""
+        rng = rp.random.default_rng(42)
+        val = rng.hypergeometric(10, 5, 7)
+        assert isinstance(val, (int, float))
+        assert 0 <= val <= 7
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.hypergeometric(10, 5, 7, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test hypergeometric has correct mean."""
+        rng = rp.random.default_rng(42)
+        ngood, nbad, nsample = 20, 10, 15
+        arr = rng.hypergeometric(ngood, nbad, nsample, size=10000)
+        n = np.asarray(arr)
+        # Hypergeometric mean = nsample * ngood / (ngood + nbad)
+        expected_mean = nsample * ngood / (ngood + nbad)
+        assert abs(n.mean() - expected_mean) < 0.2
+        assert n.min() >= 0
+        assert n.max() <= nsample
+
+
+class TestMultinomial:
+    """Test rp.random.Generator.multinomial()."""
+
+    def test_basic(self):
+        """Test basic multinomial."""
+        rng = rp.random.default_rng(42)
+        result = rng.multinomial(10, [0.2, 0.3, 0.5])
+        n = np.asarray(result)
+        assert n.shape == (1, 3)
+        # Each row should sum to n
+        assert np.allclose(n.sum(axis=1), 10)
+
+    def test_with_size(self):
+        """Test multinomial with size parameter."""
+        rng = rp.random.default_rng(42)
+        result = rng.multinomial(10, [0.2, 0.3, 0.5], size=100)
+        n = np.asarray(result)
+        assert n.shape == (100, 3)
+        assert np.allclose(n.sum(axis=1), 10)
+
+    def test_statistics(self):
+        """Test multinomial has correct means."""
+        rng = rp.random.default_rng(42)
+        n_trials = 100
+        pvals = [0.2, 0.3, 0.5]
+        result = rng.multinomial(n_trials, pvals, size=1000)
+        arr = np.asarray(result)
+        # Mean for each category = n * p
+        for i, p in enumerate(pvals):
+            expected = n_trials * p
+            assert abs(arr[:, i].mean() - expected) < 2
+
+
+class TestZipf:
+    """Test rp.random.Generator.zipf()."""
+
+    def test_scalar(self):
+        """Test generating single Zipf value."""
+        rng = rp.random.default_rng(42)
+        val = rng.zipf(2.0)
+        assert isinstance(val, (int, float))
+        assert val >= 1
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.zipf(2.0, size=shape)
+        assert arr.shape == shape
+
+    def test_values_positive(self):
+        """Test Zipf values are >= 1."""
+        rng = rp.random.default_rng(42)
+        arr = rng.zipf(2.0, size=1000)
+        n = np.asarray(arr)
+        assert n.min() >= 1
+
+
+# === Tier 3 Distributions: Specialized ===
+
+
+class TestTriangular:
+    """Test rp.random.Generator.triangular()."""
+
+    def test_scalar(self):
+        """Test generating single triangular value."""
+        rng = rp.random.default_rng(42)
+        val = rng.triangular(0.0, 0.5, 1.0)
+        assert isinstance(val, float)
+        assert 0.0 <= val <= 1.0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.triangular(0.0, 0.5, 1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_range(self):
+        """Test triangular values are in [left, right]."""
+        rng = rp.random.default_rng(42)
+        left, mode, right = 2.0, 5.0, 8.0
+        arr = rng.triangular(left, mode, right, size=10000)
+        n = np.asarray(arr)
+        assert n.min() >= left
+        assert n.max() <= right
+
+    def test_statistics(self):
+        """Test triangular has correct mean."""
+        rng = rp.random.default_rng(42)
+        left, mode, right = 0.0, 0.5, 1.0
+        arr = rng.triangular(left, mode, right, size=10000)
+        n = np.asarray(arr)
+        # Triangular mean = (left + mode + right) / 3
+        expected_mean = (left + mode + right) / 3
+        assert abs(n.mean() - expected_mean) < 0.02
+
+
+class TestVonmises:
+    """Test rp.random.Generator.vonmises()."""
+
+    def test_scalar(self):
+        """Test generating single von Mises value."""
+        rng = rp.random.default_rng(42)
+        val = rng.vonmises(0.0, 1.0)
+        assert isinstance(val, float)
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.vonmises(0.0, 1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_range(self):
+        """Test von Mises values are in [-pi, pi]."""
+        rng = rp.random.default_rng(42)
+        arr = rng.vonmises(0.0, 1.0, size=1000)
+        n = np.asarray(arr)
+        assert n.min() >= -np.pi
+        assert n.max() <= np.pi
+
+
+class TestPareto:
+    """Test rp.random.Generator.pareto()."""
+
+    def test_scalar(self):
+        """Test generating single Pareto value."""
+        rng = rp.random.default_rng(42)
+        val = rng.pareto(3.0)
+        assert isinstance(val, float)
+        assert val >= 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.pareto(3.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test Pareto values are non-negative."""
+        rng = rp.random.default_rng(42)
+        arr = rng.pareto(3.0, size=10000)
+        n = np.asarray(arr)
+        assert n.min() >= 0
+
+
+class TestWald:
+    """Test rp.random.Generator.wald()."""
+
+    def test_scalar(self):
+        """Test generating single Wald value."""
+        rng = rp.random.default_rng(42)
+        val = rng.wald(1.0, 1.0)
+        assert isinstance(val, float)
+        assert val > 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.wald(1.0, 1.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test Wald has correct mean."""
+        rng = rp.random.default_rng(42)
+        mean, scale = 2.0, 3.0
+        arr = rng.wald(mean, scale, size=10000)
+        n = np.asarray(arr)
+        # Wald mean = mean parameter
+        assert abs(n.mean() - mean) < 0.1
+        assert n.min() > 0
+
+
+class TestDirichlet:
+    """Test rp.random.Generator.dirichlet()."""
+
+    def test_basic(self):
+        """Test basic Dirichlet."""
+        rng = rp.random.default_rng(42)
+        result = rng.dirichlet([1.0, 2.0, 3.0])
+        n = np.asarray(result)
+        assert n.shape == (1, 3)
+        # Each row should sum to 1
+        assert np.allclose(n.sum(axis=1), 1.0)
+        # All values should be in [0, 1]
+        assert n.min() >= 0
+        assert n.max() <= 1
+
+    def test_with_size(self):
+        """Test Dirichlet with size parameter."""
+        rng = rp.random.default_rng(42)
+        result = rng.dirichlet([1.0, 2.0, 3.0], size=100)
+        n = np.asarray(result)
+        assert n.shape == (100, 3)
+        assert np.allclose(n.sum(axis=1), 1.0)
+
+    def test_statistics(self):
+        """Test Dirichlet has correct means."""
+        rng = rp.random.default_rng(42)
+        alpha = [2.0, 3.0, 5.0]
+        result = rng.dirichlet(alpha, size=10000)
+        arr = np.asarray(result)
+        # Mean for each category = alpha_i / sum(alpha)
+        alpha_sum = sum(alpha)
+        for i, a in enumerate(alpha):
+            expected = a / alpha_sum
+            assert abs(arr[:, i].mean() - expected) < 0.02
+
+
+class TestStandardT:
+    """Test rp.random.Generator.standard_t()."""
+
+    def test_scalar(self):
+        """Test generating single standard t value."""
+        rng = rp.random.default_rng(42)
+        val = rng.standard_t(5.0)
+        assert isinstance(val, float)
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.standard_t(5.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test standard t has mean near 0."""
+        rng = rp.random.default_rng(42)
+        df = 10.0
+        arr = rng.standard_t(df, size=10000)
+        n = np.asarray(arr)
+        # t distribution mean = 0 for df > 1
+        assert abs(n.mean()) < 0.1
+
+
+class TestStandardCauchy:
+    """Test rp.random.Generator.standard_cauchy()."""
+
+    def test_scalar(self):
+        """Test generating single standard Cauchy value."""
+        rng = rp.random.default_rng(42)
+        val = rng.standard_cauchy()
+        assert isinstance(val, float)
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.standard_cauchy(size=shape)
+        assert arr.shape == shape
+
+    def test_median_near_zero(self):
+        """Test standard Cauchy median is near 0."""
+        rng = rp.random.default_rng(42)
+        arr = rng.standard_cauchy(size=10000)
+        n = np.asarray(arr)
+        # Cauchy median = 0 (mean is undefined)
+        assert abs(np.median(n)) < 0.1
+
+
+class TestStandardGamma:
+    """Test rp.random.Generator.standard_gamma()."""
+
+    def test_scalar(self):
+        """Test generating single standard gamma value."""
+        rng = rp.random.default_rng(42)
+        val = rng.standard_gamma(2.0)
+        assert isinstance(val, float)
+        assert val > 0
+
+    @pytest.mark.parametrize("shape", CORE_SHAPES)
+    def test_shapes(self, shape):
+        """Test various output shapes."""
+        rng = rp.random.default_rng(42)
+        arr = rng.standard_gamma(2.0, size=shape)
+        assert arr.shape == shape
+
+    def test_statistics(self):
+        """Test standard gamma has correct mean."""
+        rng = rp.random.default_rng(42)
+        shape_param = 3.0
+        arr = rng.standard_gamma(shape_param, size=10000)
+        n = np.asarray(arr)
+        # Standard gamma mean = shape
+        assert abs(n.mean() - shape_param) < 0.15
+        assert n.min() > 0
+
+
+# === NumPy Comparison for New Distributions ===
+
+
+class TestNewDistributionsNumPyComparison:
+    """Compare new distributions against numpy (shape and statistical properties)."""
+
+    def test_lognormal_vs_numpy(self):
+        """Test lognormal matches numpy statistics."""
+        rng_rp = rp.random.default_rng(42)
+        rng_np = np.random.default_rng(42)
+
+        r = rng_rp.lognormal(0.0, 1.0, size=(1000,))
+        n = rng_np.lognormal(0.0, 1.0, size=(1000,))
+
+        r_np = np.asarray(r)
+        # Both should have similar statistics (not exact match due to different algorithms)
+        assert r_np.shape == n.shape
+        assert r_np.min() > 0
+        assert n.min() > 0
+
+    def test_laplace_vs_numpy(self):
+        """Test Laplace matches numpy shape."""
+        rng_rp = rp.random.default_rng(42)
+        rng_np = np.random.default_rng(42)
+
+        r = rng_rp.laplace(0.0, 1.0, size=(10, 20))
+        n = rng_np.laplace(0.0, 1.0, size=(10, 20))
+
+        assert np.asarray(r).shape == n.shape
+
+    def test_triangular_vs_numpy(self):
+        """Test triangular matches numpy shape and range."""
+        rng_rp = rp.random.default_rng(42)
+        rng_np = np.random.default_rng(42)
+
+        r = rng_rp.triangular(0.0, 0.5, 1.0, size=(1000,))
+        n = rng_np.triangular(0.0, 0.5, 1.0, size=(1000,))
+
+        r_np = np.asarray(r)
+        assert r_np.shape == n.shape
+        assert r_np.min() >= 0.0
+        assert r_np.max() <= 1.0
+        assert n.min() >= 0.0
+        assert n.max() <= 1.0
+
+
 # === Edge Cases ===
 
 

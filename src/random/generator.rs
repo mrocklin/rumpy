@@ -1,7 +1,11 @@
 // Generator struct - main interface for random number generation
+//
+// Architecture: Generator implements RngCore, enabling use with rand_distr
+// for optimized distribution sampling (Ziggurat for normal/exponential).
 
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64Dxsm as RandPcg64Dxsm;
+use rand_distr::Distribution;
 
 use crate::array::{DType, RumpyArray};
 use super::pcg64::Pcg64Dxsm;
@@ -14,11 +18,40 @@ enum RngBackend {
 
 /// Random number generator matching numpy.random.Generator API.
 /// Uses PCG64DXSM BitGenerator for numpy compatibility.
+///
+/// Implements `RngCore` for compatibility with `rand_distr` optimized distributions.
 pub struct Generator {
     rng: RngBackend,
 }
 
+// Implement RngCore to enable use with rand_distr distributions
+impl RngCore for Generator {
+    #[inline]
+    fn next_u32(&mut self) -> u32 {
+        self.raw_u64() as u32
+    }
+
+    #[inline]
+    fn next_u64(&mut self) -> u64 {
+        self.raw_u64()
+    }
+
+    #[inline]
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        rand_core::impls::fill_bytes_via_next(self, dest)
+    }
+}
+
 impl Generator {
+    /// Generate next raw u64 value (internal method to avoid trait conflict).
+    #[inline]
+    fn raw_u64(&mut self) -> u64 {
+        match &mut self.rng {
+            RngBackend::RandPcg(rng) => rng.next_u64(),
+            RngBackend::NumpyCompat(rng) => rng.next_u64(),
+        }
+    }
+
     /// Create a new Generator with given seed.
     /// Note: Uses SplitMix64 for seed expansion, which differs from numpy's SeedSequence.
     /// For exact numpy compatibility, use `from_numpy_state()` with state extracted from numpy.
@@ -41,15 +74,6 @@ impl Generator {
         }
     }
 
-    /// Generate next raw u64 value.
-    #[inline]
-    pub fn next_u64(&mut self) -> u64 {
-        match &mut self.rng {
-            RngBackend::RandPcg(rng) => rng.next_u64(),
-            RngBackend::NumpyCompat(rng) => rng.next_u64(),
-        }
-    }
-
     /// Generate uniform random float64 in [0, 1).
     /// Uses 53-bit precision (IEEE 754 double mantissa).
     /// Algorithm: (u64 >> 11) * (1.0 / 2^53)
@@ -62,9 +86,10 @@ impl Generator {
     /// Generate array of uniform random floats in [0, 1).
     pub fn random(&mut self, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-        for _ in 0..size {
-            data.push(self.next_f64());
+        let mut data = vec![0.0f64; size];
+        const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
+        for d in data.iter_mut() {
+            *d = (self.next_u64() >> 11) as f64 * SCALE;
         }
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
@@ -117,96 +142,47 @@ impl Generator {
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 
-    /// Generate samples from standard normal distribution using Box-Muller.
+    /// Generate samples from standard normal distribution using Ziggurat algorithm.
     pub fn standard_normal(&mut self, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        // Box-Muller generates pairs - use both values
-        let pairs = size / 2;
-        for _ in 0..pairs {
-            let (z0, z1) = self.next_standard_normal_pair();
-            data.push(z0);
-            data.push(z1);
-        }
-        // Handle odd size
-        if size % 2 == 1 {
-            data.push(self.next_standard_normal());
-        }
-
+        let dist = rand_distr::StandardNormal;
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 
-    /// Generate a pair of standard normal values using Box-Muller transform.
+    /// Generate one standard normal value using Ziggurat algorithm.
     #[inline]
-    fn next_standard_normal_pair(&mut self) -> (f64, f64) {
-        loop {
-            let u1 = self.next_f64();
-            let u2 = self.next_f64();
-            if u1 > 0.0 {
-                let r = (-2.0 * u1.ln()).sqrt();
-                let theta = 2.0 * std::f64::consts::PI * u2;
-                return (r * theta.cos(), r * theta.sin());
-            }
-        }
-    }
-
-    /// Generate one standard normal value using Box-Muller transform.
     pub fn next_standard_normal(&mut self) -> f64 {
-        self.next_standard_normal_pair().0
+        rand_distr::StandardNormal.sample(self)
     }
 
-    /// Generate samples from normal distribution.
+    /// Generate samples from normal distribution using Ziggurat algorithm.
     pub fn normal(&mut self, loc: f64, scale: f64, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        // Box-Muller generates pairs - use both values
-        let pairs = size / 2;
-        for _ in 0..pairs {
-            let (z0, z1) = self.next_standard_normal_pair();
-            data.push(loc + scale * z0);
-            data.push(loc + scale * z1);
-        }
-        if size % 2 == 1 {
-            data.push(loc + scale * self.next_standard_normal());
-        }
-
+        let dist = rand_distr::Normal::new(loc, scale).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 
-    /// Generate samples from standard exponential distribution.
+    /// Generate samples from standard exponential distribution using Ziggurat algorithm.
     pub fn standard_exponential(&mut self, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        for _ in 0..size {
-            data.push(self.next_standard_exponential());
-        }
-
+        let dist = rand_distr::Exp1;
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 
-    /// Generate one standard exponential value using inverse transform.
+    /// Generate one standard exponential value using Ziggurat algorithm.
+    #[inline]
     pub fn next_standard_exponential(&mut self) -> f64 {
-        loop {
-            let u = self.next_f64();
-            if u > 0.0 {
-                return -u.ln();
-            }
-        }
+        rand_distr::Exp1.sample(self)
     }
 
     /// Generate samples from exponential distribution.
     pub fn exponential(&mut self, scale: f64, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        for _ in 0..size {
-            let z = self.next_standard_exponential();
-            data.push(scale * z);
-        }
-
+        let dist = rand_distr::Exp::new(1.0 / scale).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 
@@ -231,136 +207,41 @@ impl Generator {
         }
     }
 
-    /// Generate one standard gamma value using Marsaglia and Tsang's method.
-    fn next_standard_gamma(&mut self, shape: f64) -> f64 {
-        if shape < 1.0 {
-            // For shape < 1, use: Gamma(a) = Gamma(a+1) * U^(1/a)
-            let u = self.next_f64();
-            return self.next_standard_gamma(shape + 1.0) * u.powf(1.0 / shape);
-        }
-
-        let d = shape - 1.0 / 3.0;
-        let c = 1.0 / (9.0 * d).sqrt();
-
-        loop {
-            let x = self.next_standard_normal();
-            let v = 1.0 + c * x;
-            if v > 0.0 {
-                let v = v * v * v;
-                let u = self.next_f64();
-                let x2 = x * x;
-                if u < 1.0 - 0.0331 * x2 * x2 || u.ln() < 0.5 * x2 + d * (1.0 - v + v.ln()) {
-                    return d * v;
-                }
-            }
-        }
+    /// Generate one standard gamma value using rand_distr (optimized algorithm).
+    #[inline]
+    fn next_standard_gamma(&mut self, shape_param: f64) -> f64 {
+        rand_distr::Gamma::new(shape_param, 1.0).unwrap().sample(self)
     }
 
     /// Generate samples from gamma distribution.
     pub fn gamma(&mut self, shape_param: f64, scale: f64, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        for _ in 0..size {
-            data.push(scale * self.next_standard_gamma(shape_param));
-        }
-
+        let dist = rand_distr::Gamma::new(shape_param, scale).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 
     /// Generate samples from beta distribution.
-    /// Beta(a, b) = Gamma(a) / (Gamma(a) + Gamma(b))
     pub fn beta(&mut self, a: f64, b: f64, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        for _ in 0..size {
-            let x = self.next_standard_gamma(a);
-            let y = self.next_standard_gamma(b);
-            data.push(x / (x + y));
-        }
-
+        let dist = rand_distr::Beta::new(a, b).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::float64())
-    }
-
-    /// Generate one Poisson sample using Knuth's algorithm for small lambda,
-    /// or the transformed rejection method for large lambda.
-    fn next_poisson(&mut self, lam: f64) -> u64 {
-        if lam < 30.0 {
-            // Knuth's algorithm for small lambda
-            let l = (-lam).exp();
-            let mut k = 0u64;
-            let mut p = 1.0;
-            loop {
-                k += 1;
-                p *= self.next_f64();
-                if p <= l {
-                    return k - 1;
-                }
-            }
-        } else {
-            // For large lambda, use normal approximation with correction
-            loop {
-                let x = self.next_standard_normal() * lam.sqrt() + lam;
-                if x >= 0.0 {
-                    return x.round() as u64;
-                }
-            }
-        }
     }
 
     /// Generate samples from Poisson distribution.
     pub fn poisson(&mut self, lam: f64, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        for _ in 0..size {
-            data.push(self.next_poisson(lam) as f64);
-        }
-
+        let dist = rand_distr::Poisson::new(lam).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self) as f64).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::int64())
-    }
-
-    /// Generate one binomial sample.
-    fn next_binomial(&mut self, n: u64, p: f64) -> u64 {
-        if n == 0 || p == 0.0 {
-            return 0;
-        }
-        if p == 1.0 {
-            return n;
-        }
-
-        // For small n, use direct simulation
-        if n < 25 {
-            let mut successes = 0u64;
-            for _ in 0..n {
-                if self.next_f64() < p {
-                    successes += 1;
-                }
-            }
-            return successes;
-        }
-
-        // For large n, use normal approximation
-        let mean = n as f64 * p;
-        let std = (mean * (1.0 - p)).sqrt();
-        loop {
-            let x = self.next_standard_normal() * std + mean + 0.5;
-            if x >= 0.0 && x <= n as f64 {
-                return x.floor() as u64;
-            }
-        }
     }
 
     /// Generate samples from binomial distribution.
     pub fn binomial(&mut self, n: u64, p: f64, shape: Vec<usize>) -> RumpyArray {
         let size: usize = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
-
-        for _ in 0..size {
-            data.push(self.next_binomial(n, p) as f64);
-        }
-
+        let dist = rand_distr::Binomial::new(n, p).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self) as f64).collect();
         RumpyArray::from_vec_with_shape(data, shape, DType::int64())
     }
 
@@ -411,5 +292,217 @@ impl Generator {
         }
 
         RumpyArray::from_vec_with_shape(data, vec![size, d], DType::float64())
+    }
+
+    // === Tier 1 Distributions: Common ===
+
+    /// Generate samples from lognormal distribution.
+    pub fn lognormal(&mut self, mean: f64, sigma: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::LogNormal::new(mean, sigma).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from Laplace distribution (inverse CDF).
+    pub fn laplace(&mut self, loc: f64, scale: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let data: Vec<f64> = (0..size).map(|_| {
+            let u = self.next_f64() - 0.5;
+            loc - scale * u.signum() * (1.0 - 2.0 * u.abs()).ln()
+        }).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from logistic distribution (inverse CDF).
+    pub fn logistic(&mut self, loc: f64, scale: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let data: Vec<f64> = (0..size).map(|_| {
+            let u = self.next_f64();
+            loc + scale * (u / (1.0 - u)).ln()
+        }).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from Rayleigh distribution (inverse CDF).
+    pub fn rayleigh(&mut self, scale: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let data: Vec<f64> = (0..size).map(|_| {
+            scale * (-2.0 * (1.0 - self.next_f64()).ln()).sqrt()
+        }).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from Weibull distribution.
+    pub fn weibull(&mut self, a: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Weibull::new(1.0, a).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    // === Tier 2 Distributions: Discrete ===
+
+    /// Generate samples from geometric distribution.
+    pub fn geometric(&mut self, p: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Geometric::new(p).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self) as f64).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::int64())
+    }
+
+    /// Generate samples from negative binomial distribution.
+    pub fn negative_binomial(&mut self, n: f64, p: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        // Use gamma-Poisson mixture: NB(n, p) = Poisson(Gamma(n, (1-p)/p))
+        let gamma_dist = rand_distr::Gamma::new(n, (1.0 - p) / p).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| {
+            let y = gamma_dist.sample(self);
+            rand_distr::Poisson::new(y).unwrap().sample(self) as f64
+        }).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::int64())
+    }
+
+    /// Generate samples from hypergeometric distribution.
+    pub fn hypergeometric(&mut self, ngood: u64, nbad: u64, nsample: u64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Hypergeometric::new(ngood + nbad, ngood, nsample).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self) as f64).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::int64())
+    }
+
+    /// Generate samples from multinomial distribution.
+    pub fn multinomial(&mut self, n: u64, pvals: &[f64], size: usize) -> RumpyArray {
+        let k = pvals.len();
+        let mut data = vec![0.0; size * k];
+        for i in 0..size {
+            let row = &mut data[i * k..(i + 1) * k];
+            let mut remaining = n;
+            let mut p_remaining = 1.0;
+            for j in 0..k - 1 {
+                if p_remaining > 0.0 {
+                    let p = pvals[j] / p_remaining;
+                    let c = rand_distr::Binomial::new(remaining, p).unwrap().sample(self);
+                    row[j] = c as f64;
+                    remaining -= c;
+                    p_remaining -= pvals[j];
+                }
+            }
+            row[k - 1] = remaining as f64;
+        }
+        RumpyArray::from_vec_with_shape(data, vec![size, k], DType::float64())
+    }
+
+    /// Generate samples from Zipf distribution (rejection sampling).
+    pub fn zipf(&mut self, a: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        // Use rejection sampling (rand_distr::Zipf has incompatible API)
+        let am1 = a - 1.0;
+        let b = 2.0_f64.powf(am1);
+        let data: Vec<f64> = (0..size).map(|_| {
+            loop {
+                let u = 1.0 - self.next_f64();
+                let v = self.next_f64();
+                let x = (u.powf(-1.0 / am1)).floor();
+                let t = (1.0 + 1.0 / x).powf(am1);
+                if v * x * (t - 1.0) / (b - 1.0) <= t / b {
+                    return x;
+                }
+            }
+        }).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::int64())
+    }
+
+    // === Tier 3 Distributions: Specialized ===
+
+    /// Generate samples from triangular distribution.
+    pub fn triangular(&mut self, left: f64, mode: f64, right: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Triangular::new(left, right, mode).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from von Mises distribution.
+    pub fn vonmises(&mut self, mu: f64, kappa: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        // rand_distr doesn't have vonmises, use Best-Fisher algorithm
+        let data: Vec<f64> = (0..size).map(|_| {
+            if kappa < 1e-6 {
+                return std::f64::consts::PI * (2.0 * self.next_f64() - 1.0);
+            }
+            let tau = 1.0 + (1.0 + 4.0 * kappa * kappa).sqrt();
+            let rho = (tau - (2.0 * tau).sqrt()) / (2.0 * kappa);
+            let r = (1.0 + rho * rho) / (2.0 * rho);
+            loop {
+                let u1 = self.next_f64();
+                let z = (std::f64::consts::PI * u1).cos();
+                let w = (1.0 + r * z) / (r + z);
+                let c = kappa * (r - w);
+                let u2 = self.next_f64();
+                if c * (2.0 - c) - u2 > 0.0 || c.ln() - c + 1.0 - u2 >= 0.0 {
+                    let sign = if self.next_f64() > 0.5 { 1.0 } else { -1.0 };
+                    return mu + sign * w.acos();
+                }
+            }
+        }).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from Pareto distribution.
+    pub fn pareto(&mut self, a: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Pareto::new(1.0, a).unwrap();
+        // NumPy's pareto returns (X - 1) where X ~ Pareto(1, a)
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self) - 1.0).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from Wald (inverse Gaussian) distribution.
+    pub fn wald(&mut self, mean: f64, scale: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::InverseGaussian::new(mean, scale).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from Dirichlet distribution.
+    pub fn dirichlet(&mut self, alpha: &[f64], size: usize) -> RumpyArray {
+        let k = alpha.len();
+        // Can't use rand_distr::Dirichlet (requires const generic array size)
+        // Use Gamma sampling: sample Gamma(alpha_i, 1) and normalize
+        let mut data = Vec::with_capacity(size * k);
+        for _ in 0..size {
+            let gamma_samples: Vec<f64> = alpha.iter()
+                .map(|&a| self.next_standard_gamma(a))
+                .collect();
+            let sum: f64 = gamma_samples.iter().sum();
+            data.extend(gamma_samples.iter().map(|&g| g / sum));
+        }
+        RumpyArray::from_vec_with_shape(data, vec![size, k], DType::float64())
+    }
+
+    /// Generate samples from standard Student's t distribution.
+    pub fn standard_t(&mut self, df: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::StudentT::new(df).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from standard Cauchy distribution.
+    pub fn standard_cauchy(&mut self, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Cauchy::new(0.0, 1.0).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
+    }
+
+    /// Generate samples from standard gamma distribution (shape only, scale=1).
+    pub fn standard_gamma_dist(&mut self, shape_param: f64, shape: Vec<usize>) -> RumpyArray {
+        let size: usize = shape.iter().product();
+        let dist = rand_distr::Gamma::new(shape_param, 1.0).unwrap();
+        let data: Vec<f64> = (0..size).map(|_| dist.sample(self)).collect();
+        RumpyArray::from_vec_with_shape(data, shape, DType::float64())
     }
 }

@@ -539,7 +539,7 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 18. Array Methods | 12 | Medium | Various | ✅ |
 | 19. I/O | 10 | High | None | ✅ |
 | 20. FFT Extensions | 8 | High | Stream fft | ✅ |
-| 21. Random Extended | 18 | Medium | Stream 15 | |
+| 21. Random Extended | 18 | Medium | Stream 15 | ✅ |
 | 22. DType System | 9 | High | None | |
 | 23. ndarray Methods | 11 | Medium | None | |
 | 24. Linalg Extensions | 9 | High | Stream 14 | |
@@ -552,8 +552,8 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~175 functions across 20 streams
-**Remaining**: ~118 functions across 13 new streams
+**Completed**: ~193 functions across 21 streams
+**Remaining**: ~100 functions across 12 new streams
 **Total**: ~285 functions across 32 streams
 
 ---
@@ -634,33 +634,40 @@ Complete the FFT submodule.
 
 ---
 
-## Stream 21: Random Distributions (Extended)
+## Stream 21: Random Distributions (Extended) ✅ COMPLETE
 
 Additional distributions for Generator.
 
 ### Tier 1 - Common
-- [ ] `lognormal` - log-normal distribution
-- [ ] `laplace` - Laplace distribution
-- [ ] `logistic` - logistic distribution
-- [ ] `rayleigh` - Rayleigh distribution
-- [ ] `weibull` - Weibull distribution
+- [x] `lognormal` - log-normal distribution
+- [x] `laplace` - Laplace distribution
+- [x] `logistic` - logistic distribution
+- [x] `rayleigh` - Rayleigh distribution
+- [x] `weibull` - Weibull distribution
 
 ### Tier 2 - Discrete
-- [ ] `geometric` - geometric distribution
-- [ ] `negative_binomial` - negative binomial
-- [ ] `hypergeometric` - hypergeometric distribution
-- [ ] `multinomial` - multinomial distribution
-- [ ] `zipf` - Zipf distribution
+- [x] `geometric` - geometric distribution
+- [x] `negative_binomial` - negative binomial
+- [x] `hypergeometric` - hypergeometric distribution
+- [x] `multinomial` - multinomial distribution
+- [x] `zipf` - Zipf distribution
 
 ### Tier 3 - Specialized
-- [ ] `triangular` - triangular distribution
-- [ ] `vonmises` - von Mises (circular) distribution
-- [ ] `pareto` - Pareto distribution
-- [ ] `wald` - Wald (inverse Gaussian) distribution
-- [ ] `dirichlet` - Dirichlet distribution
-- [ ] `standard_t` - Student's t distribution
-- [ ] `standard_cauchy` - Cauchy distribution
-- [ ] `standard_gamma` - standard gamma (shape only)
+- [x] `triangular` - triangular distribution
+- [x] `vonmises` - von Mises (circular) distribution
+- [x] `pareto` - Pareto distribution
+- [x] `wald` - Wald (inverse Gaussian) distribution
+- [x] `dirichlet` - Dirichlet distribution
+- [x] `standard_t` - Student's t distribution
+- [x] `standard_cauchy` - Cauchy distribution
+- [x] `standard_gamma` - standard gamma (shape only)
+
+**Performance Notes** (release mode with rand_distr/Ziggurat):
+- Uniform/random: 0.79x (faster than NumPy)
+- Poisson: 0.59x (faster than NumPy)
+- Binomial: 0.42x (faster than NumPy)
+- Normal/exponential/gamma: 1.1-1.4x (competitive)
+- Complex distributions (vonmises, hypergeometric): 2-10x slower
 
 **Files**: `src/random/*.rs`, `src/python/random.rs`, `tests/test_random.py`
 

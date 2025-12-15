@@ -17,6 +17,7 @@ bitflags = "2.6"
 faer = { version = "0.20", features = ["rayon"] }
 rand_pcg = "0.9"
 rand_core = "0.9"
+rand_distr = "0.5"
 half = "2.4"
 rustfft = "6.2"
 num-complex = "0.4"

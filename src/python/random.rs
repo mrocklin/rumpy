@@ -1,6 +1,7 @@
 // Python bindings for random module
 
 use pyo3::prelude::*;
+use rand_core::RngCore;
 use std::sync::Mutex;
 
 use crate::array::{DType, RumpyArray};
@@ -421,6 +422,432 @@ impl PyGenerator {
         let n = size.unwrap_or(1);
         let arr = gen.multivariate_normal(&mean, &cov, n);
         Ok(PyRumpyArray::new(arr))
+    }
+
+    // === Tier 1 Distributions: Common ===
+
+    /// Generate samples from lognormal distribution.
+    #[pyo3(signature = (mean=0.0, sigma=1.0, size=None))]
+    fn lognormal(
+        &self,
+        mean: f64,
+        sigma: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.lognormal(mean, sigma, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.lognormal(mean, sigma, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Laplace distribution.
+    #[pyo3(signature = (loc=0.0, scale=1.0, size=None))]
+    fn laplace(
+        &self,
+        loc: f64,
+        scale: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.laplace(loc, scale, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.laplace(loc, scale, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from logistic distribution.
+    #[pyo3(signature = (loc=0.0, scale=1.0, size=None))]
+    fn logistic(
+        &self,
+        loc: f64,
+        scale: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.logistic(loc, scale, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.logistic(loc, scale, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Rayleigh distribution.
+    #[pyo3(signature = (scale=1.0, size=None))]
+    fn rayleigh(
+        &self,
+        scale: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.rayleigh(scale, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.rayleigh(scale, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Weibull distribution.
+    #[pyo3(signature = (a, size=None))]
+    fn weibull(
+        &self,
+        a: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.weibull(a, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.weibull(a, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    // === Tier 2 Distributions: Discrete ===
+
+    /// Generate samples from geometric distribution.
+    #[pyo3(signature = (p, size=None))]
+    fn geometric(
+        &self,
+        p: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.geometric(p, vec![1]);
+                    let val = arr.get_element(&[0]) as i64;
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.geometric(p, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from negative binomial distribution.
+    #[pyo3(signature = (n, p, size=None))]
+    fn negative_binomial(
+        &self,
+        n: f64,
+        p: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.negative_binomial(n, p, vec![1]);
+                    let val = arr.get_element(&[0]) as i64;
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.negative_binomial(n, p, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from hypergeometric distribution.
+    #[pyo3(signature = (ngood, nbad, nsample, size=None))]
+    fn hypergeometric(
+        &self,
+        ngood: u64,
+        nbad: u64,
+        nsample: u64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.hypergeometric(ngood, nbad, nsample, vec![1]);
+                    let val = arr.get_element(&[0]) as i64;
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.hypergeometric(ngood, nbad, nsample, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from multinomial distribution.
+    #[pyo3(signature = (n, pvals, size=None))]
+    fn multinomial(
+        &self,
+        n: u64,
+        pvals: Vec<f64>,
+        size: Option<usize>,
+    ) -> PyResult<PyRumpyArray> {
+        let mut gen = self.inner.lock().unwrap();
+        let sz = size.unwrap_or(1);
+        let arr = gen.multinomial(n, &pvals, sz);
+        Ok(PyRumpyArray::new(arr))
+    }
+
+    /// Generate samples from Zipf distribution.
+    #[pyo3(signature = (a, size=None))]
+    fn zipf(
+        &self,
+        a: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.zipf(a, vec![1]);
+                    let val = arr.get_element(&[0]) as i64;
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.zipf(a, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    // === Tier 3 Distributions: Specialized ===
+
+    /// Generate samples from triangular distribution.
+    #[pyo3(signature = (left, mode, right, size=None))]
+    fn triangular(
+        &self,
+        left: f64,
+        mode: f64,
+        right: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.triangular(left, mode, right, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.triangular(left, mode, right, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from von Mises distribution.
+    #[pyo3(signature = (mu, kappa, size=None))]
+    fn vonmises(
+        &self,
+        mu: f64,
+        kappa: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.vonmises(mu, kappa, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.vonmises(mu, kappa, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Pareto distribution.
+    #[pyo3(signature = (a, size=None))]
+    fn pareto(
+        &self,
+        a: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.pareto(a, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.pareto(a, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Wald (inverse Gaussian) distribution.
+    #[pyo3(signature = (mean, scale, size=None))]
+    fn wald(
+        &self,
+        mean: f64,
+        scale: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.wald(mean, scale, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.wald(mean, scale, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from Dirichlet distribution.
+    #[pyo3(signature = (alpha, size=None))]
+    fn dirichlet(
+        &self,
+        alpha: Vec<f64>,
+        size: Option<usize>,
+    ) -> PyResult<PyRumpyArray> {
+        let mut gen = self.inner.lock().unwrap();
+        let sz = size.unwrap_or(1);
+        let arr = gen.dirichlet(&alpha, sz);
+        Ok(PyRumpyArray::new(arr))
+    }
+
+    /// Generate samples from standard Student's t distribution.
+    #[pyo3(signature = (df, size=None))]
+    fn standard_t(
+        &self,
+        df: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.standard_t(df, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.standard_t(df, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from standard Cauchy distribution.
+    #[pyo3(signature = (size=None))]
+    fn standard_cauchy(
+        &self,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.standard_cauchy(vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.standard_cauchy(shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
+    }
+
+    /// Generate samples from standard gamma distribution.
+    #[pyo3(signature = (shape_param, size=None))]
+    fn standard_gamma(
+        &self,
+        shape_param: f64,
+        size: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let mut gen = self.inner.lock().unwrap();
+            match size {
+                None => {
+                    let arr = gen.standard_gamma_dist(shape_param, vec![1]);
+                    let val = arr.get_element(&[0]);
+                    Ok(val.into_pyobject(py)?.into_any().unbind())
+                }
+                Some(s) => {
+                    let shape = parse_shape(s)?;
+                    let arr = gen.standard_gamma_dist(shape_param, shape);
+                    Ok(PyRumpyArray::new(arr).into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        })
     }
 
     /// Generate random samples from a given array or range.
