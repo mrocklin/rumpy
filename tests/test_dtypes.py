@@ -690,3 +690,214 @@ class TestUnsignedPromotion:
 
         assert r_result.dtype == n_result.dtype.name
         assert_eq(r_result, n_result)
+
+
+class TestFinfo:
+    """Test finfo - floating point type info."""
+
+    def test_float64_bits(self):
+        assert rp.finfo('float64').bits == np.finfo('float64').bits
+
+    def test_float64_eps(self):
+        assert rp.finfo('float64').eps == np.finfo('float64').eps
+
+    def test_float64_max(self):
+        assert rp.finfo('float64').max == np.finfo('float64').max
+
+    def test_float64_min(self):
+        assert rp.finfo('float64').min == np.finfo('float64').min
+
+    def test_float32_bits(self):
+        assert rp.finfo('float32').bits == np.finfo('float32').bits
+
+    def test_float32_eps(self):
+        assert rp.finfo('float32').eps == np.finfo('float32').eps
+
+    def test_float16_bits(self):
+        assert rp.finfo('float16').bits == np.finfo('float16').bits
+
+    def test_finfo_repr(self):
+        assert 'float64' in repr(rp.finfo('float64'))
+
+    def test_finfo_with_numpy_dtype(self):
+        """finfo should accept numpy dtype objects."""
+        assert rp.finfo(np.dtype('float64')).bits == 64
+        assert rp.finfo(np.dtype('float32')).bits == 32
+
+    def test_finfo_invalid_dtype(self):
+        """finfo should reject non-float dtypes."""
+        with pytest.raises(TypeError):
+            rp.finfo('int64')
+
+
+class TestIinfo:
+    """Test iinfo - integer type info."""
+
+    def test_int64_bits(self):
+        assert rp.iinfo('int64').bits == np.iinfo('int64').bits
+
+    def test_int64_min(self):
+        assert rp.iinfo('int64').min == np.iinfo('int64').min
+
+    def test_int64_max(self):
+        assert rp.iinfo('int64').max == np.iinfo('int64').max
+
+    def test_uint8_bits(self):
+        assert rp.iinfo('uint8').bits == np.iinfo('uint8').bits
+
+    def test_uint8_min(self):
+        assert rp.iinfo('uint8').min == np.iinfo('uint8').min
+
+    def test_uint8_max(self):
+        assert rp.iinfo('uint8').max == np.iinfo('uint8').max
+
+    def test_int32_range(self):
+        info = rp.iinfo('int32')
+        assert info.min == -2147483648
+        assert info.max == 2147483647
+
+    def test_iinfo_repr(self):
+        assert 'int64' in repr(rp.iinfo('int64'))
+
+    def test_iinfo_with_numpy_dtype(self):
+        """iinfo should accept numpy dtype objects."""
+        assert rp.iinfo(np.dtype('int64')).bits == 64
+        assert rp.iinfo(np.dtype('uint8')).bits == 8
+
+    def test_iinfo_invalid_dtype(self):
+        """iinfo should reject non-int dtypes."""
+        with pytest.raises(TypeError):
+            rp.iinfo('float64')
+
+
+class TestPromoteTypes:
+    """Test promote_types - find common dtype."""
+
+    def test_int32_float32(self):
+        assert rp.promote_types('int32', 'float32') == str(np.promote_types('int32', 'float32'))
+
+    def test_int64_float32(self):
+        assert rp.promote_types('int64', 'float32') == str(np.promote_types('int64', 'float32'))
+
+    def test_uint8_int8(self):
+        assert rp.promote_types('uint8', 'int8') == str(np.promote_types('uint8', 'int8'))
+
+    def test_float32_float64(self):
+        assert rp.promote_types('float32', 'float64') == str(np.promote_types('float32', 'float64'))
+
+    def test_same_type(self):
+        assert rp.promote_types('float64', 'float64') == 'float64'
+
+    def test_with_numpy_dtypes(self):
+        """promote_types should accept numpy dtype objects."""
+        assert rp.promote_types(np.dtype('int32'), np.dtype('float32')) == 'float64'
+
+
+class TestResultType:
+    """Test result_type - determine result dtype for operands."""
+
+    def test_two_arrays(self):
+        r1 = rp.array([1], dtype='int32')
+        r2 = rp.array([1.0], dtype='float64')
+        n1 = np.array([1], dtype='int32')
+        n2 = np.array([1.0], dtype='float64')
+        assert rp.result_type(r1, r2) == str(np.result_type(n1, n2))
+
+    def test_dtype_strings(self):
+        assert rp.result_type('int32', 'float64') == 'float64'
+
+    def test_single_array(self):
+        r = rp.array([1], dtype='int32')
+        assert rp.result_type(r) == 'int32'
+
+
+class TestCanCast:
+    """Test can_cast - check if cast is allowed."""
+
+    def test_int32_to_float64_safe(self):
+        assert rp.can_cast('int32', 'float64') == np.can_cast('int32', 'float64')
+
+    def test_float64_to_int32_safe(self):
+        assert rp.can_cast('float64', 'int32') == np.can_cast('float64', 'int32')
+
+    def test_float64_to_int32_unsafe(self):
+        assert rp.can_cast('float64', 'int32', 'unsafe') == np.can_cast('float64', 'int32', casting='unsafe')
+
+    def test_int8_to_int64_safe(self):
+        assert rp.can_cast('int8', 'int64', 'safe') == True
+
+    def test_int64_to_int8_safe(self):
+        assert rp.can_cast('int64', 'int8', 'safe') == False
+
+    def test_same_type(self):
+        assert rp.can_cast('float64', 'float64', 'no') == True
+
+    def test_with_numpy_dtypes(self):
+        """can_cast should accept numpy dtype objects."""
+        assert rp.can_cast(np.dtype('int32'), np.dtype('float64')) == True
+
+
+class TestCommonType:
+    """Test common_type - find common scalar type for arrays."""
+
+    def test_int_array_returns_float(self):
+        """Integers promote to at least float64."""
+        r = rp.array([1, 2, 3], dtype='int32')
+        result = rp.common_type(r)
+        # common_type returns a type, not dtype string
+        assert result == np.float64
+
+    def test_float32_arrays(self):
+        r = rp.array([1.0], dtype='float32')
+        result = rp.common_type(r)
+        # float32 stays float32 if no promotion needed
+        assert result in (np.float32, np.float64)
+
+    def test_float64_arrays(self):
+        r = rp.array([1.0], dtype='float64')
+        result = rp.common_type(r)
+        assert result == np.float64
+
+
+class TestIssubdtype:
+    """Test issubdtype - check dtype inheritance."""
+
+    def test_int32_is_integer(self):
+        assert rp.issubdtype('int32', np.integer) == np.issubdtype('int32', np.integer)
+
+    def test_float64_is_floating(self):
+        assert rp.issubdtype('float64', np.floating) == np.issubdtype('float64', np.floating)
+
+    def test_float64_is_not_integer(self):
+        assert rp.issubdtype('float64', np.integer) == np.issubdtype('float64', np.integer)
+
+    def test_complex128_is_complexfloating(self):
+        assert rp.issubdtype('complex128', np.complexfloating) == np.issubdtype('complex128', np.complexfloating)
+
+    def test_uint8_is_unsigned(self):
+        assert rp.issubdtype('uint8', np.unsignedinteger) == np.issubdtype('uint8', np.unsignedinteger)
+
+
+class TestIsdtype:
+    """Test isdtype - check if dtype matches kind (NumPy 2.0+)."""
+
+    def test_float64_real_floating(self):
+        assert rp.isdtype('float64', 'real floating') == np.isdtype(np.float64, 'real floating')
+
+    def test_int32_signed_integer(self):
+        assert rp.isdtype('int32', 'signed integer') == np.isdtype(np.int32, 'signed integer')
+
+    def test_uint8_unsigned_integer(self):
+        assert rp.isdtype('uint8', 'unsigned integer') == np.isdtype(np.uint8, 'unsigned integer')
+
+    def test_complex128_complex_floating(self):
+        assert rp.isdtype('complex128', 'complex floating') == np.isdtype(np.complex128, 'complex floating')
+
+    def test_bool_is_bool(self):
+        assert rp.isdtype('bool', 'bool') == np.isdtype(np.bool_, 'bool')
+
+    def test_int64_is_numeric(self):
+        assert rp.isdtype('int64', 'numeric') == np.isdtype(np.int64, 'numeric')
+
+    def test_float64_is_not_signed_integer(self):
+        assert rp.isdtype('float64', 'signed integer') == np.isdtype(np.float64, 'signed integer')

@@ -1,4 +1,5 @@
 pub mod creation;
+pub mod dtype;
 pub mod fft;
 pub mod indexing;
 pub mod io;
@@ -22,6 +23,8 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     random::register_submodule(m)?;
     fft::register_submodule(m)?;
     linalg::register_submodule(m)?;
+    // Register dtype functions (finfo, iinfo, promote_types, etc.)
+    dtype::register_module(m)?;
     // Constructors (from creation module)
     m.add_function(wrap_pyfunction!(creation::zeros, m)?)?;
     m.add_function(wrap_pyfunction!(creation::ones, m)?)?;
