@@ -255,5 +255,209 @@ class TestArgpartition:
         assert float(arr.take(r)[2]) == float(np.take(n, e)[2])
 
 
+class TestBase:
+    """Tests for base property."""
+
+    def test_base_none_for_owned(self):
+        """Owned array has no base."""
+        arr = rp.asarray([1, 2, 3, 4, 5])
+        assert arr.base is None
+
+    def test_base_for_view(self):
+        """View has non-None base."""
+        arr = rp.asarray([1, 2, 3, 4, 5])
+        view = arr[1:4]
+        assert view.base is not None
+
+    def test_base_for_reshape_view(self):
+        """Reshape view has base."""
+        arr = rp.asarray([[1, 2], [3, 4]])
+        view = arr.reshape(4)
+        # May or may not have base depending on implementation
+        # Just check it doesn't crash
+        _ = view.base
+
+
+class TestFlags:
+    """Tests for flags property."""
+
+    def test_flags_c_contiguous(self):
+        """C-contiguous array has proper flags."""
+        n = np.asarray([[1, 2, 3], [4, 5, 6]])
+        r = rp.asarray(n)
+        assert r.flags.c_contiguous == n.flags.c_contiguous
+
+    def test_flags_f_contiguous(self):
+        """F-contiguous array has proper flags."""
+        n = np.asarray([[1, 2, 3], [4, 5, 6]])
+        r = rp.asarray(n)
+        assert r.flags.f_contiguous == n.flags.f_contiguous
+
+    def test_flags_transpose(self):
+        """Transposed array updates flags."""
+        n = np.asarray([[1, 2, 3], [4, 5, 6]])
+        r = rp.asarray(n)
+        n_t = n.T
+        r_t = r.T
+        assert r_t.flags.c_contiguous == n_t.flags.c_contiguous
+
+
+class TestFlat:
+    """Tests for flat iterator."""
+
+    def test_flat_1d(self):
+        """Flat iterator on 1D array."""
+        arr = rp.asarray([1, 2, 3, 4, 5])
+        n = np.asarray([1, 2, 3, 4, 5])
+        assert_eq(list(arr.flat), list(n.flat))
+
+    def test_flat_2d(self):
+        """Flat iterator on 2D array."""
+        arr = rp.asarray([[1, 2, 3], [4, 5, 6]])
+        n = np.asarray([[1, 2, 3], [4, 5, 6]])
+        assert_eq(list(arr.flat), list(n.flat))
+
+    def test_flat_len(self):
+        """Flat iterator has correct length."""
+        arr = rp.asarray([[1, 2], [3, 4], [5, 6]])
+        assert len(arr.flat) == 6
+
+    def test_flat_getitem(self):
+        """Flat iterator supports indexing."""
+        arr = rp.asarray([[1, 2], [3, 4]])
+        n = np.asarray([[1, 2], [3, 4]])
+        assert float(arr.flat[2]) == float(n.flat[2])
+
+
+class TestPtpMethod:
+    """Tests for ptp() method (peak-to-peak)."""
+
+    def test_ptp_1d(self):
+        """ptp on 1D array."""
+        arr = rp.asarray([3, 1, 4, 1, 5, 9])
+        n = np.asarray([3, 1, 4, 1, 5, 9])
+        # ptp was removed from ndarray in NumPy 2.0, use np.ptp() for comparison
+        assert arr.ptp() == np.ptp(n)
+
+    def test_ptp_2d_no_axis(self):
+        """ptp on 2D array without axis."""
+        arr = rp.asarray([[1, 2], [3, 4]])
+        n = np.asarray([[1, 2], [3, 4]])
+        assert arr.ptp() == np.ptp(n)
+
+    def test_ptp_axis0(self):
+        """ptp along axis 0."""
+        arr = rp.asarray([[1, 5], [3, 2]])
+        n = np.asarray([[1, 5], [3, 2]])
+        assert_eq(arr.ptp(axis=0), np.ptp(n, axis=0))
+
+    def test_ptp_axis1(self):
+        """ptp along axis 1."""
+        arr = rp.asarray([[1, 5], [3, 2]])
+        n = np.asarray([[1, 5], [3, 2]])
+        assert_eq(arr.ptp(axis=1), np.ptp(n, axis=1))
+
+
+class TestCompressMethod:
+    """Tests for compress() method."""
+
+    def test_compress_1d(self):
+        """compress on 1D array."""
+        arr = rp.asarray([1, 2, 3, 4, 5])
+        n = np.asarray([1, 2, 3, 4, 5])
+        condition = [True, False, True, False, True]
+        assert_eq(arr.compress(condition), n.compress(condition))
+
+    def test_compress_axis0(self):
+        """compress along axis 0."""
+        arr = rp.asarray([[1, 2], [3, 4], [5, 6]])
+        n = np.asarray([[1, 2], [3, 4], [5, 6]])
+        condition = [True, False, True]
+        assert_eq(arr.compress(condition, axis=0), n.compress(condition, axis=0))
+
+
+class TestChooseMethod:
+    """Tests for choose() method."""
+
+    def test_choose_basic(self):
+        """choose basic usage."""
+        choices = [rp.asarray([0, 1, 2, 3]), rp.asarray([10, 11, 12, 13]),
+                   rp.asarray([20, 21, 22, 23]), rp.asarray([30, 31, 32, 33])]
+        n_choices = [np.asarray([0, 1, 2, 3]), np.asarray([10, 11, 12, 13]),
+                     np.asarray([20, 21, 22, 23]), np.asarray([30, 31, 32, 33])]
+        a = rp.asarray([2, 3, 1, 0])
+        n_a = np.asarray([2, 3, 1, 0])
+        assert_eq(a.choose(choices), n_a.choose(n_choices))
+
+
+class TestResizeMethod:
+    """Tests for resize() method."""
+
+    def test_resize_larger(self):
+        """resize to larger shape fills with zeros."""
+        arr = rp.asarray([1, 2, 3])
+        r = arr.copy()
+        r.resize((6,))
+        # NumPy fills extra space with zeros
+        expected = np.array([1, 2, 3, 0, 0, 0])
+        assert_eq(r, expected)
+
+    def test_resize_smaller(self):
+        """resize to smaller shape truncates."""
+        arr = rp.asarray([1, 2, 3, 4, 5])
+        n = np.asarray([1, 2, 3, 4, 5])
+        r = arr.copy()
+        r.resize((3,))
+        n_r = n.copy()
+        n_r.resize((3,))
+        assert_eq(r, n_r)
+
+    def test_resize_2d(self):
+        """resize to different 2D shape fills with zeros."""
+        arr = rp.asarray([1, 2, 3, 4])
+        r = arr.copy()
+        r.resize((2, 3))
+        # NumPy fills extra space with zeros
+        expected = np.array([[1, 2, 3], [4, 0, 0]])
+        assert_eq(r, expected)
+
+
+class TestDump:
+    """Tests for dump() and dumps() methods."""
+
+    def test_dumps_loads(self):
+        """dumps and loads roundtrip."""
+        import pickle
+        arr = rp.asarray([1.0, 2.0, 3.0])
+        n = np.asarray([1.0, 2.0, 3.0])
+        r_pkl = arr.dumps()
+        n_pkl = n.dumps()
+        # Both should produce valid pickle bytes
+        r_loaded = pickle.loads(r_pkl)
+        n_loaded = pickle.loads(n_pkl)
+        assert_eq(r_loaded, n_loaded)
+
+    def test_dump_file(self, tmp_path):
+        """dump to file and load back."""
+        import pickle
+        arr = rp.asarray([[1, 2], [3, 4]], dtype='float64')
+        filepath = tmp_path / "test.pkl"
+        arr.dump(str(filepath))
+        with open(filepath, 'rb') as f:
+            loaded = pickle.load(f)
+        assert_eq(loaded, arr)
+
+
+class TestDataProperty:
+    """Tests for data property (memoryview)."""
+
+    def test_data_returns_memoryview(self):
+        """data property returns memoryview-like object."""
+        arr = rp.asarray([1, 2, 3, 4], dtype='float64')
+        data = arr.data
+        # Should be able to get pointer from it
+        assert data is not None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

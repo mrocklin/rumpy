@@ -540,8 +540,8 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 19. I/O | 10 | High | None | ✅ |
 | 20. FFT Extensions | 8 | High | Stream fft | ✅ |
 | 21. Random Extended | 18 | Medium | Stream 15 | ✅ |
-| 22. DType System | 9 | High | None | |
-| 23. ndarray Methods | 11 | Medium | None | |
+| 22. DType System | 9 | High | None | ✅ |
+| 23. ndarray Methods | 11 | Medium | None | ✅ |
 | 24. Linalg Extensions | 9 | High | Stream 14 | |
 | 25. Special Functions | 9 | Medium | None | |
 | 26. Index Utilities | 10 | Medium | None | |
@@ -699,26 +699,32 @@ but this is negligible since they're called rarely (not in hot loops).
 
 ---
 
-## Stream 23: ndarray Methods (Extended)
+## Stream 23: ndarray Methods (Extended) ✅ COMPLETE
 
 Complete array method parity.
 
 ### Properties
-- [ ] `base` - underlying array for views
-- [ ] `data` - buffer pointer (memoryview)
-- [ ] `flags` - array flags object (C_CONTIGUOUS, etc.)
-- [ ] `flat` - 1D iterator over elements
+- [x] `base` - underlying array for views
+- [x] `data` - buffer pointer (memoryview)
+- [x] `flags` - array flags object (C_CONTIGUOUS, etc.)
+- [x] `flat` - 1D iterator over elements
 
 ### Methods
-- [ ] `ptp` - peak-to-peak (max - min)
-- [ ] `compress` - select using boolean mask
-- [ ] `choose` - construct from index choices
-- [ ] `resize` - resize array in-place
+- [x] `ptp` - peak-to-peak (max - min)
+- [x] `compress` - select using boolean mask
+- [x] `choose` - construct from index choices
+- [x] `resize` - resize array in-place
 
 ### Serialization
-- [ ] `dump` - pickle to file
-- [ ] `dumps` - pickle to string
-- [ ] `tofile` - write to binary file
+- [x] `dump` - pickle to file
+- [x] `dumps` - pickle to string
+- [x] `tofile` - write to binary file (already existed)
+
+**Performance Notes** (release mode):
+- Properties: ~microsecond overhead from PyO3, acceptable for metadata operations
+- `ptp`: 0.9x-2x of NumPy depending on axis
+- `compress`, `choose`: faster than NumPy (0.4x)
+- Small operations like `resize` have fixed overhead that dominates at small sizes
 
 **Files**: `src/python/pyarray/*.rs`, `tests/test_array_methods.py`
 

@@ -703,6 +703,169 @@ impl PyRumpyArray {
         Ok(Self::new(self.inner.view_with_dtype(new_shape, new_strides, new_dtype)))
     }
 
+    /// Return base array if this is a view, else None.
+    #[getter]
+    fn base<'py>(&self, py: Python<'py>) -> Option<PyObject> {
+        // Check if this is a view by looking at offset and Arc strong count
+        // If offset > 0 or if we share the buffer, we're likely a view
+        if self.inner.offset > 0 || std::sync::Arc::strong_count(&self.inner.buffer) > 1 {
+            // Return self as base (simplified - NumPy returns actual base)
+            // For full NumPy compatibility we'd need to track the original array
+            Some(Self::new(self.inner.clone()).into_pyobject(py).unwrap().into_any().unbind())
+        } else {
+            None
+        }
+    }
+
+    /// Return flags object with C_CONTIGUOUS, F_CONTIGUOUS, WRITEABLE.
+    #[getter]
+    fn flags(&self) -> PyArrayFlags {
+        let flags = self.inner.flags();
+        PyArrayFlags {
+            c_contiguous: flags.contains(crate::array::ArrayFlags::C_CONTIGUOUS),
+            f_contiguous: flags.contains(crate::array::ArrayFlags::F_CONTIGUOUS),
+            writeable: flags.contains(crate::array::ArrayFlags::WRITEABLE),
+        }
+    }
+
+    /// Return flat iterator over array elements.
+    #[getter]
+    fn flat(&self) -> PyFlatIter {
+        PyFlatIter {
+            inner: self.inner.clone(),
+            index: 0,
+        }
+    }
+
+    /// Return buffer info tuple (pointer, readonly).
+    #[getter]
+    fn data<'py>(&self, py: Python<'py>) -> PyResult<PyObject> {
+        let data_ptr = self.inner.data_ptr() as usize;
+        let readonly = !self.inner.flags().contains(crate::array::ArrayFlags::WRITEABLE);
+        Ok((data_ptr, readonly).into_pyobject(py)?.into_any().unbind())
+    }
+
+    /// Peak-to-peak (maximum - minimum) value.
+    #[pyo3(signature = (axis=None))]
+    fn ptp(&self, axis: Option<usize>) -> PyResult<ReductionResult> {
+        match axis {
+            None => Ok(ReductionResult::Scalar(self.inner.ptp())),
+            Some(ax) => {
+                check_axis(ax, self.inner.ndim())?;
+                Ok(ReductionResult::Array(Self::new(self.inner.ptp_axis(ax))))
+            }
+        }
+    }
+
+    /// Select elements using a boolean condition array.
+    #[pyo3(signature = (condition, axis=None))]
+    fn compress(&self, condition: &Bound<'_, PyAny>, axis: Option<usize>) -> PyResult<Self> {
+        // Extract condition as bool vec
+        let cond_vec: Vec<bool> = if let Ok(list) = condition.downcast::<PyList>() {
+            list.iter().map(|x| x.extract::<bool>()).collect::<PyResult<Vec<_>>>()?
+        } else if let Ok(arr) = condition.extract::<PyRef<'_, PyRumpyArray>>() {
+            let size = arr.inner.size();
+            let mut result = Vec::with_capacity(size);
+            for offset in arr.inner.iter_offsets() {
+                let val = unsafe { arr.inner.dtype().ops().read_f64(arr.inner.data_ptr(), offset) }.unwrap_or(0.0);
+                result.push(val != 0.0);
+            }
+            result
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err("condition must be array or list"));
+        };
+
+        crate::ops::indexing::compress(&cond_vec, &self.inner, axis)
+            .map(Self::new)
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("compress failed"))
+    }
+
+    /// Construct an array from an index array and a set of arrays to choose from.
+    fn choose(&self, choices: &Bound<'_, PyList>) -> PyResult<Self> {
+        let choice_arrays: Vec<RumpyArray> = choices
+            .iter()
+            .map(|c| c.extract::<PyRef<'_, PyRumpyArray>>().map(|a| a.inner.clone()))
+            .collect::<PyResult<Vec<_>>>()?;
+
+        crate::ops::indexing::choose(&self.inner, &choice_arrays)
+            .map(Self::new)
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("choose: index out of bounds"))
+    }
+
+    /// Resize array in-place to new shape.
+    /// If new size is larger, fills extra space with zeros. If smaller, truncates.
+    #[pyo3(signature = (*args))]
+    fn resize(&mut self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let new_shape = parse_reshape_args_isize(args)?;
+        let new_shape: Vec<usize> = new_shape.iter().map(|&d| d as usize).collect();
+        let new_size: usize = new_shape.iter().product();
+        let old_size = self.inner.size();
+
+        if new_size == 0 {
+            self.inner = RumpyArray::zeros(new_shape, self.inner.dtype());
+            return Ok(());
+        }
+
+        // Collect current data
+        let mut data: Vec<f64> = Vec::with_capacity(old_size);
+        for offset in self.inner.iter_offsets() {
+            let val = unsafe { self.inner.dtype().ops().read_f64(self.inner.data_ptr(), offset) }.unwrap_or(0.0);
+            data.push(val);
+        }
+
+        // Create new array - starts as zeros
+        let dtype = self.inner.dtype();
+        let mut result = RumpyArray::zeros(new_shape, dtype.clone());
+        let buffer = std::sync::Arc::get_mut(result.buffer_mut()).expect("unique");
+        let ptr = buffer.as_mut_ptr();
+        let ops = dtype.ops();
+
+        // Copy old data (up to min(old_size, new_size))
+        let copy_count = old_size.min(new_size);
+        for i in 0..copy_count {
+            let val = data[i];
+            unsafe { ops.write_f64(ptr, i, val); }
+        }
+        // Extra space is already zeros from RumpyArray::zeros
+
+        self.inner = result;
+        Ok(())
+    }
+
+    /// Dump array to file using pickle protocol.
+    fn dump(&self, file: &str) -> PyResult<()> {
+        // Use Python pickle for serialization
+        Python::with_gil(|py| {
+            let pickle = py.import("pickle")?;
+            let np = py.import("numpy")?;
+
+            // Convert to numpy array first using __array_interface__
+            let py_self = Self::new(self.inner.clone()).into_pyobject(py)?;
+            let np_arr = np.call_method1("asarray", (py_self,))?;
+
+            // Open file and dump
+            let builtins = py.import("builtins")?;
+            let f = builtins.call_method1("open", (file, "wb"))?;
+            pickle.call_method1("dump", (np_arr, &f))?;
+            f.call_method0("close")?;
+            Ok(())
+        })
+    }
+
+    /// Return pickled bytes of array.
+    fn dumps<'py>(&self, py: Python<'py>) -> PyResult<PyObject> {
+        let pickle = py.import("pickle")?;
+        let np = py.import("numpy")?;
+
+        // Convert to numpy array first using __array_interface__
+        let py_self = Self::new(self.inner.clone()).into_pyobject(py)?;
+        let np_arr = np.call_method1("asarray", (py_self,))?;
+
+        // Pickle it
+        let result = pickle.call_method1("dumps", (np_arr,))?;
+        Ok(result.unbind())
+    }
+
     /// Partially sort array in-place so element at kth position is in sorted position.
     fn partition(&mut self, kth: usize) -> PyResult<()> {
         let size = self.inner.size();
@@ -1236,5 +1399,96 @@ fn partition_select_indexed(arr: &mut [(f64, usize)], kth: usize) {
         } else {
             right = store.saturating_sub(1);
         }
+    }
+}
+
+/// Python-visible flags object (like numpy.ndarray.flags).
+#[pyclass(name = "flagsobj", module = "rumpy")]
+pub struct PyArrayFlags {
+    c_contiguous: bool,
+    f_contiguous: bool,
+    writeable: bool,
+}
+
+#[pymethods]
+impl PyArrayFlags {
+    #[getter]
+    fn c_contiguous(&self) -> bool {
+        self.c_contiguous
+    }
+
+    #[getter]
+    fn f_contiguous(&self) -> bool {
+        self.f_contiguous
+    }
+
+    #[getter]
+    fn writeable(&self) -> bool {
+        self.writeable
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "  C_CONTIGUOUS : {}\n  F_CONTIGUOUS : {}\n  WRITEABLE : {}",
+            self.c_contiguous, self.f_contiguous, self.writeable
+        )
+    }
+}
+
+/// Python-visible flat iterator (like numpy.ndarray.flat).
+#[pyclass(name = "flatiter", module = "rumpy")]
+pub struct PyFlatIter {
+    /// Clone of the array for iteration
+    inner: RumpyArray,
+    /// Current position
+    index: usize,
+}
+
+#[pymethods]
+impl PyFlatIter {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self) -> Option<f64> {
+        let size = self.inner.size();
+        if self.index >= size {
+            return None;
+        }
+
+        // Get element at current flat index
+        let val = self.get_flat_element(self.index);
+        self.index += 1;
+        Some(val)
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.size()
+    }
+
+    fn __getitem__(&self, index: isize) -> PyResult<f64> {
+        let size = self.inner.size() as isize;
+        let idx = if index < 0 { size + index } else { index };
+        if idx < 0 || idx >= size {
+            return Err(pyo3::exceptions::PyIndexError::new_err("index out of bounds"));
+        }
+        Ok(self.get_flat_element(idx as usize))
+    }
+}
+
+impl PyFlatIter {
+    fn get_flat_element(&self, flat_idx: usize) -> f64 {
+        let shape = self.inner.shape();
+        let ndim = shape.len();
+
+        // Convert flat index to multi-dimensional indices
+        let mut indices = vec![0usize; ndim];
+        let mut remaining = flat_idx;
+        for i in (0..ndim).rev() {
+            indices[i] = remaining % shape[i];
+            remaining /= shape[i];
+        }
+
+        self.inner.get_element(&indices)
     }
 }
