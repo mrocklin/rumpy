@@ -538,7 +538,7 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 17. Polynomial | 5 | High | None | ✅ |
 | 18. Array Methods | 12 | Medium | Various | ✅ |
 | 19. I/O | 10 | High | None | ✅ |
-| 20. FFT Extensions | 8 | High | Stream fft | |
+| 20. FFT Extensions | 8 | High | Stream fft | ✅ |
 | 21. Random Extended | 18 | Medium | Stream 15 | |
 | 22. DType System | 9 | High | None | |
 | 23. ndarray Methods | 11 | Medium | None | |
@@ -552,7 +552,7 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~167 functions across 19 streams
+**Completed**: ~175 functions across 20 streams
 **Remaining**: ~118 functions across 13 new streams
 **Total**: ~285 functions across 32 streams
 
@@ -607,23 +607,28 @@ File reading/writing - essential for real-world use.
 
 ---
 
-## Stream 20: FFT Extensions
+## Stream 20: FFT Extensions ✅ COMPLETE
 
 Complete the FFT submodule.
 
 ### N-dimensional
-- [ ] `fftn` - n-dimensional FFT
-- [ ] `ifftn` - inverse n-dimensional FFT
-- [ ] `rfftn` - real n-dimensional FFT
-- [ ] `irfftn` - inverse real n-dimensional FFT
+- [x] `fftn` - n-dimensional FFT
+- [x] `ifftn` - inverse n-dimensional FFT
+- [x] `rfftn` - real n-dimensional FFT
+- [x] `irfftn` - inverse real n-dimensional FFT
 
 ### Real 2D
-- [ ] `rfft2` - 2D real FFT
-- [ ] `irfft2` - inverse 2D real FFT
+- [x] `rfft2` - 2D real FFT
+- [x] `irfft2` - inverse 2D real FFT
 
 ### Hermitian
-- [ ] `hfft` - Hermitian FFT
-- [ ] `ihfft` - inverse Hermitian FFT
+- [x] `hfft` - Hermitian FFT
+- [x] `ihfft` - inverse Hermitian FFT
+
+**Performance Notes**:
+- 1D/2D complex FFT: competitive with NumPy (0.4x-1.5x)
+- N-dimensional FFT: often faster than NumPy for small arrays
+- Real FFT variants: 1.5x-5x slower for large arrays (uses full complex FFT internally)
 
 **Files**: `src/ops/fft.rs`, `src/python/fft.rs`, `tests/test_fft.py`
 
