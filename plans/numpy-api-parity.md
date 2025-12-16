@@ -546,14 +546,14 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 25. Special Functions | 9 | Medium | None | ✅ |
 | 26. Index Utilities | 10 | Medium | None | ✅ |
 | 27. Array Inspection | 12 | Low | None | ✅ |
-| 28. Window Functions | 5 | Low | None | |
+| 28. Window Functions | 5 | Low | None | ✅ |
 | 29. Unique Extensions | 4 | Low | Stream 13 | |
 | 30. Convenience Aliases | 15 | Low | Various | |
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~224 functions across 27 streams
-**Remaining**: ~69 functions across 5 new streams
+**Completed**: ~229 functions across 28 streams
+**Remaining**: ~64 functions across 4 new streams
 **Total**: ~293 functions across 32 streams
 
 ---
@@ -853,17 +853,22 @@ Value checking and inspection functions.
 
 ---
 
-## Stream 28: Window Functions
+## Stream 28: Window Functions ✅ COMPLETE
 
 Signal processing window functions.
 
-- [ ] `bartlett` - Bartlett window
-- [ ] `blackman` - Blackman window
-- [ ] `hamming` - Hamming window
-- [ ] `hanning` - Hann window
-- [ ] `kaiser` - Kaiser window (requires beta parameter)
+- [x] `bartlett` - Bartlett window
+- [x] `blackman` - Blackman window
+- [x] `hamming` - Hamming window
+- [x] `hanning` - Hann window
+- [x] `kaiser` - Kaiser window (requires beta parameter)
 
-**Files**: `src/ops/windows.rs` (new), `src/python/mod.rs`, `tests/test_windows.py`
+**Performance Notes**:
+- Small windows (100 pts): 0.12x-0.28x (much faster than NumPy)
+- Large windows (10000 pts): 0.16x-1.04x (faster or competitive)
+- Kaiser especially fast due to direct Bessel computation
+
+**Files**: `src/python/creation.rs`, `src/python/mod.rs`, `tests/test_windows.py`
 
 ---
 

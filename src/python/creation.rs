@@ -568,3 +568,178 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
         ))),
     }
 }
+
+// ============================================================================
+// Window functions
+// ============================================================================
+
+/// Return the Bartlett window.
+///
+/// The Bartlett window is a triangular window with endpoints at zero.
+#[pyfunction]
+pub fn bartlett(m: i64) -> PyRumpyArray {
+    if m < 1 {
+        return PyRumpyArray::new(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+    if m == 1 {
+        return PyRumpyArray::new(RumpyArray::ones(vec![1], DType::float64()));
+    }
+
+    let m_f = m as f64;
+    let size = m as usize;
+    let mut data = Vec::with_capacity(size);
+
+    // n = arange(1-M, M, 2), then:
+    // where(n <= 0, 1 + n/(M-1), 1 - n/(M-1))
+    let denom = m_f - 1.0;
+    for i in 0..size {
+        let n = (1 - m + 2 * i as i64) as f64;
+        let val = if n <= 0.0 {
+            1.0 + n / denom
+        } else {
+            1.0 - n / denom
+        };
+        data.push(val);
+    }
+
+    PyRumpyArray::new(RumpyArray::from_vec(data, DType::float64()))
+}
+
+/// Return the Blackman window.
+///
+/// The Blackman window is a taper formed by using the first three terms
+/// of a summation of cosines, designed to have close to minimal leakage.
+#[pyfunction]
+pub fn blackman(m: i64) -> PyRumpyArray {
+    if m < 1 {
+        return PyRumpyArray::new(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+    if m == 1 {
+        return PyRumpyArray::new(RumpyArray::ones(vec![1], DType::float64()));
+    }
+
+    let m_f = m as f64;
+    let size = m as usize;
+    let mut data = Vec::with_capacity(size);
+
+    // n = arange(1-M, M, 2)
+    // 0.42 + 0.5*cos(pi*n/(M-1)) + 0.08*cos(2*pi*n/(M-1))
+    let denom = m_f - 1.0;
+    for i in 0..size {
+        let n = (1 - m + 2 * i as i64) as f64;
+        let val = 0.42
+            + 0.5 * (std::f64::consts::PI * n / denom).cos()
+            + 0.08 * (2.0 * std::f64::consts::PI * n / denom).cos();
+        data.push(val);
+    }
+
+    PyRumpyArray::new(RumpyArray::from_vec(data, DType::float64()))
+}
+
+/// Return the Hamming window.
+///
+/// The Hamming window is a taper formed by using a raised cosine
+/// with non-zero endpoints.
+#[pyfunction]
+pub fn hamming(m: i64) -> PyRumpyArray {
+    if m < 1 {
+        return PyRumpyArray::new(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+    if m == 1 {
+        return PyRumpyArray::new(RumpyArray::ones(vec![1], DType::float64()));
+    }
+
+    let m_f = m as f64;
+    let size = m as usize;
+    let mut data = Vec::with_capacity(size);
+
+    // n = arange(1-M, M, 2)
+    // 0.54 + 0.46*cos(pi*n/(M-1))
+    let denom = m_f - 1.0;
+    for i in 0..size {
+        let n = (1 - m + 2 * i as i64) as f64;
+        let val = 0.54 + 0.46 * (std::f64::consts::PI * n / denom).cos();
+        data.push(val);
+    }
+
+    PyRumpyArray::new(RumpyArray::from_vec(data, DType::float64()))
+}
+
+/// Return the Hann window (also known as Hanning).
+///
+/// The Hann window is a taper formed by using a raised cosine
+/// with zero endpoints.
+#[pyfunction]
+pub fn hanning(m: i64) -> PyRumpyArray {
+    if m < 1 {
+        return PyRumpyArray::new(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+    if m == 1 {
+        return PyRumpyArray::new(RumpyArray::ones(vec![1], DType::float64()));
+    }
+
+    let m_f = m as f64;
+    let size = m as usize;
+    let mut data = Vec::with_capacity(size);
+
+    // n = arange(1-M, M, 2)
+    // 0.5 + 0.5*cos(pi*n/(M-1))
+    let denom = m_f - 1.0;
+    for i in 0..size {
+        let n = (1 - m + 2 * i as i64) as f64;
+        let val = 0.5 + 0.5 * (std::f64::consts::PI * n / denom).cos();
+        data.push(val);
+    }
+
+    PyRumpyArray::new(RumpyArray::from_vec(data, DType::float64()))
+}
+
+/// Return the Kaiser window.
+///
+/// The Kaiser window is a taper formed by using a Bessel function.
+/// The beta parameter controls the trade-off between main-lobe width
+/// and side-lobe level.
+#[pyfunction]
+pub fn kaiser(m: i64, beta: f64) -> PyRumpyArray {
+    if m < 1 {
+        return PyRumpyArray::new(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+    if m == 1 {
+        return PyRumpyArray::new(RumpyArray::ones(vec![1], DType::float64()));
+    }
+
+    let m_f = m as f64;
+    let size = m as usize;
+    let mut data = Vec::with_capacity(size);
+
+    // n = arange(0, M), alpha = (M-1)/2
+    // i0(beta * sqrt(1 - ((n-alpha)/alpha)^2)) / i0(beta)
+    let alpha = (m_f - 1.0) / 2.0;
+    let i0_beta = bessel_i0(beta);
+
+    for i in 0..size {
+        let n = i as f64;
+        let ratio = (n - alpha) / alpha;
+        let arg = beta * (1.0 - ratio * ratio).sqrt();
+        let val = bessel_i0(arg) / i0_beta;
+        data.push(val);
+    }
+
+    PyRumpyArray::new(RumpyArray::from_vec(data, DType::float64()))
+}
+
+/// Chebyshev polynomial approximation for modified Bessel function I0.
+fn bessel_i0(x: f64) -> f64 {
+    let ax = x.abs();
+    if ax < 3.75 {
+        let y = (x / 3.75).powi(2);
+        1.0 + y * (3.5156229 + y * (3.0899424 + y * (1.2067492
+            + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))))
+    } else {
+        let y = 3.75 / ax;
+        (ax.exp() / ax.sqrt())
+            * (0.39894228 + y * (0.01328592 + y * (0.00225319
+                + y * (-0.00157565 + y * (0.00916281 + y * (-0.02057706
+                    + y * (0.02635537 + y * (-0.01647633 + y * 0.00392377))))))))
+    }
+}

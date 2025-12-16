@@ -52,6 +52,12 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(creation::copy, m)?)?;
     m.add_function(wrap_pyfunction!(creation::asarray, m)?)?;
     m.add_function(wrap_pyfunction!(creation::array, m)?)?;
+    // Window functions
+    m.add_function(wrap_pyfunction!(creation::bartlett, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::blackman, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::hamming, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::hanning, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::kaiser, m)?)?;
     // Reductions (from reductions module)
     m.add_function(wrap_pyfunction!(reductions::sum, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::prod, m)?)?;
