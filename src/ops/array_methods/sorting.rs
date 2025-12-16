@@ -38,6 +38,96 @@ impl RumpyArray {
         RumpyArray::from_vec(values, self.dtype())
     }
 
+    /// Return unique sorted values (same as unique, Array API compatible).
+    pub fn unique_values(&self) -> RumpyArray {
+        self.unique()
+    }
+
+    /// Return unique sorted values with counts.
+    /// Returns (values, counts).
+    pub fn unique_counts(&self) -> (RumpyArray, RumpyArray) {
+        let (values, _, _, counts) = self.unique_all();
+        (values, counts)
+    }
+
+    /// Return unique sorted values with inverse indices.
+    /// Returns (values, inverse_indices).
+    /// inverse_indices[i] gives the index into values that reconstructs original[i].
+    /// inverse_indices has the same shape as the input array.
+    pub fn unique_inverse(&self) -> (RumpyArray, RumpyArray) {
+        let (values, _, inverse, _) = self.unique_all();
+        (values, inverse)
+    }
+
+    /// Return unique sorted values with all return values.
+    /// Returns (values, indices, inverse_indices, counts).
+    /// - indices: first occurrence index for each unique value
+    /// - inverse_indices: index into values that reconstructs original (same shape as input)
+    /// - counts: count of each unique value
+    pub fn unique_all(&self) -> (RumpyArray, RumpyArray, RumpyArray, RumpyArray) {
+        let values = self.to_vec();
+        let n = values.len();
+        if n == 0 {
+            return (
+                RumpyArray::from_vec(Vec::<f64>::new(), self.dtype()),
+                RumpyArray::from_vec_i64(Vec::<i64>::new(), DType::int64()),
+                RumpyArray::from_vec_i64(Vec::<i64>::new(), DType::int64()),
+                RumpyArray::from_vec_i64(Vec::<i64>::new(), DType::int64()),
+            );
+        }
+
+        // Create indices and sort by value
+        let mut indexed: Vec<(f64, usize)> = values.iter().copied().enumerate().map(|(i, v)| (v, i)).collect();
+        indexed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Collect unique values with all metadata
+        let mut unique_vals = Vec::new();
+        let mut first_indices = Vec::new();
+        let mut counts = Vec::new();
+        let mut inverse = vec![0i64; n];
+
+        let mut prev = indexed[0].0;
+        let mut unique_idx = 0i64;
+        let mut first_idx = indexed[0].1;
+        let mut count = 1i64;
+        inverse[indexed[0].1] = unique_idx;
+
+        for &(val, orig_idx) in &indexed[1..] {
+            if (val - prev).abs() < f64::EPSILON {
+                count += 1;
+                // Update first_idx if this occurrence is earlier
+                if orig_idx < first_idx {
+                    first_idx = orig_idx;
+                }
+                inverse[orig_idx] = unique_idx;
+            } else {
+                unique_vals.push(prev);
+                first_indices.push(first_idx as i64);
+                counts.push(count);
+
+                prev = val;
+                first_idx = orig_idx;
+                count = 1;
+                unique_idx += 1;
+                inverse[orig_idx] = unique_idx;
+            }
+        }
+        unique_vals.push(prev);
+        first_indices.push(first_idx as i64);
+        counts.push(count);
+
+        // Reshape inverse to match original array shape
+        let inverse_arr = RumpyArray::from_vec_i64(inverse, DType::int64());
+        let inverse_shaped = inverse_arr.reshape(self.shape().to_vec()).unwrap_or(inverse_arr);
+
+        (
+            RumpyArray::from_vec(unique_vals, self.dtype()),
+            RumpyArray::from_vec_i64(first_indices, DType::int64()),
+            inverse_shaped,
+            RumpyArray::from_vec_i64(counts, DType::int64()),
+        )
+    }
+
     /// Sort array along an axis.
     pub fn sort(&self, axis: Option<usize>) -> RumpyArray {
         // If axis is None, flatten and sort

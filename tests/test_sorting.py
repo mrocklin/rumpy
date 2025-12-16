@@ -407,5 +407,161 @@ class TestSortingStability:
         assert_eq(r_idx, n_idx)
 
 
+class TestUniqueExtensions:
+    """Test NumPy 2.0+ unique extension functions."""
+
+    def test_unique_values_basic(self):
+        """Test basic unique_values.
+
+        Note: We compare against np.unique since numpy's unique_values in 2.3.5
+        has unexpected ordering behavior, while unique_values documentation says
+        it should return sorted values like np.unique.
+        """
+        n = np.array([1, 1, 2])
+        r = rp.asarray(n)
+        assert_eq(rp.unique_values(r), np.unique(n))
+
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_unique_values_dtypes(self, dtype):
+        """Test unique_values with all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=dtype)
+        r = rp.asarray(n)
+        # Compare against np.unique which returns sorted values
+        assert_eq(rp.unique_values(r), np.unique(n))
+
+    def test_unique_values_empty(self):
+        """Test unique_values on empty array."""
+        n = np.array([], dtype=np.float64)
+        r = rp.asarray(n)
+        assert_eq(rp.unique_values(r), np.unique(n))
+
+    def test_unique_counts_basic(self):
+        """Test basic unique_counts."""
+        n = np.array([1, 1, 2])
+        r = rp.asarray(n)
+        r_result = rp.unique_counts(r)
+        n_result = np.unique_counts(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.counts, n_result.counts)
+
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_unique_counts_dtypes(self, dtype):
+        """Test unique_counts with all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=dtype)
+        r = rp.asarray(n)
+        r_result = rp.unique_counts(r)
+        n_result = np.unique_counts(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.counts, n_result.counts)
+
+    def test_unique_counts_empty(self):
+        """Test unique_counts on empty array."""
+        n = np.array([], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_counts(r)
+        n_result = np.unique_counts(n)
+        assert r_result.values.size == 0
+        assert r_result.counts.size == 0
+
+    def test_unique_counts_all_same(self):
+        """Test unique_counts on array with all same values."""
+        n = np.array([7, 7, 7, 7, 7], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_counts(r)
+        n_result = np.unique_counts(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.counts, n_result.counts)
+
+    def test_unique_inverse_basic(self):
+        """Test basic unique_inverse."""
+        n = np.array([1, 1, 2])
+        r = rp.asarray(n)
+        r_result = rp.unique_inverse(r)
+        n_result = np.unique_inverse(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.inverse_indices, n_result.inverse_indices)
+
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_unique_inverse_dtypes(self, dtype):
+        """Test unique_inverse with all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=dtype)
+        r = rp.asarray(n)
+        r_result = rp.unique_inverse(r)
+        n_result = np.unique_inverse(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.inverse_indices, n_result.inverse_indices)
+
+    def test_unique_inverse_empty(self):
+        """Test unique_inverse on empty array."""
+        n = np.array([], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_inverse(r)
+        n_result = np.unique_inverse(n)
+        assert r_result.values.size == 0
+        assert r_result.inverse_indices.size == 0
+
+    def test_unique_inverse_reconstruction(self):
+        """Test that inverse indices can reconstruct the original."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_inverse(r)
+        # Reconstruct original array
+        reconstructed = np.array(r_result.values)[np.array(r_result.inverse_indices)]
+        assert_eq(rp.asarray(reconstructed), r)
+
+    def test_unique_all_basic(self):
+        """Test basic unique_all."""
+        n = np.array([1, 1, 2])
+        r = rp.asarray(n)
+        r_result = rp.unique_all(r)
+        n_result = np.unique_all(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.indices, n_result.indices)
+        assert_eq(r_result.inverse_indices, n_result.inverse_indices)
+        assert_eq(r_result.counts, n_result.counts)
+
+    @pytest.mark.parametrize("dtype", NUMERIC_DTYPES)
+    def test_unique_all_dtypes(self, dtype):
+        """Test unique_all with all numeric dtypes."""
+        n = np.array([3, 1, 4, 1, 5, 9, 2, 6, 5, 3], dtype=dtype)
+        r = rp.asarray(n)
+        r_result = rp.unique_all(r)
+        n_result = np.unique_all(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.indices, n_result.indices)
+        assert_eq(r_result.inverse_indices, n_result.inverse_indices)
+        assert_eq(r_result.counts, n_result.counts)
+
+    def test_unique_all_empty(self):
+        """Test unique_all on empty array."""
+        n = np.array([], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_all(r)
+        n_result = np.unique_all(n)
+        assert r_result.values.size == 0
+        assert r_result.indices.size == 0
+        assert r_result.inverse_indices.size == 0
+        assert r_result.counts.size == 0
+
+    def test_unique_all_indices_first_occurrence(self):
+        """Test that indices point to first occurrence."""
+        n = np.array([3, 1, 4, 1, 5, 3], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_all(r)
+        n_result = np.unique_all(n)
+        assert_eq(r_result.indices, n_result.indices)
+
+    def test_unique_all_multidimensional(self):
+        """Test unique_all on multidimensional array (should flatten)."""
+        n = np.array([[1, 2, 3], [2, 3, 4], [3, 4, 5]], dtype=np.float64)
+        r = rp.asarray(n)
+        r_result = rp.unique_all(r)
+        n_result = np.unique_all(n)
+        assert_eq(r_result.values, n_result.values)
+        assert_eq(r_result.indices, n_result.indices)
+        assert_eq(r_result.inverse_indices, n_result.inverse_indices)
+        assert_eq(r_result.counts, n_result.counts)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

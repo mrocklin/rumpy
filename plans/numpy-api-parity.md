@@ -547,13 +547,13 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 26. Index Utilities | 10 | Medium | None | ✅ |
 | 27. Array Inspection | 12 | Low | None | ✅ |
 | 28. Window Functions | 5 | Low | None | ✅ |
-| 29. Unique Extensions | 4 | Low | Stream 13 | |
+| 29. Unique Extensions | 4 | Low | Stream 13 | ✅ |
 | 30. Convenience Aliases | 15 | Low | Various | |
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~229 functions across 28 streams
-**Remaining**: ~64 functions across 4 new streams
+**Completed**: ~233 functions across 29 streams
+**Remaining**: ~60 functions across 3 new streams
 **Total**: ~293 functions across 32 streams
 
 ---
@@ -872,16 +872,19 @@ Signal processing window functions.
 
 ---
 
-## Stream 29: Unique Extensions
+## Stream 29: Unique Extensions ✅ COMPLETE
 
 Extended unique functionality (NumPy 2.0+).
 
-- [ ] `unique_all` - unique with all return values
-- [ ] `unique_counts` - unique with counts only
-- [ ] `unique_inverse` - unique with inverse only
-- [ ] `unique_values` - unique values only
+- [x] `unique_all` - unique with all return values
+- [x] `unique_counts` - unique with counts only
+- [x] `unique_inverse` - unique with inverse only
+- [x] `unique_values` - unique values only
 
-**Files**: `src/ops/array_methods/sorting.rs`, `src/python/mod.rs`, `tests/test_sorting.py`
+**Performance Notes**: All functions return sorted unique values with O(n log n) complexity.
+Returns namedtuples for counts/inverse/all variants. inverse_indices preserves input shape.
+
+**Files**: `src/ops/array_methods/sorting.rs`, `src/python/shape.rs`, `tests/test_sorting.py`
 
 ---
 

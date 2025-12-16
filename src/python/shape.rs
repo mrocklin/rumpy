@@ -751,6 +751,71 @@ pub fn unique(arr: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(arr.inner.unique())
 }
 
+/// Return unique sorted values (Array API compatible).
+#[pyfunction]
+pub fn unique_values(arr: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(arr.inner.unique_values())
+}
+
+/// Return unique sorted values with counts.
+/// Returns namedtuple(values, counts).
+#[pyfunction]
+pub fn unique_counts(py: Python<'_>, arr: &PyRumpyArray) -> PyResult<pyo3::PyObject> {
+    let (values, counts) = arr.inner.unique_counts();
+
+    // Create namedtuple type
+    let collections = py.import("collections")?;
+    let namedtuple = collections.getattr("namedtuple")?;
+    let result_type = namedtuple.call1(("UniqueCountsResult", ["values", "counts"]))?;
+
+    // Create instance
+    let values_py = pyo3::Py::new(py, PyRumpyArray::new(values))?;
+    let counts_py = pyo3::Py::new(py, PyRumpyArray::new(counts))?;
+    let result = result_type.call1((values_py, counts_py))?;
+
+    Ok(result.into())
+}
+
+/// Return unique sorted values with inverse indices.
+/// Returns namedtuple(values, inverse_indices).
+#[pyfunction]
+pub fn unique_inverse(py: Python<'_>, arr: &PyRumpyArray) -> PyResult<pyo3::PyObject> {
+    let (values, inverse) = arr.inner.unique_inverse();
+
+    // Create namedtuple type
+    let collections = py.import("collections")?;
+    let namedtuple = collections.getattr("namedtuple")?;
+    let result_type = namedtuple.call1(("UniqueInverseResult", ["values", "inverse_indices"]))?;
+
+    // Create instance
+    let values_py = pyo3::Py::new(py, PyRumpyArray::new(values))?;
+    let inverse_py = pyo3::Py::new(py, PyRumpyArray::new(inverse))?;
+    let result = result_type.call1((values_py, inverse_py))?;
+
+    Ok(result.into())
+}
+
+/// Return unique sorted values with all return values.
+/// Returns namedtuple(values, indices, inverse_indices, counts).
+#[pyfunction]
+pub fn unique_all(py: Python<'_>, arr: &PyRumpyArray) -> PyResult<pyo3::PyObject> {
+    let (values, indices, inverse, counts) = arr.inner.unique_all();
+
+    // Create namedtuple type
+    let collections = py.import("collections")?;
+    let namedtuple = collections.getattr("namedtuple")?;
+    let result_type = namedtuple.call1(("UniqueAllResult", ["values", "indices", "inverse_indices", "counts"]))?;
+
+    // Create instance
+    let values_py = pyo3::Py::new(py, PyRumpyArray::new(values))?;
+    let indices_py = pyo3::Py::new(py, PyRumpyArray::new(indices))?;
+    let inverse_py = pyo3::Py::new(py, PyRumpyArray::new(inverse))?;
+    let counts_py = pyo3::Py::new(py, PyRumpyArray::new(counts))?;
+    let result = result_type.call1((values_py, indices_py, inverse_py, counts_py))?;
+
+    Ok(result.into())
+}
+
 /// Return indices of non-zero elements.
 #[pyfunction]
 pub fn nonzero(arr: &PyRumpyArray) -> Vec<PyRumpyArray> {

@@ -243,6 +243,10 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(shape::roll, m)?)?;
     m.add_function(wrap_pyfunction!(shape::rot90, m)?)?;
     m.add_function(wrap_pyfunction!(shape::unique, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::unique_values, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::unique_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::unique_inverse, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::unique_all, m)?)?;
     m.add_function(wrap_pyfunction!(shape::nonzero, m)?)?;
     // Counting and statistics (from reductions module)
     m.add_function(wrap_pyfunction!(reductions::bincount, m)?)?;
