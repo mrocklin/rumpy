@@ -4,6 +4,7 @@ pub mod fft;
 pub mod indexing;
 pub mod io;
 pub mod linalg;
+pub mod misc;
 pub mod numerical;
 pub mod poly;
 pub mod pyarray;
@@ -370,5 +371,19 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(reductions::nanquantile, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::nancumsum, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::nancumprod, m)?)?;
+    // Miscellaneous operations (Stream 32)
+    m.add_function(wrap_pyfunction!(misc::resize, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::unstack, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::block, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::trim_zeros, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::extract, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::place, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::putmask, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::select, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::piecewise, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::ediff1d, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::unwrap, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::angle, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::real_if_close, m)?)?;
     Ok(())
 }

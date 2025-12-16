@@ -932,30 +932,35 @@ Additional NaN-handling functions.
 
 ---
 
-## Stream 32: Miscellaneous Operations
+## Stream 32: Miscellaneous Operations ✅ COMPLETE
 
 Remaining useful functions.
 
 ### Array Manipulation
-- [ ] `resize` - resize array (different from reshape)
-- [ ] `unstack` - unstack along axis
-- [ ] `block` - assemble from nested blocks
-- [ ] `trim_zeros` - trim leading/trailing zeros
+- [x] `resize` - resize array (different from reshape)
+- [x] `unstack` - unstack along axis
+- [x] `block` - assemble from nested blocks
+- [x] `trim_zeros` - trim leading/trailing zeros
 
 ### Conditional
-- [ ] `extract` - extract elements where condition
-- [ ] `place` - place values where condition
-- [ ] `putmask` - put values using mask
-- [ ] `select` - select from choicelist by conditions
-- [ ] `piecewise` - piecewise function
+- [x] `extract` - extract elements where condition
+- [x] `place` - place values where condition
+- [x] `putmask` - put values using mask
+- [x] `select` - select from choicelist by conditions
+- [x] `piecewise` - piecewise function
 
 ### Other
-- [ ] `ediff1d` - differences with prepend/append
-- [ ] `unwrap` - unwrap phase angles
-- [ ] `angle` - phase angle of complex
-- [ ] `real_if_close` - convert to real if imaginary is small
+- [x] `ediff1d` - differences with prepend/append
+- [x] `unwrap` - unwrap phase angles
+- [x] `angle` - phase angle of complex
+- [x] `real_if_close` - convert to real if imaginary is small
 
-**Files**: Various, `tests/test_misc.py`
+**Performance Notes**:
+- `resize`, `ediff1d` use typed dispatch for ~1.1x numpy performance
+- `extract`, `place`, `putmask` use typed dispatch for contiguous arrays
+- `trim_zeros`, `unwrap`, `angle` are faster than numpy (0.2x-0.5x)
+
+**Files**: `src/python/misc.rs`, `tests/test_misc.py`
 
 ---
 
