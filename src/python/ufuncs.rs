@@ -803,3 +803,89 @@ pub fn gcd(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyRumpyArray {
 pub fn lcm(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(crate::ops::lcm(&x1.inner, &x2.inner))
 }
+
+// ============================================================================
+// Convenience aliases (Stream 30)
+// ============================================================================
+
+/// Alias for abs - compute the absolute value element-wise.
+#[pyfunction]
+pub fn absolute(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    abs(x)
+}
+
+/// Alias for conj - compute the complex conjugate element-wise.
+#[pyfunction]
+pub fn conjugate(x: &PyRumpyArray) -> PyRumpyArray {
+    conj(x)
+}
+
+/// Alias for arcsin - compute the inverse sine element-wise.
+#[pyfunction]
+pub fn asin(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    arcsin(x)
+}
+
+/// Alias for arccos - compute the inverse cosine element-wise.
+#[pyfunction]
+pub fn acos(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    arccos(x)
+}
+
+/// Alias for arctan - compute the inverse tangent element-wise.
+#[pyfunction]
+pub fn atan(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    arctan(x)
+}
+
+/// Alias for arcsinh - compute the inverse hyperbolic sine element-wise.
+#[pyfunction]
+pub fn asinh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    arcsinh(x)
+}
+
+/// Alias for arccosh - compute the inverse hyperbolic cosine element-wise.
+#[pyfunction]
+pub fn acosh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    arccosh(x)
+}
+
+/// Alias for arctanh - compute the inverse hyperbolic tangent element-wise.
+#[pyfunction]
+pub fn atanh(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    arctanh(x)
+}
+
+/// Alias for power - raise elements to given powers element-wise.
+#[pyfunction]
+#[pyo3(name = "pow")]
+pub fn pow_fn(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    power(x1, x2)
+}
+
+/// Alias for remainder - compute element-wise remainder of division.
+#[pyfunction]
+#[pyo3(name = "mod")]
+pub fn mod_fn(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    remainder(x1, x2)
+}
+
+/// Compute the element-wise remainder (C-style fmod, sign of dividend preserved).
+/// Note: In NumPy, fmod differs from mod/remainder. Our implementation uses C-style %.
+#[pyfunction]
+pub fn fmod(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    remainder(x1, x2)
+}
+
+/// Alias for divide - true division element-wise.
+#[pyfunction]
+pub fn true_divide(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    divide(x1, x2)
+}
+
+/// Compute absolute values (float-only in NumPy, but we accept all numeric).
+/// Note: In NumPy, fabs only accepts real floats. We accept any numeric type.
+#[pyfunction]
+pub fn fabs(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    abs(x)
+}

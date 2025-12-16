@@ -343,5 +343,26 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("complex128", "complex128")?;
     // newaxis is None in numpy (used for broadcasting)
     m.add("newaxis", m.py().None())?;
+    // Mathematical constants (Stream 30)
+    m.add("pi", std::f64::consts::PI)?;
+    m.add("e", std::f64::consts::E)?;
+    m.add("inf", f64::INFINITY)?;
+    m.add("nan", f64::NAN)?;
+    // Convenience aliases (Stream 30)
+    m.add_function(wrap_pyfunction!(ufuncs::absolute, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::conjugate, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::asin, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::acos, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::atan, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::asinh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::acosh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::atanh, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::pow_fn, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::mod_fn, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::fmod, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::true_divide, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::fabs, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::amax, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::amin, m)?)?;
     Ok(())
 }

@@ -637,3 +637,21 @@ pub fn count_nonzero(x: &PyRumpyArray) -> usize {
 pub fn diff(x: &PyRumpyArray, n: usize, axis: isize) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.diff(n, resolve_axis(axis, x.inner.ndim())))
 }
+
+// ============================================================================
+// Convenience aliases (Stream 30)
+// ============================================================================
+
+/// Alias for max - return the maximum of an array or maximum along an axis.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn amax(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    max(x, axis)
+}
+
+/// Alias for min - return the minimum of an array or minimum along an axis.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn amin(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    min(x, axis)
+}
