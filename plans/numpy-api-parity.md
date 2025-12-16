@@ -548,12 +548,12 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 27. Array Inspection | 12 | Low | None | ✅ |
 | 28. Window Functions | 5 | Low | None | ✅ |
 | 29. Unique Extensions | 4 | Low | Stream 13 | ✅ |
-| 30. Convenience Aliases | 15 | Low | Various | |
+| 30. Convenience Aliases | 15 | Low | Various | ✅ |
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~233 functions across 29 streams
-**Remaining**: ~60 functions across 3 new streams
+**Completed**: ~248 functions across 30 streams
+**Remaining**: ~45 functions across 2 streams
 **Total**: ~293 functions across 32 streams
 
 ---
@@ -888,47 +888,47 @@ Returns namedtuples for counts/inverse/all variants. inverse_indices preserves i
 
 ---
 
-## Stream 30: Convenience Aliases
+## Stream 30: Convenience Aliases ✅ COMPLETE
 
 Aliases and simple wrappers for compatibility.
 
 ### Math Aliases
-- [ ] `absolute` - alias for abs
-- [ ] `conjugate` - alias for conj
-- [ ] `acos`, `asin`, `atan` - aliases for arccos, arcsin, arctan
-- [ ] `acosh`, `asinh`, `atanh` - aliases for arccosh, arcsinh, arctanh
-- [ ] `pow` - alias for power
-- [ ] `mod` - alias for remainder
-- [ ] `fabs` - absolute value (float only)
-- [ ] `true_divide` - alias for divide
-- [ ] `fmod` - floating point remainder
+- [x] `absolute` - alias for abs
+- [x] `conjugate` - alias for conj
+- [x] `acos`, `asin`, `atan` - aliases for arccos, arcsin, arctan
+- [x] `acosh`, `asinh`, `atanh` - aliases for arccosh, arcsinh, arctanh
+- [x] `pow` - alias for power
+- [x] `mod` - alias for remainder
+- [x] `fabs` - absolute value (float only)
+- [x] `true_divide` - alias for divide
+- [x] `fmod` - floating point remainder
 
 ### Reduction Aliases
-- [ ] `amax` - alias for max (with axis)
-- [ ] `amin` - alias for min (with axis)
+- [x] `amax` - alias for max (with axis)
+- [x] `amin` - alias for min (with axis)
 
 ### Constants
-- [ ] `pi` - π
-- [ ] `e` - Euler's number
-- [ ] `inf` - positive infinity
-- [ ] `nan` - Not a Number
-- [ ] `newaxis` - None (already have, verify)
+- [x] `pi` - π
+- [x] `e` - Euler's number
+- [x] `inf` - positive infinity
+- [x] `nan` - Not a Number
+- [x] `newaxis` - None (already existed)
 
-**Files**: `src/python/mod.rs`, `tests/test_aliases.py`
+**Files**: `src/python/mod.rs`, `src/python/ufuncs.rs`, `src/python/reductions.rs`, `tests/test_aliases.py`
 
 ---
 
-## Stream 31: NaN-aware Extensions
+## Stream 31: NaN-aware Extensions ✅ COMPLETE
 
 Additional NaN-handling functions.
 
-- [ ] `nanmedian` - median ignoring NaN
-- [ ] `nanpercentile` - percentile ignoring NaN
-- [ ] `nanquantile` - quantile ignoring NaN
-- [ ] `nancumsum` - cumulative sum ignoring NaN
-- [ ] `nancumprod` - cumulative product ignoring NaN
+- [x] `nanmedian` - median ignoring NaN
+- [x] `nanpercentile` - percentile ignoring NaN
+- [x] `nanquantile` - quantile ignoring NaN
+- [x] `nancumsum` - cumulative sum ignoring NaN
+- [x] `nancumprod` - cumulative product ignoring NaN
 
-**Files**: `src/ops/array_methods/reductions.rs`, `src/python/reductions.rs`, `tests/test_nan.py`
+**Files**: `src/ops/statistics.rs`, `src/ops/array_methods/cumulative.rs`, `src/array/manipulation.rs`, `src/python/reductions.rs`, `tests/test_nan_extensions.py`
 
 ---
 

@@ -15,8 +15,8 @@ pub use flags::ArrayFlags;
 pub use iter::{AxisOffsetIter, StridedIter};
 pub use manipulation::{
     append, array_split, bincount, broadcast_shapes, concatenate, convolve, delete, diagflat,
-    geomspace, indices, insert, logspace, meshgrid, pad, percentile, repeat, roll, rot90, split,
-    stack, tile, tri, tril, triu,
+    geomspace, indices, insert, logspace, meshgrid, nanpercentile, pad, percentile, repeat, roll,
+    rot90, split, stack, tile, tri, tril, triu,
 };
 
 /// Core N-dimensional array type.

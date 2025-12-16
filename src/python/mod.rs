@@ -364,5 +364,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ufuncs::fabs, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::amax, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::amin, m)?)?;
+    // NaN-aware extensions (Stream 31)
+    m.add_function(wrap_pyfunction!(reductions::nanmedian, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::nanpercentile, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::nanquantile, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::nancumsum, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::nancumprod, m)?)?;
     Ok(())
 }

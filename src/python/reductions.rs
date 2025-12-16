@@ -655,3 +655,99 @@ pub fn amax(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult
 pub fn amin(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
     min(x, axis)
 }
+
+// ============================================================================
+// NaN-aware extensions (Stream 31)
+// ============================================================================
+
+/// Median of array elements ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nanmedian(x: &PyRumpyArray, axis: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<pyarray::ReductionResult> {
+    let axes = parse_axis(axis, x.inner.ndim())?;
+    match axes {
+        None => Ok(pyarray::ReductionResult::Scalar(x.inner.nanmedian())),
+        Some(ax_vec) if ax_vec.len() == 1 => {
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(x.inner.nanmedian_axis(ax_vec[0]))))
+        }
+        Some(ax_vec) => {
+            let result = reduce_multi_axis(&x.inner, ax_vec, |arr, axis| arr.nanmedian_axis(axis));
+            Ok(pyarray::ReductionResult::Array(PyRumpyArray::new(result)))
+        }
+    }
+}
+
+/// Compute percentiles of a dataset ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (a, q, axis=None))]
+pub fn nanpercentile(a: &PyRumpyArray, q: &pyo3::Bound<'_, pyo3::PyAny>, axis: Option<usize>) -> PyResult<PyRumpyArray> {
+    // Parse q - can be scalar or array-like
+    let q_values: Vec<f64> = if let Ok(val) = q.extract::<f64>() {
+        vec![val]
+    } else if let Ok(list) = q.extract::<Vec<f64>>() {
+        list
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err("q must be a number or list of numbers"));
+    };
+
+    // Validate q values are in [0, 100]
+    for &qv in &q_values {
+        if !(0.0..=100.0).contains(&qv) {
+            return Err(pyo3::exceptions::PyValueError::new_err("percentiles must be in range [0, 100]"));
+        }
+    }
+
+    crate::array::nanpercentile(&a.inner, &q_values, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("nanpercentile computation failed"))
+}
+
+/// Compute quantiles of a dataset ignoring NaN values.
+#[pyfunction]
+#[pyo3(signature = (a, q, axis=None))]
+pub fn nanquantile(a: &PyRumpyArray, q: &pyo3::Bound<'_, pyo3::PyAny>, axis: Option<usize>) -> PyResult<PyRumpyArray> {
+    // Parse q - can be scalar or array-like
+    let q_values: Vec<f64> = if let Ok(val) = q.extract::<f64>() {
+        vec![val]
+    } else if let Ok(list) = q.extract::<Vec<f64>>() {
+        list
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err("q must be a number or list of numbers"));
+    };
+
+    // Validate q values are in [0, 1]
+    for &qv in &q_values {
+        if !(0.0..=1.0).contains(&qv) {
+            return Err(pyo3::exceptions::PyValueError::new_err("quantiles must be in range [0, 1]"));
+        }
+    }
+
+    // Convert to percentiles
+    let pct_values: Vec<f64> = q_values.iter().map(|&q| q * 100.0).collect();
+
+    crate::array::nanpercentile(&a.inner, &pct_values, axis)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("nanquantile computation failed"))
+}
+
+/// NaN-aware cumulative sum: NaN values are treated as zero.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nancumsum(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    let normalized_axis = axis.map(|ax| {
+        let ax = resolve_axis(ax, x.inner.ndim());
+        check_axis(ax, x.inner.ndim()).map(|_| ax)
+    }).transpose()?;
+    Ok(PyRumpyArray::new(x.inner.nancumsum(normalized_axis)))
+}
+
+/// NaN-aware cumulative product: NaN values are treated as one.
+#[pyfunction]
+#[pyo3(signature = (x, axis=None))]
+pub fn nancumprod(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> {
+    let normalized_axis = axis.map(|ax| {
+        let ax = resolve_axis(ax, x.inner.ndim());
+        check_axis(ax, x.inner.ndim()).map(|_| ax)
+    }).transpose()?;
+    Ok(PyRumpyArray::new(x.inner.nancumprod(normalized_axis)))
+}

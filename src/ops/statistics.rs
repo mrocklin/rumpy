@@ -258,4 +258,93 @@ impl RumpyArray {
             }
         }
     }
+
+    // ========================================================================
+    // NaN-aware statistics
+    // ========================================================================
+
+    /// Median of all elements ignoring NaN values.
+    pub fn nanmedian(&self) -> f64 {
+        let size = self.size();
+        if size == 0 {
+            return f64::NAN;
+        }
+        // Collect non-NaN values
+        let mut values: Vec<f64> = self.to_vec().into_iter().filter(|v| !v.is_nan()).collect();
+        if values.is_empty() {
+            return f64::NAN;
+        }
+        let n = values.len();
+        let mid = n / 2;
+
+        // Use select_nth_unstable for O(n) median
+        values.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        if n % 2 == 0 {
+            // For even length, need max of left partition
+            let left_max = values[..mid].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            (left_max + values[mid]) / 2.0
+        } else {
+            values[mid]
+        }
+    }
+
+    /// Median along axis ignoring NaN values.
+    pub fn nanmedian_axis(&self, axis: usize) -> RumpyArray {
+        let shape = self.shape();
+        let axis_len = shape[axis];
+        let axis_stride = self.strides()[axis];
+
+        // Output shape: remove the axis dimension
+        let mut out_shape: Vec<usize> = shape[..axis].to_vec();
+        out_shape.extend_from_slice(&shape[axis + 1..]);
+        if out_shape.is_empty() {
+            out_shape = vec![1];
+        }
+
+        let out_size: usize = out_shape.iter().product();
+        let mut result = RumpyArray::zeros(out_shape, DType::float64());
+
+        if out_size == 0 || axis_len == 0 {
+            return result;
+        }
+
+        let buffer = result.buffer_mut();
+        let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+        let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+        let src_ptr = self.data_ptr();
+        let dtype = self.dtype();
+        let ops = dtype.ops();
+
+        // Use axis_offsets for efficient strided access
+        for (i, base_offset) in self.axis_offsets(axis).enumerate() {
+            // Collect non-NaN values along axis using strided pointer
+            let mut values = Vec::with_capacity(axis_len);
+            let mut ptr = unsafe { src_ptr.offset(base_offset) };
+            for _ in 0..axis_len {
+                let v = unsafe { ops.read_f64(ptr, 0) }.unwrap_or(0.0);
+                if !v.is_nan() {
+                    values.push(v);
+                }
+                ptr = unsafe { ptr.offset(axis_stride) };
+            }
+
+            // Compute median of non-NaN values
+            let median = if values.is_empty() {
+                f64::NAN
+            } else {
+                values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let n = values.len();
+                if n % 2 == 0 {
+                    (values[n / 2 - 1] + values[n / 2]) / 2.0
+                } else {
+                    values[n / 2]
+                }
+            };
+
+            unsafe { *result_ptr.add(i) = median; }
+        }
+        result
+    }
 }

@@ -234,4 +234,100 @@ impl RumpyArray {
         }
         flat
     }
+
+    // ========================================================================
+    // NaN-aware cumulative operations
+    // ========================================================================
+
+    /// NaN-aware cumulative operation: NaN values are treated as identity element.
+    fn nan_cumulative_op<F>(&self, axis: Option<usize>, identity: f64, op: F) -> RumpyArray
+    where
+        F: Fn(f64, f64) -> f64,
+    {
+        match axis {
+            None => {
+                let size = self.size();
+                let mut result = RumpyArray::zeros(vec![size], self.dtype());
+                if size == 0 {
+                    return result;
+                }
+
+                let dtype = self.dtype();
+                let buffer = result.buffer_mut();
+                let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+                let ops = dtype.ops();
+                let src_ptr = self.data_ptr();
+
+                let mut acc = identity;
+                for (i, offset) in self.iter_offsets().enumerate() {
+                    let val = unsafe { ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
+                    // Treat NaN as identity element (skip in accumulation)
+                    if !val.is_nan() {
+                        acc = op(acc, val);
+                    }
+                    unsafe { ops.write_f64(result_ptr, i, acc); }
+                }
+                result
+            }
+            Some(axis) => {
+                let shape = self.shape().to_vec();
+                let dtype = self.dtype();
+                let mut result = RumpyArray::zeros(shape.clone(), dtype.clone());
+                let size = result.size();
+                if size == 0 {
+                    return result;
+                }
+
+                let buffer = result.buffer_mut();
+                let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+                let result_ptr = result_buffer.as_mut_ptr();
+                let ops = dtype.ops();
+
+                let axis_len = shape[axis];
+                let outer_size = size / axis_len;
+
+                let mut outer_shape: Vec<usize> = shape[..axis].to_vec();
+                outer_shape.extend_from_slice(&shape[axis + 1..]);
+                if outer_shape.is_empty() {
+                    outer_shape = vec![1];
+                }
+
+                let mut outer_indices = vec![0usize; outer_shape.len()];
+                for _ in 0..outer_size {
+                    let mut in_indices: Vec<usize> = outer_indices[..axis.min(outer_indices.len())].to_vec();
+                    in_indices.push(0);
+                    if axis < self.ndim() - 1 && outer_indices.len() > axis {
+                        in_indices.extend_from_slice(&outer_indices[axis..]);
+                    } else if axis < self.ndim() - 1 {
+                        in_indices.extend_from_slice(&outer_indices[..]);
+                    }
+
+                    let mut acc = identity;
+                    for j in 0..axis_len {
+                        in_indices[axis] = j;
+                        let val = self.get_element(&in_indices);
+                        // Treat NaN as identity element (skip in accumulation)
+                        if !val.is_nan() {
+                            acc = op(acc, val);
+                        }
+                        let flat_idx = self.flat_index_for(&in_indices);
+                        unsafe { ops.write_f64(result_ptr, flat_idx, acc); }
+                    }
+                    increment_indices(&mut outer_indices, &outer_shape);
+                }
+                result
+            }
+        }
+    }
+
+    /// NaN-aware cumulative sum: NaN values are treated as zero.
+    pub fn nancumsum(&self, axis: Option<usize>) -> RumpyArray {
+        self.nan_cumulative_op(axis, 0.0, |acc, x| acc + x)
+    }
+
+    /// NaN-aware cumulative product: NaN values are treated as one.
+    pub fn nancumprod(&self, axis: Option<usize>) -> RumpyArray {
+        self.nan_cumulative_op(axis, 1.0, |acc, x| acc * x)
+    }
 }

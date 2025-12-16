@@ -365,6 +365,117 @@ fn interpolate_percentile(sorted: &[f64], pct: f64) -> f64 {
     }
 }
 
+// ============================================================================
+// NaN-aware percentile/quantile
+// ============================================================================
+
+/// Compute the q-th percentile(s) of the data, ignoring NaN values.
+/// q values should be in [0, 100].
+pub fn nanpercentile(arr: &RumpyArray, q: &[f64], axis: Option<usize>) -> Option<RumpyArray> {
+    match axis {
+        None => nanpercentile_flat(arr, q),
+        Some(ax) => nanpercentile_axis(arr, q, ax),
+    }
+}
+
+/// Nanpercentile over flattened array.
+fn nanpercentile_flat(arr: &RumpyArray, q: &[f64]) -> Option<RumpyArray> {
+    // Collect non-NaN values
+    let mut values: Vec<f64> = arr.to_vec().into_iter().filter(|v| !v.is_nan()).collect();
+
+    if values.is_empty() {
+        // All NaN - return NaN for each percentile
+        // Single q -> scalar-like output; multiple q -> 1D array
+        let shape = if q.len() == 1 { vec![1] } else { vec![q.len()] };
+        return Some(RumpyArray::full(shape, f64::NAN, DType::float64()));
+    }
+
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Compute percentiles using linear interpolation
+    // Match numpy behavior: single q returns scalar-like, multiple q returns 1D array
+    let out_shape = if q.len() == 1 { vec![1] } else { vec![q.len()] };
+    let mut result = RumpyArray::zeros(out_shape, DType::float64());
+    let buffer = result.buffer_mut();
+    let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+    for (i, &pct) in q.iter().enumerate() {
+        let val = interpolate_percentile(&values, pct);
+        unsafe { *result_ptr.add(i) = val; }
+    }
+
+    Some(result)
+}
+
+/// Nanpercentile along axis.
+fn nanpercentile_axis(arr: &RumpyArray, q: &[f64], axis: usize) -> Option<RumpyArray> {
+    if axis >= arr.ndim() {
+        return None;
+    }
+
+    let shape = arr.shape();
+    let axis_len = shape[axis];
+    let axis_stride = arr.strides()[axis];
+
+    // Output shape: remove axis, prepend q.len() if multiple percentiles
+    let mut reduced_shape: Vec<usize> = shape[..axis].to_vec();
+    reduced_shape.extend_from_slice(&shape[axis + 1..]);
+    if reduced_shape.is_empty() {
+        reduced_shape = vec![1];
+    }
+
+    let out_shape = if q.len() == 1 {
+        reduced_shape.clone()
+    } else {
+        let mut s = vec![q.len()];
+        s.extend(&reduced_shape);
+        s
+    };
+
+    let reduced_size: usize = reduced_shape.iter().product();
+    if axis_len == 0 || reduced_size == 0 {
+        return Some(RumpyArray::zeros(out_shape, DType::float64()));
+    }
+
+    let mut result = RumpyArray::zeros(out_shape, DType::float64());
+    let buffer = result.buffer_mut();
+    let result_buffer = std::sync::Arc::get_mut(buffer).expect("unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+    let src_ptr = arr.data_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+
+    // Use axis_offsets iterator
+    for (i, base_offset) in arr.axis_offsets(axis).enumerate() {
+        // Collect non-NaN values along axis from this base offset
+        let mut values: Vec<f64> = Vec::with_capacity(axis_len);
+        let mut ptr = unsafe { src_ptr.offset(base_offset) };
+        for _ in 0..axis_len {
+            let v = unsafe { ops.read_f64(ptr, 0) }.unwrap_or(0.0);
+            if !v.is_nan() {
+                values.push(v);
+            }
+            ptr = unsafe { ptr.offset(axis_stride) };
+        }
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Compute percentiles (NaN if all-NaN slice)
+        if q.len() == 1 {
+            let val = if values.is_empty() { f64::NAN } else { interpolate_percentile(&values, q[0]) };
+            unsafe { *result_ptr.add(i) = val; }
+        } else {
+            for (qi, &pct) in q.iter().enumerate() {
+                let val = if values.is_empty() { f64::NAN } else { interpolate_percentile(&values, pct) };
+                unsafe { *result_ptr.add(qi * reduced_size + i) = val; }
+            }
+        }
+    }
+
+    Some(result)
+}
+
 /// Create logarithmically spaced array.
 /// Returns base^linspace(start, stop, num).
 pub fn logspace(start: f64, stop: f64, num: usize, base: f64, dtype: DType) -> RumpyArray {
