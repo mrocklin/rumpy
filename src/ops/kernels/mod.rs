@@ -36,3 +36,9 @@ pub trait ReduceKernel<T>: Copy {
 pub trait CompareKernel<T>: Copy {
     fn apply(a: T, b: T) -> bool;
 }
+
+/// Kernel for unary predicate operations (returns bool).
+/// Used for isnan, isinf, isfinite, signbit, isneginf, isposinf.
+pub trait PredicateKernel<T>: Copy {
+    fn apply(v: T) -> bool;
+}

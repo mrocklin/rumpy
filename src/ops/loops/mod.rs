@@ -8,5 +8,5 @@
 pub mod contiguous;
 pub mod strided;
 
-pub use contiguous::{map_binary, map_unary, map_compare, reduce, cumulative};
-pub use strided::{map_binary_strided, map_unary_strided, map_compare_strided, reduce_strided, cumulative_strided};
+pub use contiguous::{map_binary, map_unary, map_compare, map_predicate, reduce, cumulative};
+pub use strided::{map_binary_strided, map_unary_strided, map_compare_strided, map_predicate_strided, reduce_strided, cumulative_strided};

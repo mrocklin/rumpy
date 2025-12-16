@@ -604,3 +604,148 @@ macro_rules! impl_complex_math {
 
 impl_complex_math!(f64);
 impl_complex_math!(f32);
+
+// ============================================================================
+// Predicate kernels (return bool)
+// ============================================================================
+
+use super::PredicateKernel;
+
+#[derive(Clone, Copy)]
+pub struct Isneginf;
+
+#[derive(Clone, Copy)]
+pub struct Isposinf;
+
+// Float predicate implementations
+macro_rules! impl_float_predicates {
+    ($T:ty) => {
+        impl PredicateKernel<$T> for Isnan {
+            #[inline(always)]
+            fn apply(v: $T) -> bool { v.is_nan() }
+        }
+        impl PredicateKernel<$T> for Isinf {
+            #[inline(always)]
+            fn apply(v: $T) -> bool { v.is_infinite() }
+        }
+        impl PredicateKernel<$T> for Isfinite {
+            #[inline(always)]
+            fn apply(v: $T) -> bool { v.is_finite() }
+        }
+        impl PredicateKernel<$T> for Signbit {
+            #[inline(always)]
+            fn apply(v: $T) -> bool { v.is_sign_negative() }
+        }
+        impl PredicateKernel<$T> for Isneginf {
+            #[inline(always)]
+            fn apply(v: $T) -> bool { v == <$T>::NEG_INFINITY }
+        }
+        impl PredicateKernel<$T> for Isposinf {
+            #[inline(always)]
+            fn apply(v: $T) -> bool { v == <$T>::INFINITY }
+        }
+    };
+}
+
+impl_float_predicates!(f64);
+impl_float_predicates!(f32);
+
+// Float16 predicate implementations
+impl PredicateKernel<f16> for Isnan {
+    #[inline(always)]
+    fn apply(v: f16) -> bool { v.is_nan() }
+}
+impl PredicateKernel<f16> for Isinf {
+    #[inline(always)]
+    fn apply(v: f16) -> bool { v.is_infinite() }
+}
+impl PredicateKernel<f16> for Isfinite {
+    #[inline(always)]
+    fn apply(v: f16) -> bool { v.is_finite() }
+}
+impl PredicateKernel<f16> for Signbit {
+    #[inline(always)]
+    fn apply(v: f16) -> bool { v.is_sign_negative() }
+}
+impl PredicateKernel<f16> for Isneginf {
+    #[inline(always)]
+    fn apply(v: f16) -> bool { v == f16::NEG_INFINITY }
+}
+impl PredicateKernel<f16> for Isposinf {
+    #[inline(always)]
+    fn apply(v: f16) -> bool { v == f16::INFINITY }
+}
+
+// Integer predicate implementations (integers can't be nan/inf)
+macro_rules! impl_int_predicates {
+    ($T:ty, $is_signed:expr) => {
+        impl PredicateKernel<$T> for Isnan {
+            #[inline(always)]
+            fn apply(_v: $T) -> bool { false }
+        }
+        impl PredicateKernel<$T> for Isinf {
+            #[inline(always)]
+            fn apply(_v: $T) -> bool { false }
+        }
+        impl PredicateKernel<$T> for Isfinite {
+            #[inline(always)]
+            fn apply(_v: $T) -> bool { true }
+        }
+        impl PredicateKernel<$T> for Signbit {
+            #[inline(always)]
+            fn apply(v: $T) -> bool {
+                if $is_signed { (v as i64) < 0 } else { false }
+            }
+        }
+        impl PredicateKernel<$T> for Isneginf {
+            #[inline(always)]
+            fn apply(_v: $T) -> bool { false }
+        }
+        impl PredicateKernel<$T> for Isposinf {
+            #[inline(always)]
+            fn apply(_v: $T) -> bool { false }
+        }
+    };
+}
+
+impl_int_predicates!(i64, true);
+impl_int_predicates!(i32, true);
+impl_int_predicates!(i16, true);
+impl_int_predicates!(i8, true);
+impl_int_predicates!(u64, false);
+impl_int_predicates!(u32, false);
+impl_int_predicates!(u16, false);
+impl_int_predicates!(u8, false);
+
+// Complex predicate implementations
+macro_rules! impl_complex_predicates {
+    ($F:ty) => {
+        impl PredicateKernel<Complex<$F>> for Isnan {
+            #[inline(always)]
+            fn apply(v: Complex<$F>) -> bool { v.re.is_nan() || v.im.is_nan() }
+        }
+        impl PredicateKernel<Complex<$F>> for Isinf {
+            #[inline(always)]
+            fn apply(v: Complex<$F>) -> bool { v.re.is_infinite() || v.im.is_infinite() }
+        }
+        impl PredicateKernel<Complex<$F>> for Isfinite {
+            #[inline(always)]
+            fn apply(v: Complex<$F>) -> bool { v.re.is_finite() && v.im.is_finite() }
+        }
+        impl PredicateKernel<Complex<$F>> for Signbit {
+            #[inline(always)]
+            fn apply(v: Complex<$F>) -> bool { v.re.is_sign_negative() }
+        }
+        impl PredicateKernel<Complex<$F>> for Isneginf {
+            #[inline(always)]
+            fn apply(v: Complex<$F>) -> bool { v.re == <$F>::NEG_INFINITY && v.im == 0.0 }
+        }
+        impl PredicateKernel<Complex<$F>> for Isposinf {
+            #[inline(always)]
+            fn apply(v: Complex<$F>) -> bool { v.re == <$F>::INFINITY && v.im == 0.0 }
+        }
+    };
+}
+
+impl_complex_predicates!(f64);
+impl_complex_predicates!(f32);

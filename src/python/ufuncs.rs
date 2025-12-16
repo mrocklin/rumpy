@@ -150,6 +150,127 @@ pub fn isfinite(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
 }
 
 #[pyfunction]
+pub fn isneginf(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v == f64::NEG_INFINITY { 1.0 } else { 0.0 }, |a| a.isneginf())
+}
+
+#[pyfunction]
+pub fn isposinf(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |v| if v == f64::INFINITY { 1.0 } else { 0.0 }, |a| a.isposinf())
+}
+
+#[pyfunction]
+pub fn isreal(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |_| 1.0, |a| a.isreal())  // scalars are always real
+}
+
+#[pyfunction]
+pub fn iscomplex(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
+    apply_unary(x, |_| 0.0, |a| a.iscomplex())  // f64 scalars are never complex
+}
+
+/// Check if the array has a real-valued dtype (not complex).
+#[pyfunction]
+pub fn isrealobj(x: &Bound<'_, PyAny>) -> PyResult<bool> {
+    use crate::array::dtype::DTypeKind;
+    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
+        let kind = arr.inner.dtype().kind();
+        Ok(!matches!(kind, DTypeKind::Complex64 | DTypeKind::Complex128))
+    } else {
+        // Python scalars: check type name
+        let type_name = x.get_type().name()?;
+        Ok(type_name != "complex")
+    }
+}
+
+/// Check if the array has a complex dtype.
+#[pyfunction]
+pub fn iscomplexobj(x: &Bound<'_, PyAny>) -> PyResult<bool> {
+    use crate::array::dtype::DTypeKind;
+    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
+        let kind = arr.inner.dtype().kind();
+        Ok(matches!(kind, DTypeKind::Complex64 | DTypeKind::Complex128))
+    } else {
+        // Python scalars: check type name
+        let type_name = x.get_type().name()?;
+        Ok(type_name == "complex")
+    }
+}
+
+/// Check if two arrays share memory.
+#[pyfunction]
+pub fn shares_memory(a: PyRef<'_, PyRumpyArray>, b: PyRef<'_, PyRumpyArray>) -> bool {
+    a.inner.shares_buffer_with(&b.inner)
+}
+
+/// Check if two arrays might share memory (same as shares_memory for rumpy).
+#[pyfunction]
+pub fn may_share_memory(a: PyRef<'_, PyRumpyArray>, b: PyRef<'_, PyRumpyArray>) -> bool {
+    // In NumPy, may_share_memory is more conservative (can return true even if no overlap).
+    // In rumpy, we use exact check since our buffers are Arc-managed.
+    a.inner.shares_buffer_with(&b.inner)
+}
+
+/// Check if the input is a scalar (int, float, complex, str, bool).
+/// Arrays (including 0-d arrays) and sequences are NOT scalars.
+#[pyfunction]
+pub fn isscalar(x: &Bound<'_, PyAny>) -> PyResult<bool> {
+    // If it's a rumpy array, not a scalar
+    if x.extract::<PyRef<'_, PyRumpyArray>>().is_ok() {
+        return Ok(false);
+    }
+    // If it's a numpy array, not a scalar
+    let type_name = x.get_type().name()?.to_string();
+    if type_name == "ndarray" {
+        return Ok(false);
+    }
+    // Check for Python scalar types
+    Ok(matches!(type_name.as_str(), "int" | "float" | "complex" | "str" | "bool" | "bytes"))
+}
+
+/// Return the number of dimensions of the input.
+#[pyfunction]
+pub fn ndim(x: &Bound<'_, PyAny>) -> PyResult<usize> {
+    use super::creation::asarray;
+    // If it's already a rumpy array
+    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
+        return Ok(arr.inner.ndim());
+    }
+    // Try to convert to array and get ndim
+    let arr = asarray(x.py(), x, None)?;
+    Ok(arr.inner.ndim())
+}
+
+/// Return the total number of elements in the input.
+#[pyfunction]
+pub fn size(x: &Bound<'_, PyAny>) -> PyResult<usize> {
+    use super::creation::asarray;
+    // If it's already a rumpy array
+    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
+        return Ok(arr.inner.size());
+    }
+    // Try to convert to array and get size
+    let arr = asarray(x.py(), x, None)?;
+    Ok(arr.inner.size())
+}
+
+/// Return the shape of the input as a tuple.
+#[pyfunction]
+pub fn shape(py: Python<'_>, x: &Bound<'_, PyAny>) -> PyResult<Py<pyo3::types::PyTuple>> {
+    use pyo3::types::PyTuple;
+    use super::creation::asarray;
+    // If it's already a rumpy array
+    if let Ok(arr) = x.extract::<PyRef<'_, PyRumpyArray>>() {
+        let shape_vec: Vec<usize> = arr.inner.shape().to_vec();
+        return Ok(PyTuple::new(py, shape_vec)?.unbind());
+    }
+    // Try to convert to array and get shape
+    let arr = asarray(x.py(), x, None)?;
+    let shape_vec: Vec<usize> = arr.inner.shape().to_vec();
+    Ok(PyTuple::new(py, shape_vec)?.unbind())
+}
+
+#[pyfunction]
 pub fn abs(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     apply_unary(x, |v| v.abs(), |a| a.abs())
 }

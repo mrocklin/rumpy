@@ -81,6 +81,10 @@ macro_rules! impl_float_dtype {
                     UnaryOp::Arccosh => v.acosh(),
                     UnaryOp::Arctanh => v.atanh(),
                     UnaryOp::Signbit => if v.is_sign_negative() { 1.0 } else { 0.0 },
+                    UnaryOp::Isneginf => if v == <$T>::NEG_INFINITY { 1.0 } else { 0.0 },
+                    UnaryOp::Isposinf => if v == <$T>::INFINITY { 1.0 } else { 0.0 },
+                    UnaryOp::Isreal => 1.0,    // real types are always real
+                    UnaryOp::Iscomplex => 0.0, // real types are never complex
                 };
                 Self::write(out, idx, result);
             }
@@ -291,6 +295,10 @@ macro_rules! impl_signed_int_dtype {
                     UnaryOp::Arccosh => (v as f64).acosh() as $T,
                     UnaryOp::Arctanh => (v as f64).atanh() as $T,
                     UnaryOp::Signbit => if v < 0 { 1 } else { 0 },
+                    UnaryOp::Isneginf => 0,  // integers can't be infinity
+                    UnaryOp::Isposinf => 0,
+                    UnaryOp::Isreal => 1,     // integers are always real
+                    UnaryOp::Iscomplex => 0,  // integers are never complex
                 };
                 Self::write(out, idx, result);
             }
@@ -489,6 +497,10 @@ macro_rules! impl_unsigned_int_dtype {
                     UnaryOp::Arccosh => (v as f64).acosh() as $T,
                     UnaryOp::Arctanh => (v as f64).atanh() as $T,
                     UnaryOp::Signbit => 0,  // Unsigned types never have sign bit set
+                    UnaryOp::Isneginf => 0,  // integers can't be infinity
+                    UnaryOp::Isposinf => 0,
+                    UnaryOp::Isreal => 1,     // integers are always real
+                    UnaryOp::Iscomplex => 0,  // integers are never complex
                 };
                 Self::write(out, idx, result);
             }

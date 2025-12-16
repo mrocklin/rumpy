@@ -109,6 +109,12 @@ impl RumpyArray {
             && Arc::strong_count(&self.buffer) == 1
     }
 
+    /// Check if this array shares its buffer with another array.
+    /// Returns true if both arrays reference the same underlying memory buffer.
+    pub fn shares_buffer_with(&self, other: &RumpyArray) -> bool {
+        Arc::ptr_eq(&self.buffer, &other.buffer)
+    }
+
     /// Check if array is C-contiguous.
     pub fn is_c_contiguous(&self) -> bool {
         self.flags.contains(ArrayFlags::C_CONTIGUOUS)

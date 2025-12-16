@@ -79,6 +79,10 @@ impl DTypeOps for Float16Ops {
             UnaryOp::Arccosh => v.acosh(),
             UnaryOp::Arctanh => v.atanh(),
             UnaryOp::Signbit => if v.is_sign_negative() { 1.0 } else { 0.0 },
+            UnaryOp::Isneginf => if v == f32::NEG_INFINITY { 1.0 } else { 0.0 },
+            UnaryOp::Isposinf => if v == f32::INFINITY { 1.0 } else { 0.0 },
+            UnaryOp::Isreal => 1.0,    // real types are always real
+            UnaryOp::Iscomplex => 0.0, // real types are never complex
         };
         Self::write(out, idx, f16::from_f32(result));
     }

@@ -1934,3 +1934,132 @@ fn dispatch_cumulative_axis<T: Copy, K: ReduceKernel<T>>(
 
     Some(result)
 }
+
+// ============================================================================
+// Predicate dispatch (isnan, isinf, isfinite, signbit, isneginf, isposinf)
+// ============================================================================
+
+use crate::ops::kernels::PredicateKernel;
+use crate::ops::kernels::math::{Isnan, Isinf, Isfinite, Signbit, Isneginf, Isposinf};
+
+/// Dispatch isnan using the kernel/loop architecture.
+pub fn dispatch_predicate_isnan(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_predicate_kernel(arr, Isnan)
+}
+
+/// Dispatch isinf using the kernel/loop architecture.
+pub fn dispatch_predicate_isinf(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_predicate_kernel(arr, Isinf)
+}
+
+/// Dispatch isfinite using the kernel/loop architecture.
+pub fn dispatch_predicate_isfinite(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_predicate_kernel(arr, Isfinite)
+}
+
+/// Dispatch signbit using the kernel/loop architecture.
+pub fn dispatch_predicate_signbit(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_predicate_kernel(arr, Signbit)
+}
+
+/// Dispatch isneginf using the kernel/loop architecture.
+pub fn dispatch_predicate_isneginf(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_predicate_kernel(arr, Isneginf)
+}
+
+/// Dispatch isposinf using the kernel/loop architecture.
+pub fn dispatch_predicate_isposinf(arr: &RumpyArray) -> Option<RumpyArray> {
+    dispatch_predicate_kernel(arr, Isposinf)
+}
+
+/// Generic predicate dispatch for all numeric types.
+fn dispatch_predicate_kernel<K>(arr: &RumpyArray, kernel: K) -> Option<RumpyArray>
+where
+    K: PredicateKernel<f64>
+        + PredicateKernel<f32>
+        + PredicateKernel<f16>
+        + PredicateKernel<i64>
+        + PredicateKernel<i32>
+        + PredicateKernel<i16>
+        + PredicateKernel<i8>
+        + PredicateKernel<u64>
+        + PredicateKernel<u32>
+        + PredicateKernel<u16>
+        + PredicateKernel<u8>
+        + PredicateKernel<Complex<f64>>
+        + PredicateKernel<Complex<f32>>,
+{
+    match arr.dtype().kind() {
+        DTypeKind::Float64 => dispatch_predicate_typed::<f64, K>(arr, kernel),
+        DTypeKind::Float32 => dispatch_predicate_typed::<f32, K>(arr, kernel),
+        DTypeKind::Float16 => dispatch_predicate_typed::<f16, K>(arr, kernel),
+        DTypeKind::Int64 => dispatch_predicate_typed::<i64, K>(arr, kernel),
+        DTypeKind::Int32 => dispatch_predicate_typed::<i32, K>(arr, kernel),
+        DTypeKind::Int16 => dispatch_predicate_typed::<i16, K>(arr, kernel),
+        DTypeKind::Int8 => dispatch_predicate_typed::<i8, K>(arr, kernel),
+        DTypeKind::Uint64 => dispatch_predicate_typed::<u64, K>(arr, kernel),
+        DTypeKind::Uint32 => dispatch_predicate_typed::<u32, K>(arr, kernel),
+        DTypeKind::Uint16 => dispatch_predicate_typed::<u16, K>(arr, kernel),
+        DTypeKind::Uint8 => dispatch_predicate_typed::<u8, K>(arr, kernel),
+        DTypeKind::Complex128 => dispatch_predicate_typed::<Complex<f64>, K>(arr, kernel),
+        DTypeKind::Complex64 => dispatch_predicate_typed::<Complex<f32>, K>(arr, kernel),
+        _ => None,
+    }
+}
+
+/// Type-specific predicate dispatch with layout detection.
+fn dispatch_predicate_typed<T: Copy, K: PredicateKernel<T>>(
+    arr: &RumpyArray,
+    kernel: K,
+) -> Option<RumpyArray> {
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(arr.shape().to_vec(), DType::bool()));
+    }
+
+    let mut result = RumpyArray::zeros(arr.shape().to_vec(), DType::bool());
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr();
+
+    if arr.is_c_contiguous() {
+        let src_slice = unsafe { std::slice::from_raw_parts(arr.data_ptr() as *const T, size) };
+        let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+        loops::map_predicate(src_slice, out_slice, kernel);
+    } else {
+        let ndim = arr.ndim();
+
+        if ndim <= 1 {
+            let stride = if ndim == 0 { 0 } else { arr.strides()[0] };
+            unsafe {
+                loops::map_predicate_strided(
+                    arr.data_ptr() as *const T, stride,
+                    result_ptr,
+                    size, kernel,
+                );
+            }
+        } else {
+            // nD: iterate over outer dimensions
+            let inner_size = arr.shape()[ndim - 1];
+            let inner_stride = arr.strides()[ndim - 1];
+            let outer_shape = &arr.shape()[..ndim - 1];
+            let outer_size: usize = outer_shape.iter().product();
+            let src_strides = arr.strides();
+
+            let mut outer_indices = vec![0usize; ndim - 1];
+            for i in 0..outer_size {
+                let src_offset: isize = outer_indices.iter().zip(src_strides).map(|(&idx, &s)| idx as isize * s).sum();
+                unsafe {
+                    loops::map_predicate_strided(
+                        (arr.data_ptr() as *const T).byte_offset(src_offset), inner_stride,
+                        result_ptr.add(i * inner_size),
+                        inner_size, kernel,
+                    );
+                }
+                crate::array::increment_indices(&mut outer_indices, outer_shape);
+            }
+        }
+    }
+
+    Some(result)
+}

@@ -88,6 +88,10 @@ pub enum UnaryOp {
     Arccosh,
     Arctanh,
     Signbit,
+    Isneginf,
+    Isposinf,
+    Isreal,    // True if imag == 0 (always true for real types)
+    Iscomplex, // True if imag != 0 (always false for real types)
 }
 
 /// Binary operations.

@@ -112,6 +112,26 @@ impl RumpyArray {
         map_unary_op(self, UnaryOp::Isfinite)
     }
 
+    /// Test element-wise for negative infinity.
+    pub fn isneginf(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Isneginf)
+    }
+
+    /// Test element-wise for positive infinity.
+    pub fn isposinf(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Isposinf)
+    }
+
+    /// Test element-wise for real values (imaginary part is zero).
+    pub fn isreal(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Isreal)
+    }
+
+    /// Test element-wise for complex values (imaginary part is non-zero).
+    pub fn iscomplex(&self) -> Result<RumpyArray, UnaryOpError> {
+        map_unary_op(self, UnaryOp::Iscomplex)
+    }
+
     /// Square of each element (x^2).
     pub fn square(&self) -> Result<RumpyArray, UnaryOpError> {
         map_unary_op(self, UnaryOp::Square)

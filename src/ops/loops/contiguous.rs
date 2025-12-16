@@ -3,7 +3,7 @@
 //! All contiguous operations go through these functions.
 //! SIMD optimizations (when added) live here, not in individual kernels.
 
-use crate::ops::kernels::{BinaryKernel, UnaryKernel, ReduceKernel, CompareKernel};
+use crate::ops::kernels::{BinaryKernel, UnaryKernel, ReduceKernel, CompareKernel, PredicateKernel};
 
 /// Map binary operation over contiguous slices.
 ///
@@ -51,6 +51,21 @@ pub fn map_compare<T: Copy, K: CompareKernel<T>>(
 
     for i in 0..a.len() {
         out[i] = K::apply(a[i], b[i]) as u8;
+    }
+}
+
+/// Map unary predicate operation over contiguous slices, writing to bool output.
+/// Used for isnan, isinf, isfinite, signbit, isneginf, isposinf.
+#[inline]
+pub fn map_predicate<T: Copy, K: PredicateKernel<T>>(
+    src: &[T],
+    out: &mut [u8],
+    _kernel: K,
+) {
+    debug_assert_eq!(src.len(), out.len());
+
+    for i in 0..src.len() {
+        out[i] = K::apply(src[i]) as u8;
     }
 }
 

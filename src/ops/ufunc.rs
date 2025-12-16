@@ -123,8 +123,15 @@ pub fn map_unary_op(arr: &RumpyArray, op: UnaryOp) -> Result<RumpyArray, UnaryOp
             UnaryOp::Arcsinh => dispatch::dispatch_unary_arcsinh(arr),
             UnaryOp::Arccosh => dispatch::dispatch_unary_arccosh(arr),
             UnaryOp::Arctanh => dispatch::dispatch_unary_arctanh(arr),
-            // These return bool arrays, handled separately by trait dispatch
-            UnaryOp::Isnan | UnaryOp::Isinf | UnaryOp::Isfinite | UnaryOp::Signbit => None,
+            // Predicate operations (return bool arrays)
+            UnaryOp::Isnan => dispatch::dispatch_predicate_isnan(arr),
+            UnaryOp::Isinf => dispatch::dispatch_predicate_isinf(arr),
+            UnaryOp::Isfinite => dispatch::dispatch_predicate_isfinite(arr),
+            UnaryOp::Signbit => dispatch::dispatch_predicate_signbit(arr),
+            UnaryOp::Isneginf => dispatch::dispatch_predicate_isneginf(arr),
+            UnaryOp::Isposinf => dispatch::dispatch_predicate_isposinf(arr),
+            // Isreal/Iscomplex need trait dispatch for complex-specific logic
+            UnaryOp::Isreal | UnaryOp::Iscomplex => None,
         };
         if let Some(result) = dispatched {
             return Ok(result);

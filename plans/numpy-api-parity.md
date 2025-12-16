@@ -545,15 +545,15 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 24. Linalg Extensions | 9 | High | Stream 14 | ✅ |
 | 25. Special Functions | 9 | Medium | None | ✅ |
 | 26. Index Utilities | 10 | Medium | None | ✅ |
-| 27. Array Inspection | 12 | Low | None | |
+| 27. Array Inspection | 12 | Low | None | ✅ |
 | 28. Window Functions | 5 | Low | None | |
 | 29. Unique Extensions | 4 | Low | Stream 13 | |
 | 30. Convenience Aliases | 15 | Low | Various | |
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~212 functions across 26 streams
-**Remaining**: ~81 functions across 6 new streams
+**Completed**: ~224 functions across 27 streams
+**Remaining**: ~69 functions across 5 new streams
 **Total**: ~293 functions across 32 streams
 
 ---
@@ -827,29 +827,29 @@ Performance is acceptable for typical use (5-350us per call).
 
 ---
 
-## Stream 27: Array Inspection
+## Stream 27: Array Inspection ✅ COMPLETE
 
 Value checking and inspection functions.
 
 ### Special Value Checks
-- [ ] `isneginf` - check for negative infinity
-- [ ] `isposinf` - check for positive infinity
-- [ ] `isreal` - check if real (imag == 0)
-- [ ] `iscomplex` - check if has imaginary part
-- [ ] `isrealobj` - check if array is real-valued
-- [ ] `iscomplexobj` - check if array is complex-valued
+- [x] `isneginf` - check for negative infinity
+- [x] `isposinf` - check for positive infinity
+- [x] `isreal` - check if real (imag == 0)
+- [x] `iscomplex` - check if has imaginary part
+- [x] `isrealobj` - check if array is real-valued
+- [x] `iscomplexobj` - check if array is complex-valued
 
 ### Memory Inspection
-- [ ] `shares_memory` - check if arrays share memory
-- [ ] `may_share_memory` - check if arrays might share memory
+- [x] `shares_memory` - check if arrays share memory
+- [x] `may_share_memory` - check if arrays might share memory
 
 ### Scalar/Shape Checks
-- [ ] `isscalar` - check if scalar
-- [ ] `ndim` - number of dimensions (module-level)
-- [ ] `size` - total elements (module-level)
-- [ ] `shape` - shape tuple (module-level)
+- [x] `isscalar` - check if scalar
+- [x] `ndim` - number of dimensions (module-level)
+- [x] `size` - total elements (module-level)
+- [x] `shape` - shape tuple (module-level)
 
-**Files**: `src/ops/inspection.rs` (new), `src/python/mod.rs`, `tests/test_inspection.py`
+**Files**: `src/python/ufuncs.rs`, `src/python/mod.rs`, `tests/test_inspection.py`
 
 ---
 

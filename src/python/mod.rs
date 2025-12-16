@@ -92,6 +92,18 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ufuncs::isnan, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::isinf, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::isfinite, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isneginf, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isposinf, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isreal, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::iscomplex, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isrealobj, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::iscomplexobj, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::shares_memory, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::may_share_memory, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::isscalar, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::ndim, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::size, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::shape, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::abs, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::square, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::positive, m)?)?;

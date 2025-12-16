@@ -241,6 +241,11 @@ impl DTypeOps for Complex128Ops {
                 (0.5 * log_mag.ln(), 0.5 * div_i.atan2(div_r))
             }
             UnaryOp::Signbit => (if r.is_sign_negative() { 1.0 } else { 0.0 }, 0.0),
+            // isneginf/isposinf not supported for complex (NumPy raises TypeError)
+            UnaryOp::Isneginf => (0.0, 0.0),
+            UnaryOp::Isposinf => (0.0, 0.0),
+            UnaryOp::Isreal => (if i == 0.0 { 1.0 } else { 0.0 }, 0.0),
+            UnaryOp::Iscomplex => (if i != 0.0 { 1.0 } else { 0.0 }, 0.0),
         };
         Self::write(out, idx, out_r, out_i);
     }
