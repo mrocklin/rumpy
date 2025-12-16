@@ -249,6 +249,76 @@ pub fn eig(a: &PyRumpyArray) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("eig requires square 2D array"))
 }
 
+/// Eigenvalues only for symmetric/Hermitian matrix.
+#[pyfunction]
+pub fn eigvalsh(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    linalg_ops::eigvalsh(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("eigvalsh requires square 2D array"))
+}
+
+/// Singular values only (no U or Vt).
+#[pyfunction]
+pub fn svdvals(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    linalg_ops::svdvals(&a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("svdvals requires 2D array"))
+}
+
+/// Raise a square matrix to an integer power.
+#[pyfunction]
+pub fn matrix_power(a: &PyRumpyArray, n: i64) -> PyResult<PyRumpyArray> {
+    linalg_ops::matrix_power(&a.inner, n)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("matrix_power requires square 2D array"))
+}
+
+/// Efficient matrix multiplication of multiple arrays.
+#[pyfunction]
+pub fn multi_dot(arrays: Vec<PyRef<'_, PyRumpyArray>>) -> PyResult<PyRumpyArray> {
+    let refs: Vec<&crate::array::RumpyArray> = arrays.iter().map(|a| &a.inner).collect();
+    linalg_ops::multi_dot(&refs)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("multi_dot: incompatible shapes"))
+}
+
+/// Compute the inverse of a tensor.
+#[pyfunction]
+#[pyo3(signature = (a, ind=None))]
+pub fn tensorinv(a: &PyRumpyArray, ind: Option<usize>) -> PyResult<PyRumpyArray> {
+    linalg_ops::tensorinv(&a.inner, ind)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("tensorinv: invalid dimensions"))
+}
+
+/// Solve the tensor equation A x = b for x.
+#[pyfunction]
+#[pyo3(signature = (a, b, axes=None))]
+pub fn tensorsolve(a: &PyRumpyArray, b: &PyRumpyArray, axes: Option<Vec<usize>>) -> PyResult<PyRumpyArray> {
+    linalg_ops::tensorsolve(&a.inner, &b.inner, axes.as_deref())
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("tensorsolve: invalid dimensions"))
+}
+
+/// Vector norm with flexible ord parameter.
+#[pyfunction]
+#[pyo3(signature = (a, ord=None))]
+pub fn vector_norm(a: &PyRumpyArray, ord: Option<f64>) -> PyResult<f64> {
+    linalg_ops::vector_norm(&a.inner, ord)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("vector_norm failed"))
+}
+
+/// Matrix norm with flexible ord parameter.
+#[pyfunction]
+#[pyo3(signature = (a, ord=None))]
+pub fn matrix_norm(a: &PyRumpyArray, ord: Option<&str>) -> PyResult<f64> {
+    linalg_ops::matrix_norm(&a.inner, ord)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("matrix_norm: unsupported norm type or invalid array"))
+}
+
+// LinAlgError exception class for linalg module.
+pyo3::create_exception!(rumpy, LinAlgError, pyo3::exceptions::PyException);
+
 /// Register linalg submodule.
 pub fn register_submodule(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let linalg_module = PyModule::new(parent.py(), "linalg")?;
@@ -267,6 +337,15 @@ pub fn register_submodule(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     linalg_module.add_function(wrap_pyfunction!(lstsq, &linalg_module)?)?;
     linalg_module.add_function(wrap_pyfunction!(eigvals, &linalg_module)?)?;
     linalg_module.add_function(wrap_pyfunction!(eig, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(eigvalsh, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(svdvals, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(matrix_power, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(multi_dot, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(tensorinv, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(tensorsolve, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(vector_norm, &linalg_module)?)?;
+    linalg_module.add_function(wrap_pyfunction!(matrix_norm, &linalg_module)?)?;
+    linalg_module.add("LinAlgError", parent.py().get_type::<LinAlgError>())?;
     parent.add_submodule(&linalg_module)?;
     Ok(())
 }

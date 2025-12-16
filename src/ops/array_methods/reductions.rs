@@ -22,6 +22,12 @@ impl RumpyArray {
         reduce_axis_op(self, axis, ReduceOp::Sum)
     }
 
+    /// Sum of squares: sum(x*x). Single pass, no intermediate allocation.
+    /// Used for efficient 2-norm computation: sqrt(sum_of_squares(x)).
+    pub fn sum_of_squares(&self) -> f64 {
+        crate::ops::dispatch::dispatch_reduce_sum_of_squares(self).unwrap_or(0.0)
+    }
+
     /// Product of all elements.
     pub fn prod(&self) -> f64 {
         reduce_all_f64(self, ReduceOp::Prod)

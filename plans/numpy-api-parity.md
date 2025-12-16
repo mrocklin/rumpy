@@ -730,32 +730,39 @@ Complete array method parity.
 
 ---
 
-## Stream 24: Linalg Extensions
+## Stream 24: Linalg Extensions ✅ COMPLETE
 
 Complete linear algebra submodule.
 
 ### Eigenvalues
-- [ ] `eigvalsh` - eigenvalues of symmetric matrix
+- [x] `eigvalsh` - eigenvalues of symmetric matrix
 
 ### Matrix Operations
-- [ ] `matrix_power` - matrix to integer power
-- [ ] `multi_dot` - efficient multi-matrix dot
+- [x] `matrix_power` - matrix to integer power
+- [x] `multi_dot` - efficient multi-matrix dot
 
 ### Tensor Operations
-- [ ] `tensorinv` - tensor inverse
-- [ ] `tensorsolve` - tensor equation solve
+- [x] `tensorinv` - tensor inverse
+- [x] `tensorsolve` - tensor equation solve
 
 ### Norms (Extended)
-- [ ] `vector_norm` - vector norm with ord parameter
-- [ ] `matrix_norm` - matrix norm with ord parameter
+- [x] `vector_norm` - vector norm with ord parameter
+- [x] `matrix_norm` - matrix norm with ord parameter
 
 ### Singular Values
-- [ ] `svdvals` - singular values only
+- [x] `svdvals` - singular values only
 
 ### Misc
-- [ ] `LinAlgError` - exception class
+- [x] `LinAlgError` - exception class
 
 **Files**: `src/ops/linalg.rs`, `src/python/linalg.rs`, `tests/test_linalg.py`
+
+**Performance Notes**:
+- `vector_norm`: Faster than NumPy (0.4-0.5x)
+- `matrix_norm` 1/inf: Faster than NumPy (0.3-0.7x)
+- `multi_dot`, `svdvals`: Competitive with NumPy
+- `eigvalsh`: 2x slower (faer library overhead)
+- All functions work for float32/float64, with fast paths for contiguous float64
 
 ---
 

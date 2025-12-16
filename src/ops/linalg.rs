@@ -138,18 +138,155 @@ pub fn det(a: &RumpyArray) -> Option<f64> {
     Some(det_val * sign)
 }
 
-/// Compute Frobenius norm (sqrt of sum of squared elements).
-/// Uses vectorized operations: sqrt(sum(x * x)).
+/// Compute norm of an array.
+/// Delegates to vector_norm for 1D arrays, matrix_norm for 2D arrays.
 pub fn norm(a: &RumpyArray, ord: Option<&str>) -> Option<f64> {
+    match a.ndim() {
+        1 => {
+            // For 1D, parse ord as float if possible
+            let ord_f = match ord {
+                None => None,
+                Some("fro") | Some("2") => Some(2.0),
+                Some("1") => Some(1.0),
+                Some("inf") => Some(f64::INFINITY),
+                Some("-inf") => Some(f64::NEG_INFINITY),
+                Some(s) => s.parse::<f64>().ok(),
+            };
+            vector_norm(a, ord_f)
+        }
+        2 => matrix_norm(a, ord),
+        _ => {
+            // For nD, default to Frobenius-like (sqrt of sum of squares)
+            Some(a.sum_of_squares().sqrt())
+        }
+    }
+}
+
+/// Compute vector norm with flexible ord parameter.
+/// ord can be: 1, 2, inf, -inf, or arbitrary p for p-norm
+/// This is a simplified version that flattens the array and computes the norm.
+pub fn vector_norm(a: &RumpyArray, ord: Option<f64>) -> Option<f64> {
+    let n = a.size();
+    if n == 0 {
+        return Some(0.0);
+    }
+
+    match ord {
+        None | Some(2.0) => {
+            // Default: 2-norm (Euclidean) = sqrt(sum(x*x))
+            // Uses single-pass sum_of_squares kernel for efficiency
+            Some(a.sum_of_squares().sqrt())
+        }
+        Some(1.0) => {
+            // 1-norm (sum of absolute values)
+            let abs_a = a.abs().ok()?;
+            Some(abs_a.sum())
+        }
+        Some(f) if f == f64::INFINITY => {
+            // inf-norm (maximum absolute value)
+            let abs_a = a.abs().ok()?;
+            Some(abs_a.max())
+        }
+        Some(f) if f == f64::NEG_INFINITY => {
+            // -inf-norm (minimum absolute value)
+            let abs_a = a.abs().ok()?;
+            Some(abs_a.min())
+        }
+        Some(0.0) => {
+            // 0-norm (count non-zero)
+            Some(a.count_nonzero() as f64)
+        }
+        Some(p) => {
+            // General p-norm: (sum(|x|^p))^(1/p)
+            // Compute element by element
+            let abs_a = a.abs().ok()?;
+            let mut sum = 0.0;
+            for offset in abs_a.iter_offsets() {
+                let val = unsafe { abs_a.dtype().ops().read_f64(abs_a.data_ptr(), offset).unwrap_or(0.0) };
+                sum += val.powf(p);
+            }
+            Some(sum.powf(1.0 / p))
+        }
+    }
+}
+
+/// Compute matrix norm with flexible ord parameter.
+/// ord can be: 1, 2, inf, -inf, 'fro', 'nuc'
+///
+/// Uses composition of generic operations (abs, sum, max) for dtype genericity
+/// and SIMD optimization through the kernel/dispatch system.
+pub fn matrix_norm(a: &RumpyArray, ord: Option<&str>) -> Option<f64> {
+    if a.ndim() != 2 {
+        return None;
+    }
+
+    let (m, n) = (a.shape()[0], a.shape()[1]);
+    if m == 0 || n == 0 {
+        return Some(0.0);
+    }
+
     let ord = ord.unwrap_or("fro");
 
     match ord {
         "fro" => {
-            // Frobenius norm: sqrt(sum(x^2)) using vectorized ops
-            let squared = a.binary_op(a, super::BinaryOp::Mul).expect("same shape");
-            Some(squared.sum().sqrt())
+            // Frobenius norm: sqrt(sum(x^2))
+            // Uses single-pass sum_of_squares kernel for efficiency
+            Some(a.sum_of_squares().sqrt())
         }
-        _ => None, // Other norms not yet implemented
+        "nuc" => {
+            // Nuclear norm: sum of singular values
+            let sv = if let Some(fa) = try_as_faer_mat(a) {
+                fa.singular_values()
+            } else {
+                copy_to_faer_mat(a).singular_values()
+            };
+            Some(sv.iter().sum::<f64>())
+        }
+        "1" => {
+            // 1-norm: max(sum(abs(x), axis=0))
+            // Composed from generic operations - fast for all dtypes
+            let abs_a = a.abs().ok()?;
+            let col_sums = abs_a.sum_axis(0);
+            Some(col_sums.max())
+        }
+        "2" => {
+            // 2-norm: largest singular value
+            let sv = if let Some(fa) = try_as_faer_mat(a) {
+                fa.singular_values()
+            } else {
+                copy_to_faer_mat(a).singular_values()
+            };
+            Some(if sv.is_empty() { 0.0 } else { sv[0] })
+        }
+        "inf" => {
+            // inf-norm: max(sum(abs(x), axis=1))
+            // Composed from generic operations - fast for all dtypes
+            let abs_a = a.abs().ok()?;
+            let row_sums = abs_a.sum_axis(1);
+            Some(row_sums.max())
+        }
+        "-1" => {
+            // -1-norm: min(sum(abs(x), axis=0))
+            let abs_a = a.abs().ok()?;
+            let col_sums = abs_a.sum_axis(0);
+            Some(col_sums.min())
+        }
+        "-2" => {
+            // -2-norm: smallest singular value
+            let sv = if let Some(fa) = try_as_faer_mat(a) {
+                fa.singular_values()
+            } else {
+                copy_to_faer_mat(a).singular_values()
+            };
+            Some(if sv.is_empty() { 0.0 } else { sv[sv.len() - 1] })
+        }
+        "-inf" => {
+            // -inf-norm: min(sum(abs(x), axis=1))
+            let abs_a = a.abs().ok()?;
+            let row_sums = abs_a.sum_axis(1);
+            Some(row_sums.min())
+        }
+        _ => None, // Unknown norm type
     }
 }
 
@@ -632,6 +769,29 @@ pub fn eigvals(a: &RumpyArray) -> Option<RumpyArray> {
     Some(result)
 }
 
+/// Eigenvalues only for symmetric/Hermitian matrix.
+/// Returns eigenvalues in ascending order.
+pub fn eigvalsh(a: &RumpyArray) -> Option<RumpyArray> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let n = a.shape()[0];
+    if a.shape()[1] != n {
+        return None; // Must be square
+    }
+    if n == 0 {
+        return Some(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+
+    let decomp = if let Some(fa) = try_as_faer_mat(a) {
+        fa.selfadjoint_eigendecomposition(Side::Lower)
+    } else {
+        copy_to_faer_mat(a).selfadjoint_eigendecomposition(Side::Lower)
+    };
+
+    Some(faer_col_to_rumpy(decomp.s().column_vector()))
+}
+
 /// General eigendecomposition (for non-symmetric matrices).
 /// Returns (w, V) where w is complex eigenvalues and V is complex eigenvectors.
 pub fn eig(a: &RumpyArray) -> Option<(RumpyArray, RumpyArray)> {
@@ -895,6 +1055,187 @@ pub fn cross(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
     }
 
     Some(result)
+}
+
+/// Singular values only (no U or Vt).
+/// Returns singular values in descending order.
+pub fn svdvals(a: &RumpyArray) -> Option<RumpyArray> {
+    if a.ndim() != 2 {
+        return None;
+    }
+
+    let (m, n) = (a.shape()[0], a.shape()[1]);
+    if m == 0 || n == 0 {
+        return Some(RumpyArray::zeros(vec![0], DType::float64()));
+    }
+
+    let sv = if let Some(fa) = try_as_faer_mat(a) {
+        fa.singular_values()
+    } else {
+        copy_to_faer_mat(a).singular_values()
+    };
+
+    let result = RumpyArray::zeros(vec![sv.len()], DType::float64());
+    for i in 0..sv.len() {
+        unsafe {
+            let ptr = result.data_ptr().add(i * 8) as *mut f64;
+            *ptr = sv[i];
+        }
+    }
+    Some(result)
+}
+
+/// Raise a square matrix to an integer power.
+/// matrix_power(A, n) computes A^n.
+/// - n > 0: multiply A by itself n times
+/// - n == 0: return identity matrix
+/// - n < 0: compute (A^-1)^|n|
+pub fn matrix_power(a: &RumpyArray, n: i64) -> Option<RumpyArray> {
+    if a.ndim() != 2 {
+        return None;
+    }
+    let size = a.shape()[0];
+    if a.shape()[1] != size {
+        return None; // Must be square
+    }
+    if size == 0 {
+        return Some(RumpyArray::zeros(vec![0, 0], DType::float64()));
+    }
+
+    // Handle n == 0: return identity
+    if n == 0 {
+        return Some(RumpyArray::eye(size, DType::float64()));
+    }
+
+    // For negative powers, compute inverse first
+    let base = if n < 0 {
+        inv(a)?
+    } else {
+        a.clone()
+    };
+    let exp = n.unsigned_abs();
+
+    // Binary exponentiation for efficiency
+    let mut result = RumpyArray::eye(size, DType::float64());
+    let mut current = base;
+    let mut remaining = exp;
+
+    while remaining > 0 {
+        if remaining % 2 == 1 {
+            result = crate::ops::matmul::matmul(&result, &current)?;
+        }
+        remaining /= 2;
+        if remaining > 0 {
+            current = crate::ops::matmul::matmul(&current, &current)?;
+        }
+    }
+
+    Some(result)
+}
+
+/// Efficient matrix multiplication of multiple arrays.
+/// multi_dot([A, B, C, ...]) computes A @ B @ C @ ... using optimal parenthesization.
+/// For small number of matrices, this uses simple left-to-right multiplication.
+pub fn multi_dot(arrays: &[&RumpyArray]) -> Option<RumpyArray> {
+    if arrays.is_empty() {
+        return None;
+    }
+    if arrays.len() == 1 {
+        return Some(arrays[0].clone());
+    }
+
+    // For 2 or 3 matrices, simple left-to-right is fine
+    // For more matrices, we could implement dynamic programming, but simple is good enough
+    let mut result = arrays[0].clone();
+    for arr in &arrays[1..] {
+        result = crate::ops::matmul::matmul(&result, arr)?;
+    }
+    Some(result)
+}
+
+/// Compute the inverse of a tensor.
+/// Given a tensor A of shape I + J, compute A^-1 such that:
+/// tensordot(A, A^-1, len(J)) is the identity tensor.
+/// ind: number of first axes of A to use as the "inverse" (default: A.ndim // 2)
+pub fn tensorinv(a: &RumpyArray, ind: Option<usize>) -> Option<RumpyArray> {
+    let ndim = a.ndim();
+    let ind = ind.unwrap_or(ndim / 2);
+
+    if ind == 0 || ind > ndim {
+        return None;
+    }
+
+    // Compute product of first ind dimensions and remaining dimensions
+    let shape = a.shape();
+    let prod_first: usize = shape[..ind].iter().product();
+    let prod_last: usize = shape[ind..].iter().product();
+
+    if prod_first != prod_last {
+        return None; // Must form a square matrix
+    }
+
+    // Reshape to 2D, invert, then reshape back
+    let reshaped = a.reshape(vec![prod_first, prod_last])?;
+    let inv_2d = inv(&reshaped)?;
+
+    // Output shape: last dims + first dims
+    let mut out_shape = Vec::with_capacity(ndim);
+    out_shape.extend_from_slice(&shape[ind..]);
+    out_shape.extend_from_slice(&shape[..ind]);
+
+    inv_2d.reshape(out_shape)
+}
+
+/// Solve the tensor equation A x = b for x.
+/// A is a tensor of shape prod(Q) x prod(Q), where Q = b.shape
+/// The leading axes of A should match b.shape (the equation's "output" shape),
+/// and the trailing axes form the solution shape.
+pub fn tensorsolve(a: &RumpyArray, b: &RumpyArray, axes: Option<&[usize]>) -> Option<RumpyArray> {
+    // Optionally move axes of A to the end
+    let a = if let Some(ax) = axes {
+        // Move specified axes to the end
+        let mut perm: Vec<usize> = (0..a.ndim()).filter(|i| !ax.contains(i)).collect();
+        perm.extend(ax.iter().copied());
+        a.transpose_axes(&perm)
+    } else {
+        a.clone()
+    };
+
+    let b_shape = b.shape().to_vec();
+    let b_ndim = b.ndim();
+    let a_ndim = a.ndim();
+
+    // Leading b_ndim axes of A should match b.shape
+    if a_ndim < b_ndim {
+        return None;
+    }
+
+    // Check that leading dimensions match b.shape
+    for i in 0..b_ndim {
+        if a.shape()[i] != b_shape[i] {
+            return None;
+        }
+    }
+
+    // The trailing axes of A form the solution shape
+    let x_shape: Vec<usize> = a.shape()[b_ndim..].to_vec();
+    let x_size: usize = x_shape.iter().product();
+    let b_size: usize = b_shape.iter().product();
+
+    // For a well-posed system, b_size should equal x_size
+    if b_size != x_size {
+        return None;
+    }
+
+    // Reshape A to (b_size, x_size) and b to (b_size,)
+    let a_2d = a.reshape(vec![b_size, x_size])?;
+    let b_1d = b.reshape(vec![b_size])?;
+
+    // Solve the linear system
+    let x_1d = crate::ops::solve::solve(&a_2d, &b_1d)?;
+
+    // Reshape solution to original shape
+    x_1d.reshape(x_shape)
 }
 
 /// Tensor dot product over specified axes.

@@ -17,7 +17,7 @@ use crate::ops::kernels::arithmetic::{
     Add, Sub, Mul, Div, Sum, Prod, Max, Min,
     Pow, Mod, FloorDiv, Maximum, Minimum,
     Arctan2, Hypot, FMax, FMin, Copysign, Logaddexp, Logaddexp2, Nextafter,
-    NanSum, NanProd, NanMax, NanMin,
+    NanSum, NanProd, NanMax, NanMin, SumOfSquares,
 };
 use crate::ops::kernels::math::{
     Neg, Abs, Sqrt, Exp, Log, Log10, Log2, Sin, Cos, Tan, Floor, Ceil, Square,
@@ -286,6 +286,36 @@ pub fn dispatch_reduce_max(arr: &RumpyArray) -> Option<RumpyArray> {
 
 pub fn dispatch_reduce_min(arr: &RumpyArray) -> Option<RumpyArray> {
     dispatch_reduce_to_array(arr, Min)
+}
+
+/// Sum of squares reduction: sum(x*x). Single pass, no intermediate allocation.
+pub fn dispatch_reduce_sum_of_squares(arr: &RumpyArray) -> Option<f64> {
+    let kind = arr.dtype().kind();
+    let size = arr.size();
+
+    match kind {
+        DTypeKind::Float64 => dispatch_reduce_typed::<f64, SumOfSquares>(arr, size, SumOfSquares),
+        DTypeKind::Float32 => dispatch_reduce_typed::<f32, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Float16 => dispatch_reduce_typed::<f16, SumOfSquares>(arr, size, SumOfSquares).map(|v| v.to_f64()),
+        DTypeKind::Int64 => dispatch_reduce_typed::<i64, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Int32 => dispatch_reduce_typed::<i32, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Int16 => dispatch_reduce_typed::<i16, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Int8 => dispatch_reduce_typed::<i8, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Uint64 => dispatch_reduce_typed::<u64, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Uint32 => dispatch_reduce_typed::<u32, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Uint16 => dispatch_reduce_typed::<u16, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        DTypeKind::Uint8 => dispatch_reduce_typed::<u8, SumOfSquares>(arr, size, SumOfSquares).map(|v| v as f64),
+        // Complex: return magnitude squared sum (re^2 + im^2)
+        DTypeKind::Complex128 => {
+            dispatch_reduce_typed::<Complex<f64>, SumOfSquares>(arr, size, SumOfSquares)
+                .map(|c| c.re + c.im)
+        }
+        DTypeKind::Complex64 => {
+            dispatch_reduce_typed::<Complex<f32>, SumOfSquares>(arr, size, SumOfSquares)
+                .map(|c| (c.re + c.im) as f64)
+        }
+        _ => None,
+    }
 }
 
 /// Generic reduce dispatch returning a 0-d array.

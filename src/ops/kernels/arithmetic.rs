@@ -82,6 +82,9 @@ pub struct NanMax;
 #[derive(Clone, Copy)]
 pub struct NanMin;
 
+#[derive(Clone, Copy)]
+pub struct SumOfSquares;
+
 // ============================================================================
 // Float implementations
 // ============================================================================
@@ -127,6 +130,12 @@ macro_rules! impl_float_arithmetic {
             fn init() -> $T { <$T>::INFINITY }
             #[inline(always)]
             fn combine(acc: $T, v: $T) -> $T { if v < acc { v } else { acc } }
+        }
+        impl ReduceKernel<$T> for SumOfSquares {
+            #[inline(always)]
+            fn init() -> $T { 0.0 }
+            #[inline(always)]
+            fn combine(acc: $T, v: $T) -> $T { acc + v * v }
         }
         impl BinaryKernel<$T> for Pow {
             #[inline(always)]
@@ -297,6 +306,12 @@ impl ReduceKernel<f16> for Min {
     #[inline(always)]
     fn combine(acc: f16, v: f16) -> f16 { if v < acc { v } else { acc } }
 }
+impl ReduceKernel<f16> for SumOfSquares {
+    #[inline(always)]
+    fn init() -> f16 { f16::ZERO }
+    #[inline(always)]
+    fn combine(acc: f16, v: f16) -> f16 { f16::from_f32(acc.to_f32() + v.to_f32() * v.to_f32()) }
+}
 impl BinaryKernel<f16> for Pow {
     #[inline(always)]
     fn apply(a: f16, b: f16) -> f16 { f16::from_f32(a.to_f32().powf(b.to_f32())) }
@@ -429,6 +444,12 @@ macro_rules! impl_int_arithmetic {
             #[inline(always)]
             fn combine(acc: $T, v: $T) -> $T { if v < acc { v } else { acc } }
         }
+        impl ReduceKernel<$T> for SumOfSquares {
+            #[inline(always)]
+            fn init() -> $T { $zero }
+            #[inline(always)]
+            fn combine(acc: $T, v: $T) -> $T { acc.wrapping_add(v.wrapping_mul(v)) }
+        }
         impl BinaryKernel<$T> for Mod {
             #[inline(always)]
             fn apply(a: $T, b: $T) -> $T { if b == $zero { $zero } else { a % b } }
@@ -492,6 +513,12 @@ macro_rules! impl_complex_arithmetic {
             fn init() -> Complex<$F> { Complex::new(1.0 as $F, 0.0 as $F) }
             #[inline(always)]
             fn combine(acc: Complex<$F>, v: Complex<$F>) -> Complex<$F> { acc * v }
+        }
+        impl ReduceKernel<Complex<$F>> for SumOfSquares {
+            #[inline(always)]
+            fn init() -> Complex<$F> { Complex::new(0.0 as $F, 0.0 as $F) }
+            #[inline(always)]
+            fn combine(acc: Complex<$F>, v: Complex<$F>) -> Complex<$F> { acc + v * v }
         }
         impl BinaryKernel<Complex<$F>> for Pow {
             #[inline(always)]

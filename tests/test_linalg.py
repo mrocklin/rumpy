@@ -1039,6 +1039,380 @@ class TestLinalgSubmodule:
         assert hasattr(rp.linalg, 'eig')
         assert hasattr(rp.linalg, 'eigh')
 
+    def test_new_functions_accessible(self):
+        """Stream 24 functions accessible."""
+        assert hasattr(rp.linalg, 'eigvalsh')
+        assert hasattr(rp.linalg, 'svdvals')
+        assert hasattr(rp.linalg, 'matrix_power')
+        assert hasattr(rp.linalg, 'multi_dot')
+        assert hasattr(rp.linalg, 'tensorinv')
+        assert hasattr(rp.linalg, 'tensorsolve')
+        assert hasattr(rp.linalg, 'vector_norm')
+        assert hasattr(rp.linalg, 'matrix_norm')
+        assert hasattr(rp.linalg, 'LinAlgError')
+
+
+# ============================================================================
+# Stream 24: Linalg Extensions
+# ============================================================================
+
+
+class TestEigvalsh:
+    """Eigenvalues of symmetric matrix."""
+
+    def test_symmetric_2x2(self):
+        """Eigenvalues of symmetric 2x2."""
+        a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w = rp.linalg.eigvalsh(ra)
+        nw = np.linalg.eigvalsh(a)
+        assert_eq(w, rp.asarray(nw), rtol=1e-10)
+
+    def test_symmetric_3x3(self):
+        """Eigenvalues of symmetric 3x3."""
+        a = np.array([[4.0, 2.0, 1.0],
+                      [2.0, 5.0, 3.0],
+                      [1.0, 3.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        w = rp.linalg.eigvalsh(ra)
+        nw = np.linalg.eigvalsh(a)
+        assert_eq(w, rp.asarray(nw), rtol=1e-10)
+
+    def test_identity(self):
+        """Eigenvalues of identity are all 1."""
+        I = rp.eye(3)
+        w = rp.linalg.eigvalsh(I)
+        for i in range(3):
+            assert abs(float(w[i]) - 1.0) < 1e-10
+
+
+class TestSvdvals:
+    """Singular values only."""
+
+    def test_square(self):
+        """Singular values of square matrix."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        s = rp.linalg.svdvals(ra)
+        ns = np.linalg.svdvals(a)
+        assert_eq(s, rp.asarray(ns), rtol=1e-10)
+
+    def test_tall(self):
+        """Singular values of tall matrix."""
+        a = np.array([[1.0, 2.0],
+                      [3.0, 4.0],
+                      [5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        s = rp.linalg.svdvals(ra)
+        ns = np.linalg.svdvals(a)
+        assert_eq(s, rp.asarray(ns), rtol=1e-10)
+
+    def test_wide(self):
+        """Singular values of wide matrix."""
+        a = np.array([[1.0, 2.0, 3.0],
+                      [4.0, 5.0, 6.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        s = rp.linalg.svdvals(ra)
+        ns = np.linalg.svdvals(a)
+        assert_eq(s, rp.asarray(ns), rtol=1e-10)
+
+
+class TestMatrixPower:
+    """Matrix to integer power."""
+
+    def test_power_2(self):
+        """A^2 = A @ A."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_power(ra, 2)
+        expected = np.linalg.matrix_power(a, 2)
+        assert_eq(result, expected, rtol=1e-10)
+
+    def test_power_3(self):
+        """A^3 = A @ A @ A."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_power(ra, 3)
+        expected = np.linalg.matrix_power(a, 3)
+        assert_eq(result, expected, rtol=1e-10)
+
+    def test_power_0(self):
+        """A^0 = I."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_power(ra, 0)
+        assert_eq(result, rp.eye(2), rtol=1e-10)
+
+    def test_power_negative(self):
+        """A^-1 = inv(A)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_power(ra, -1)
+        expected = np.linalg.matrix_power(a, -1)
+        assert_eq(result, expected, rtol=1e-10)
+
+    def test_power_negative_2(self):
+        """A^-2 = inv(A)^2."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_power(ra, -2)
+        expected = np.linalg.matrix_power(a, -2)
+        assert_eq(result, expected, rtol=1e-10)
+
+    def test_identity_any_power(self):
+        """I^n = I for any n."""
+        I = rp.eye(3)
+        for n in [-2, -1, 0, 1, 2, 5]:
+            assert_eq(rp.linalg.matrix_power(I, n), I, rtol=1e-10)
+
+
+class TestMultiDot:
+    """Efficient multi-matrix multiplication."""
+
+    def test_two_matrices(self):
+        """multi_dot([A, B]) = A @ B."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        ra, rb = rp.asarray(a), rp.asarray(b)
+
+        result = rp.linalg.multi_dot([ra, rb])
+        expected = np.linalg.multi_dot([a, b])
+        assert_eq(result, expected, rtol=1e-10)
+
+    def test_three_matrices(self):
+        """multi_dot([A, B, C]) = A @ B @ C."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        b = np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64)
+        c = np.array([[9.0, 10.0], [11.0, 12.0]], dtype=np.float64)
+        ra, rb, rc = rp.asarray(a), rp.asarray(b), rp.asarray(c)
+
+        result = rp.linalg.multi_dot([ra, rb, rc])
+        expected = np.linalg.multi_dot([a, b, c])
+        assert_eq(result, expected, rtol=1e-10)
+
+    def test_chain(self):
+        """Chain of different sized matrices."""
+        a = np.random.randn(3, 4)
+        b = np.random.randn(4, 2)
+        c = np.random.randn(2, 5)
+        ra, rb, rc = rp.asarray(a), rp.asarray(b), rp.asarray(c)
+
+        result = rp.linalg.multi_dot([ra, rb, rc])
+        expected = np.linalg.multi_dot([a, b, c])
+        assert_eq(result, expected, rtol=1e-10)
+
+
+class TestVectorNorm:
+    """Vector norm with ord parameter."""
+
+    def test_2_norm_default(self):
+        """Default is 2-norm."""
+        a = np.array([3.0, 4.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra)
+        expected = np.linalg.norm(a)
+        assert abs(result - expected) < 1e-10
+
+    def test_2_norm_explicit(self):
+        """Explicit 2-norm."""
+        a = np.array([3.0, 4.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra, 2.0)
+        expected = np.linalg.norm(a, 2)
+        assert abs(result - expected) < 1e-10
+
+    def test_1_norm(self):
+        """1-norm (sum of absolute values)."""
+        a = np.array([1.0, -2.0, 3.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra, 1.0)
+        expected = np.linalg.norm(a, 1)
+        assert abs(result - expected) < 1e-10
+
+    def test_inf_norm(self):
+        """inf-norm (max absolute value)."""
+        a = np.array([1.0, -5.0, 3.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra, float('inf'))
+        expected = np.linalg.norm(a, np.inf)
+        assert abs(result - expected) < 1e-10
+
+    def test_neg_inf_norm(self):
+        """-inf-norm (min absolute value)."""
+        a = np.array([1.0, -5.0, 3.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra, float('-inf'))
+        expected = np.linalg.norm(a, -np.inf)
+        assert abs(result - expected) < 1e-10
+
+    def test_0_norm(self):
+        """0-norm (count of non-zero)."""
+        a = np.array([1.0, 0.0, 0.0, 5.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra, 0.0)
+        expected = np.linalg.norm(a, 0)
+        assert abs(result - expected) < 1e-10
+
+    def test_3_norm(self):
+        """General p-norm with p=3."""
+        a = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.vector_norm(ra, 3.0)
+        expected = np.linalg.norm(a, 3)
+        assert abs(result - expected) < 1e-10
+
+
+class TestMatrixNorm:
+    """Matrix norm with ord parameter."""
+
+    def test_frobenius_default(self):
+        """Default is Frobenius norm."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra)
+        expected = np.linalg.norm(a, 'fro')
+        assert abs(result - expected) < 1e-10
+
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_frobenius_dtypes(self, dtype):
+        """Frobenius norm works for different dtypes."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra, 'fro')
+        expected = np.linalg.norm(a, 'fro')
+        assert abs(result - expected) < 1e-4  # Less precision for float32
+
+    def test_frobenius_explicit(self):
+        """Explicit Frobenius norm."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra, 'fro')
+        expected = np.linalg.norm(a, 'fro')
+        assert abs(result - expected) < 1e-10
+
+    def test_nuclear_norm(self):
+        """Nuclear norm (sum of singular values)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra, 'nuc')
+        expected = np.linalg.norm(a, 'nuc')
+        assert abs(result - expected) < 1e-10
+
+    def test_2_norm(self):
+        """2-norm (largest singular value)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra, '2')
+        expected = np.linalg.norm(a, 2)
+        assert abs(result - expected) < 1e-10
+
+    def test_1_norm(self):
+        """1-norm (max column sum)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra, '1')
+        expected = np.linalg.norm(a, 1)
+        assert abs(result - expected) < 1e-10
+
+    def test_inf_norm(self):
+        """inf-norm (max row sum)."""
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.matrix_norm(ra, 'inf')
+        expected = np.linalg.norm(a, np.inf)
+        assert abs(result - expected) < 1e-10
+
+
+class TestTensorinv:
+    """Tensor inverse."""
+
+    def test_4d_tensor(self):
+        """Inverse of 4D tensor with default ind."""
+        # Create a 4D tensor (2,2,2,2) that reshapes to invertible 4x4
+        a = np.random.randn(2, 2, 2, 2)
+        a_2d = a.reshape(4, 4)
+        # Make it invertible
+        a_2d = a_2d + np.eye(4) * 5  # Add diagonal to ensure invertibility
+        a = a_2d.reshape(2, 2, 2, 2)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.tensorinv(ra)
+        expected = np.linalg.tensorinv(a)
+        assert_eq(result, expected, rtol=1e-8)
+
+    def test_with_ind(self):
+        """Tensor inverse with custom ind."""
+        a = np.random.randn(4, 3, 3, 4)
+        a_2d = a.reshape(12, 12)
+        a_2d = a_2d + np.eye(12) * 10
+        a = a_2d.reshape(4, 3, 3, 4)
+        ra = rp.asarray(a)
+
+        result = rp.linalg.tensorinv(ra, ind=2)
+        expected = np.linalg.tensorinv(a, ind=2)
+        assert_eq(result, expected, rtol=1e-8)
+
+
+class TestTensorsolve:
+    """Tensor equation solve."""
+
+    def test_simple(self):
+        """Simple tensor solve."""
+        # A is 3D (2, 2, 4) and we solve for x of shape (4,) given b of shape (2, 2)
+        a = np.random.randn(2, 2, 4)
+        # Reshape to (4, 4) to make it well-conditioned
+        a_2d = a.reshape(4, 4)
+        a_2d = a_2d + np.eye(4) * 5
+        a = a_2d.reshape(2, 2, 4)
+
+        # Generate solution and compute b = A @ x in tensor sense
+        x_true = np.array([1.0, 2.0, 3.0, 4.0])
+        b = np.tensordot(a, x_true, axes=([2], [0]))
+
+        ra, rb = rp.asarray(a), rp.asarray(b)
+        result = rp.linalg.tensorsolve(ra, rb)
+        expected = np.linalg.tensorsolve(a, b)
+        assert_eq(result, expected, rtol=1e-8)
+
+
+class TestLinAlgError:
+    """LinAlgError exception class."""
+
+    def test_exception_exists(self):
+        """LinAlgError is a proper exception class."""
+        assert issubclass(rp.linalg.LinAlgError, Exception)
+
+    def test_can_raise(self):
+        """Can raise and catch LinAlgError."""
+        try:
+            raise rp.linalg.LinAlgError("test error")
+        except rp.linalg.LinAlgError as e:
+            assert "test error" in str(e)
+
 
 class TestNewaxis:
     """Tests for newaxis constant."""
