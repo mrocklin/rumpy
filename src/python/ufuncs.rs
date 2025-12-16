@@ -622,3 +622,63 @@ pub fn clip(x: &PyRumpyArray, a_min: Option<f64>, a_max: Option<f64>) -> PyRumpy
 pub fn round(x: &PyRumpyArray, decimals: i32) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.round(decimals))
 }
+
+// ============================================================================
+// Special functions
+// ============================================================================
+
+/// Compute the normalized sinc function: sin(pi*x) / (pi*x).
+#[pyfunction]
+pub fn sinc(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::sinc(&x.inner))
+}
+
+/// Compute the modified Bessel function of the first kind, order 0.
+#[pyfunction]
+pub fn i0(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::i0(&x.inner))
+}
+
+/// Compute spacing (ULP) for floating point values.
+#[pyfunction]
+pub fn spacing(x: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::spacing(&x.inner))
+}
+
+/// Compute modf: return (fractional part, integer part).
+#[pyfunction]
+pub fn modf(x: &PyRumpyArray) -> (PyRumpyArray, PyRumpyArray) {
+    let (frac, int) = crate::ops::modf(&x.inner);
+    (PyRumpyArray::new(frac), PyRumpyArray::new(int))
+}
+
+/// Compute frexp: decompose x into (mantissa, exponent) where x = mantissa * 2^exponent.
+#[pyfunction]
+pub fn frexp(x: &PyRumpyArray) -> (PyRumpyArray, PyRumpyArray) {
+    let (mant, exp) = crate::ops::frexp(&x.inner);
+    (PyRumpyArray::new(mant), PyRumpyArray::new(exp))
+}
+
+/// Compute ldexp: x * 2^i.
+#[pyfunction]
+pub fn ldexp(x: &PyRumpyArray, i: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::ldexp(&x.inner, &i.inner))
+}
+
+/// Compute the Heaviside step function.
+#[pyfunction]
+pub fn heaviside(x: &PyRumpyArray, h0: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::heaviside(&x.inner, &h0.inner))
+}
+
+/// Compute the greatest common divisor element-wise.
+#[pyfunction]
+pub fn gcd(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::gcd(&x1.inner, &x2.inner))
+}
+
+/// Compute the least common multiple element-wise.
+#[pyfunction]
+pub fn lcm(x1: &PyRumpyArray, x2: &PyRumpyArray) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::lcm(&x1.inner, &x2.inner))
+}

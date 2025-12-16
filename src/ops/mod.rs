@@ -22,6 +22,7 @@ pub mod poly;
 pub mod registry;
 pub mod set_ops;
 pub mod solve;
+pub mod special;
 pub mod statistics;
 pub mod ufunc;
 
@@ -44,6 +45,7 @@ pub use set_ops::{isin, in1d, intersect1d, union1d, setdiff1d, setxor1d};
 pub use poly::{polyfit, polyval, polyder, polyint, roots};
 pub use numerical::{gradient, gradient_with_coords, trapezoid, interp, correlate};
 pub use array_methods::lexsort;
+pub use special::{sinc, i0, spacing, modf, frexp, ldexp, heaviside, gcd, lcm};
 
 use crate::array::{broadcast_shapes, increment_indices, promote_dtype, DType, RumpyArray};
 use crate::array::dtype::UnaryOp;

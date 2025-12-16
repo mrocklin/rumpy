@@ -135,6 +135,16 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ufuncs::conj, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::clip, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::round, m)?)?;
+    // Special functions (from ufuncs module)
+    m.add_function(wrap_pyfunction!(ufuncs::sinc, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::i0, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::spacing, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::modf, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::frexp, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::ldexp, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::heaviside, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::gcd, m)?)?;
+    m.add_function(wrap_pyfunction!(ufuncs::lcm, m)?)?;
     // More reductions (from reductions module)
     m.add_function(wrap_pyfunction!(reductions::count_nonzero, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::diff, m)?)?;

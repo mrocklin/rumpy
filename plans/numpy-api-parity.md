@@ -542,8 +542,8 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 21. Random Extended | 18 | Medium | Stream 15 | ✅ |
 | 22. DType System | 9 | High | None | ✅ |
 | 23. ndarray Methods | 11 | Medium | None | ✅ |
-| 24. Linalg Extensions | 9 | High | Stream 14 | |
-| 25. Special Functions | 9 | Medium | None | |
+| 24. Linalg Extensions | 9 | High | Stream 14 | ✅ |
+| 25. Special Functions | 9 | Medium | None | ✅ |
 | 26. Index Utilities | 10 | Medium | None | |
 | 27. Array Inspection | 12 | Low | None | |
 | 28. Window Functions | 5 | Low | None | |
@@ -552,9 +552,9 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~193 functions across 21 streams
-**Remaining**: ~100 functions across 12 new streams
-**Total**: ~285 functions across 32 streams
+**Completed**: ~202 functions across 25 streams
+**Remaining**: ~91 functions across 7 new streams
+**Total**: ~293 functions across 32 streams
 
 ---
 
@@ -766,28 +766,33 @@ Complete linear algebra submodule.
 
 ---
 
-## Stream 25: Special Functions
+## Stream 25: Special Functions ✅ COMPLETE
 
 Mathematical special functions.
 
 ### Tier 1 - Common
-- [ ] `sinc` - sinc function (sin(πx)/(πx))
-- [ ] `i0` - modified Bessel function of order 0
+- [x] `sinc` - sinc function (sin(πx)/(πx))
+- [x] `i0` - modified Bessel function of order 0
 
 ### Tier 2 - Integer Math
-- [ ] `gcd` - greatest common divisor
-- [ ] `lcm` - least common multiple
+- [x] `gcd` - greatest common divisor
+- [x] `lcm` - least common multiple
 
 ### Tier 3 - Float Decomposition
-- [ ] `modf` - fractional and integer parts
-- [ ] `frexp` - mantissa and exponent
-- [ ] `ldexp` - x * 2^i
+- [x] `modf` - fractional and integer parts
+- [x] `frexp` - mantissa and exponent
+- [x] `ldexp` - x * 2^i
 
 ### Tier 4 - Special Values
-- [ ] `heaviside` - Heaviside step function
-- [ ] `spacing` - ULP distance
+- [x] `heaviside` - Heaviside step function
+- [x] `spacing` - ULP distance
 
-**Files**: `src/ops/special.rs` (new), `src/python/ufuncs.rs`, `tests/test_special.py`
+**Performance Notes**:
+- `i0` (Bessel): Faster than NumPy (0.5-0.85x) using Chebyshev approximation
+- Other functions: 6-40x slower due to `to_vec()` copy overhead
+- Acceptable for low-frequency special math functions
+
+**Files**: `src/ops/special.rs`, `src/python/ufuncs.rs`, `tests/test_special.py`
 
 ---
 
