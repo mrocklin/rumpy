@@ -549,12 +549,22 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 28. Window Functions | 5 | Low | None | ✅ |
 | 29. Unique Extensions | 4 | Low | Stream 13 | ✅ |
 | 30. Convenience Aliases | 15 | Low | Various | ✅ |
-| 31. NaN Extensions | 5 | Medium | Stream 6 | |
-| 32. Miscellaneous | 13 | Medium | Various | |
+| 31. NaN Extensions | 5 | Medium | Stream 6 | ✅ |
+| 32. Miscellaneous | 13 | Medium | Various | ✅ |
+| 33. Functional Programming | 4 | High | None | |
+| 34. Advanced Index Builders | 7 | Medium | None | |
+| 35. Einstein Summation | 2 | Very High | None | |
+| 36. Memory Layout | 8 | Low | None | |
+| 37. Extended Statistics | 5 | Medium | Stream 7 | |
+| 38. Additional Math | 3 | Low | None | |
+| 39. String Operations | ~40 | Very High | New dtype | |
+| 40. Datetime Operations | ~10 | Very High | New dtype | |
+| 41. Masked Arrays | ~25 | Extreme | New class | |
+| 42. Extended Math (emath) | 7 | Medium | None | |
 
-**Completed**: ~248 functions across 30 streams
-**Remaining**: ~45 functions across 2 streams
-**Total**: ~293 functions across 32 streams
+**Completed**: ~293 functions across 32 streams
+**Remaining**: ~111 functions across 10 streams
+**Total**: ~404 functions across 42 streams
 
 ---
 
@@ -964,26 +974,260 @@ Remaining useful functions.
 
 ---
 
-## Stream Summary (New)
+## Stream 33: Functional Programming
 
-| Stream | Functions | Focus |
-|--------|-----------|-------|
-| 19. I/O | 10 | File operations |
-| 20. FFT Extensions | 8 | Complete FFT module |
-| 21. Random Extended | 18 | More distributions |
-| 22. DType System | 9 | Type introspection |
-| 23. ndarray Methods | 11 | Array method parity |
-| 24. Linalg Extensions | 9 | Complete linalg |
-| 25. Special Functions | 9 | Math special functions |
-| 26. Index Utilities | 10 | Advanced indexing |
-| 27. Array Inspection | 12 | Value/memory checks |
-| 28. Window Functions | 5 | Signal windows |
-| 29. Unique Extensions | 4 | NumPy 2.0 unique |
-| 30. Convenience Aliases | 15 | Compatibility |
-| 31. NaN Extensions | 5 | More NaN-aware ops |
-| 32. Miscellaneous | 13 | Remaining useful |
+Apply custom functions along axes and vectorization utilities.
 
-**New Total**: ~128 additional functions across 14 new streams
+### Core
+- [ ] `apply_along_axis` - apply function to 1D slices along axis
+- [ ] `apply_over_axes` - apply function repeatedly over multiple axes
+- [ ] `vectorize` - vectorize a scalar function for arrays
+- [ ] `frompyfunc` - create ufunc from Python function
+
+**Complexity**: High - requires Python callable integration with Rust iteration.
+
+**Files**: `src/python/functional.rs`, `tests/test_functional.py`
+
+---
+
+## Stream 34: Advanced Index Builders
+
+Index array construction utilities.
+
+### Index Constructors
+- [ ] `ix_` - construct open mesh from sequences
+- [ ] `ogrid` - open multi-dimensional meshgrid (sparse)
+- [ ] `mgrid` - dense multi-dimensional meshgrid (check if exists)
+
+### Index Modification
+- [ ] `fill_diagonal` - fill main diagonal in-place
+- [ ] `diag_flat` - alias check for diagflat
+
+### Iterators
+- [ ] `ndenumerate` - multi-dimensional index iterator
+- [ ] `ndindex` - N-dimensional iterator object
+
+**Note**: `c_`, `r_`, `s_` are class-based index tricks that may be hard to replicate exactly.
+
+**Files**: `src/python/indexing.rs`, `tests/test_index_builders.py`
+
+---
+
+## Stream 35: Einstein Summation
+
+Tensor contraction using Einstein notation - very popular for ML/physics.
+
+- [ ] `einsum` - Einstein summation (subscript notation)
+- [ ] `einsum_path` - optimal contraction order
+
+**Complexity**: Very High - requires parsing subscript strings and generating optimal contraction plans.
+
+**Reference**: Consider using `opt_einsum` crate or implementing from scratch.
+
+**Files**: `src/ops/einsum.rs`, `src/python/linalg.rs`, `tests/test_einsum.py`
+
+---
+
+## Stream 36: Memory Layout Utilities
+
+Array memory layout control and conversion.
+
+### Conversion
+- [ ] `ascontiguousarray` - return C-contiguous array
+- [ ] `asfortranarray` - return Fortran-contiguous array
+- [ ] `require` - return array satisfying requirements
+- [ ] `copyto` - copy values from one array to another
+
+### Inspection
+- [ ] `broadcast_shapes` - broadcast shapes without creating arrays
+
+### NumPy 2.0 Aliases
+- [ ] `concat` - alias for concatenate
+- [ ] `permute_dims` - alias for transpose
+- [ ] `matrix_transpose` - transpose last two axes
+
+**Files**: `src/python/creation.rs`, `src/array/mod.rs`, `tests/test_memory.py`
+
+---
+
+## Stream 37: Extended Statistics
+
+Complete histogram and statistical functions.
+
+### Multi-dimensional Histograms
+- [ ] `histogram2d` - 2D histogram
+- [ ] `histogramdd` - N-dimensional histogram
+- [ ] `histogram_bin_edges` - compute bin edges only
+
+### NumPy 2.0 Cumulative
+- [ ] `cumulative_sum` - new cumulative sum API
+- [ ] `cumulative_prod` - new cumulative product API
+
+**Files**: `src/ops/statistics.rs`, `src/python/reductions.rs`, `tests/test_histogram.py`
+
+---
+
+## Stream 38: Additional Math
+
+Remaining math functions and constants.
+
+### Functions
+- [ ] `float_power` - power with float64 result type
+- [ ] `divmod` - quotient and remainder as tuple
+
+### Constants
+- [ ] `euler_gamma` - Euler-Mascheroni constant (0.5772...)
+
+**Files**: `src/python/ufuncs.rs`, `src/python/mod.rs`, `tests/test_math_extended.py`
+
+---
+
+## Stream 39: String Operations (numpy.char)
+
+Vectorized string operations. **Large scope - new dtype required.**
+
+### Tier 1 - Essential
+- [ ] String dtype support (`str_`, `bytes_`)
+- [ ] `char.add` - concatenate strings
+- [ ] `char.multiply` - repeat strings
+- [ ] `char.upper`, `char.lower` - case conversion
+- [ ] `char.strip`, `char.lstrip`, `char.rstrip` - whitespace removal
+
+### Tier 2 - Search/Replace
+- [ ] `char.find`, `char.rfind` - find substring
+- [ ] `char.replace` - replace substring
+- [ ] `char.split`, `char.rsplit` - split strings
+- [ ] `char.count` - count occurrences
+
+### Tier 3 - Predicates
+- [ ] `char.isalpha`, `char.isdigit`, `char.isalnum`
+- [ ] `char.isupper`, `char.islower`, `char.isspace`
+- [ ] `char.startswith`, `char.endswith`
+
+### Tier 4 - Formatting
+- [ ] `char.center`, `char.ljust`, `char.rjust`, `char.zfill`
+- [ ] `char.capitalize`, `char.title`, `char.swapcase`
+
+**Complexity**: Very High - requires new dtype, storage layout, and ~40 operations.
+
+**Files**: `src/array/dtype/string.rs`, `src/ops/char.rs`, `src/python/char.rs`, `tests/test_char.py`
+
+---
+
+## Stream 40: Datetime Operations (numpy.datetime64)
+
+Date and time support. **Large scope - new dtype required.**
+
+### Tier 1 - Core Types
+- [ ] `datetime64` dtype
+- [ ] `timedelta64` dtype
+- [ ] Arithmetic between datetime/timedelta
+
+### Tier 2 - Conversion
+- [ ] `datetime_as_string` - convert to string array
+- [ ] `datetime_data` - get datetime type info
+
+### Tier 3 - Business Days
+- [ ] `busdaycalendar` - business day calendar
+- [ ] `is_busday` - check if business day
+- [ ] `busday_offset` - offset by business days
+- [ ] `busday_count` - count business days
+
+**Complexity**: Very High - requires new dtype with unit handling (Y, M, D, h, m, s, ms, us, ns).
+
+**Files**: `src/array/dtype/datetime.rs`, `src/ops/datetime.rs`, `src/python/datetime.rs`, `tests/test_datetime.py`
+
+---
+
+## Stream 41: Masked Arrays (numpy.ma)
+
+Arrays with validity masks. **Very large scope - parallel implementation.**
+
+### Tier 1 - Core
+- [ ] `MaskedArray` class
+- [ ] `masked` constant
+- [ ] `masked_array` constructor
+- [ ] Basic arithmetic with mask propagation
+
+### Tier 2 - Masking Functions
+- [ ] `masked_where` - mask where condition
+- [ ] `masked_equal`, `masked_not_equal`
+- [ ] `masked_greater`, `masked_less`
+- [ ] `masked_inside`, `masked_outside`
+- [ ] `masked_invalid` - mask NaN/Inf
+
+### Tier 3 - Access
+- [ ] `.data` - underlying array
+- [ ] `.mask` - boolean mask
+- [ ] `getdata`, `getmask`, `getmaskarray`
+- [ ] `compressed` - return valid entries
+- [ ] `filled` - fill masked with value
+
+### Tier 4 - Operations
+- [ ] All reductions respecting mask
+- [ ] `count` - count valid entries
+- [ ] `average` with weights and mask
+
+**Complexity**: Extreme - essentially a parallel array implementation.
+
+**Alternative**: Recommend users use pandas or handle with `where` + NaN for most cases.
+
+**Files**: `src/masked/mod.rs`, `src/python/ma.rs`, `tests/test_masked.py`
+
+---
+
+## Stream 42: Extended Math (numpy.emath)
+
+Math functions with automatic complex domain extension.
+
+- [ ] `emath.sqrt` - sqrt that returns complex for negative input
+- [ ] `emath.log` - log that returns complex for negative input
+- [ ] `emath.log2`, `emath.log10` - same for other logs
+- [ ] `emath.power` - power with complex domain
+- [ ] `emath.arccos`, `emath.arcsin` - inverse trig with complex domain
+
+**Note**: These return complex results when real input would give NaN.
+
+**Files**: `src/python/emath.rs`, `tests/test_emath.py`
+
+---
+
+## Stream Summary (Streams 19-32: Complete)
+
+| Stream | Functions | Focus | Status |
+|--------|-----------|-------|--------|
+| 19. I/O | 10 | File operations | ✅ |
+| 20. FFT Extensions | 8 | Complete FFT module | ✅ |
+| 21. Random Extended | 18 | More distributions | ✅ |
+| 22. DType System | 9 | Type introspection | ✅ |
+| 23. ndarray Methods | 11 | Array method parity | ✅ |
+| 24. Linalg Extensions | 9 | Complete linalg | ✅ |
+| 25. Special Functions | 9 | Math special functions | ✅ |
+| 26. Index Utilities | 10 | Advanced indexing | ✅ |
+| 27. Array Inspection | 12 | Value/memory checks | ✅ |
+| 28. Window Functions | 5 | Signal windows | ✅ |
+| 29. Unique Extensions | 4 | NumPy 2.0 unique | ✅ |
+| 30. Convenience Aliases | 15 | Compatibility | ✅ |
+| 31. NaN Extensions | 5 | More NaN-aware ops | ✅ |
+| 32. Miscellaneous | 13 | Remaining useful | ✅ |
+
+## Stream Summary (Streams 33-42: Remaining)
+
+| Stream | Functions | Focus | Complexity |
+|--------|-----------|-------|------------|
+| 33. Functional Programming | 4 | apply_along_axis, vectorize | High |
+| 34. Advanced Index Builders | 7 | ix_, ogrid, fill_diagonal | Medium |
+| 35. Einstein Summation | 2 | einsum, einsum_path | Very High |
+| 36. Memory Layout | 8 | ascontiguousarray, copyto | Low |
+| 37. Extended Statistics | 5 | histogram2d, histogramdd | Medium |
+| 38. Additional Math | 3 | float_power, euler_gamma | Low |
+| 39. String Operations | ~40 | numpy.char module | Very High (new dtype) |
+| 40. Datetime Operations | ~10 | datetime64, timedelta64 | Very High (new dtype) |
+| 41. Masked Arrays | ~25 | numpy.ma module | Extreme |
+| 42. Extended Math (emath) | 7 | Complex domain math | Medium |
+
+**Completed**: ~293 functions across 32 streams
+**Remaining**: ~111 functions across 10 streams (29 practical, 82 in large subsystems)
 
 ---
 
