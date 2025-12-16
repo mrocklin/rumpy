@@ -277,6 +277,19 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(indexing::union1d, m)?)?;
     m.add_function(wrap_pyfunction!(indexing::setdiff1d, m)?)?;
     m.add_function(wrap_pyfunction!(indexing::setxor1d, m)?)?;
+    // Index utilities (Stream 26)
+    m.add_function(wrap_pyfunction!(indexing::unravel_index, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::ravel_multi_index, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::diag_indices, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::diag_indices_from, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::tril_indices, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::triu_indices, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::tril_indices_from, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::triu_indices_from, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::mask_indices, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::digitize, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::packbits, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::unpackbits, m)?)?;
     // Polynomial operations (from poly module)
     m.add_function(wrap_pyfunction!(poly::polyval, m)?)?;
     m.add_function(wrap_pyfunction!(poly::polyder, m)?)?;

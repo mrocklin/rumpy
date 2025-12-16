@@ -655,3 +655,536 @@ pub fn choose(indices: &RumpyArray, choices: &[RumpyArray]) -> Option<RumpyArray
 
     Some(result)
 }
+
+// ============================================================================
+// Index utility functions (Stream 26)
+// ============================================================================
+
+/// Convert flat index to multi-dimensional indices.
+///
+/// If `order` is 'C' (row-major), the last dimension varies fastest.
+/// If `order` is 'F' (column-major), the first dimension varies fastest.
+pub fn unravel_index(indices: &[i64], shape: &[usize], order: char) -> Option<Vec<RumpyArray>> {
+    let ndim = shape.len();
+    let size: usize = shape.iter().product();
+    let n = indices.len();
+
+    // Validate indices
+    for &idx in indices {
+        let idx = idx as usize;
+        if idx >= size {
+            return None;
+        }
+    }
+
+    // Create result arrays
+    let mut result = Vec::with_capacity(ndim);
+    for _ in 0..ndim {
+        result.push(RumpyArray::zeros(vec![n], DType::int64()));
+    }
+
+    // Compute strides based on order
+    let strides: Vec<usize> = if order == 'F' {
+        // Fortran order: first dim varies fastest
+        let mut s = vec![1usize; ndim];
+        for i in 1..ndim {
+            s[i] = s[i - 1] * shape[i - 1];
+        }
+        s
+    } else {
+        // C order: last dim varies fastest
+        let mut s = vec![1usize; ndim];
+        for i in (0..ndim - 1).rev() {
+            s[i] = s[i + 1] * shape[i + 1];
+        }
+        s
+    };
+
+    // Get mutable pointers to result arrays
+    let ptrs: Vec<*mut i64> = result.iter_mut().map(|arr| {
+        let buffer = arr.buffer_mut();
+        Arc::get_mut(buffer).map(|b| b.as_mut_ptr() as *mut i64)
+    }).collect::<Option<Vec<_>>>()?;
+
+    // Compute multi-indices
+    for (i, &flat_idx) in indices.iter().enumerate() {
+        let mut remaining = flat_idx as usize;
+
+        if order == 'F' {
+            // Fortran order: extract indices from first to last
+            for d in 0..ndim {
+                let coord = remaining % shape[d];
+                remaining /= shape[d];
+                unsafe { *ptrs[d].add(i) = coord as i64; }
+            }
+        } else {
+            // C order: extract indices from first to last using strides
+            for d in 0..ndim {
+                let coord = remaining / strides[d];
+                remaining %= strides[d];
+                unsafe { *ptrs[d].add(i) = coord as i64; }
+            }
+        }
+    }
+
+    Some(result)
+}
+
+/// Convert multi-dimensional indices to flat index.
+pub fn ravel_multi_index(
+    multi_index: &[Vec<i64>],
+    shape: &[usize],
+    mode: &str,
+    order: char,
+) -> Option<RumpyArray> {
+    let ndim = shape.len();
+    if multi_index.len() != ndim {
+        return None;
+    }
+
+    // All index arrays must have the same length
+    let n = multi_index[0].len();
+    for idx_arr in multi_index.iter() {
+        if idx_arr.len() != n {
+            return None;
+        }
+    }
+
+    // Compute strides based on order
+    let strides: Vec<usize> = if order == 'F' {
+        let mut s = vec![1usize; ndim];
+        for i in 1..ndim {
+            s[i] = s[i - 1] * shape[i - 1];
+        }
+        s
+    } else {
+        let mut s = vec![1usize; ndim];
+        for i in (0..ndim - 1).rev() {
+            s[i] = s[i + 1] * shape[i + 1];
+        }
+        s
+    };
+
+    let mut result = RumpyArray::zeros(vec![n], DType::int64());
+    let result_buffer = result.buffer_mut();
+    let buffer = Arc::get_mut(result_buffer)?;
+    let result_ptr = buffer.as_mut_ptr() as *mut i64;
+
+    for i in 0..n {
+        let mut flat_idx: i64 = 0;
+        for d in 0..ndim {
+            let mut idx = multi_index[d][i];
+            let dim_size = shape[d] as i64;
+
+            // Handle modes
+            match mode {
+                "clip" => {
+                    idx = idx.clamp(0, dim_size - 1);
+                }
+                "wrap" => {
+                    idx = idx.rem_euclid(dim_size);
+                }
+                "raise" => {
+                    if idx < 0 || idx >= dim_size {
+                        return None;
+                    }
+                }
+                _ => {
+                    if idx < 0 || idx >= dim_size {
+                        return None;
+                    }
+                }
+            }
+
+            flat_idx += idx * strides[d] as i64;
+        }
+        unsafe { *result_ptr.add(i) = flat_idx; }
+    }
+
+    Some(result)
+}
+
+/// Return the indices for the main diagonal of an n x n x ... array.
+pub fn diag_indices(n: usize, ndim: usize) -> Vec<RumpyArray> {
+    let mut result = Vec::with_capacity(ndim);
+    let indices: Vec<i64> = (0..n as i64).collect();
+
+    for _ in 0..ndim {
+        result.push(RumpyArray::from_vec(
+            indices.iter().map(|&x| x as f64).collect(),
+            DType::int64(),
+        ));
+    }
+
+    result
+}
+
+/// Return the indices for the lower-triangle of an (n, m) array.
+pub fn tril_indices(n: usize, k: i64, m: usize) -> (RumpyArray, RumpyArray) {
+    let mut rows = Vec::new();
+    let mut cols = Vec::new();
+
+    for i in 0..n {
+        let max_col = ((i as i64) + k + 1).min(m as i64).max(0) as usize;
+        for j in 0..max_col {
+            rows.push(i as i64);
+            cols.push(j as i64);
+        }
+    }
+
+    let row_arr = RumpyArray::from_vec(
+        rows.iter().map(|&x| x as f64).collect(),
+        DType::int64(),
+    );
+    let col_arr = RumpyArray::from_vec(
+        cols.iter().map(|&x| x as f64).collect(),
+        DType::int64(),
+    );
+
+    (row_arr, col_arr)
+}
+
+/// Return the indices for the upper-triangle of an (n, m) array.
+pub fn triu_indices(n: usize, k: i64, m: usize) -> (RumpyArray, RumpyArray) {
+    let mut rows = Vec::new();
+    let mut cols = Vec::new();
+
+    for i in 0..n {
+        let start_col = ((i as i64) + k).max(0) as usize;
+        for j in start_col..m {
+            rows.push(i as i64);
+            cols.push(j as i64);
+        }
+    }
+
+    let row_arr = RumpyArray::from_vec(
+        rows.iter().map(|&x| x as f64).collect(),
+        DType::int64(),
+    );
+    let col_arr = RumpyArray::from_vec(
+        cols.iter().map(|&x| x as f64).collect(),
+        DType::int64(),
+    );
+
+    (row_arr, col_arr)
+}
+
+/// Return indices of bins to which values belong.
+///
+/// Uses binary search to find insertion points. If bins are increasing,
+/// `digitize(x, bins, right=False)` is equivalent to `searchsorted(bins, x, side='right')`.
+pub fn digitize(x: &RumpyArray, bins: &RumpyArray, right: bool) -> RumpyArray {
+    let x_size = x.size();
+    let bins_size = bins.size();
+
+    if x_size == 0 {
+        return RumpyArray::zeros(x.shape().to_vec(), DType::int64());
+    }
+
+    let mut result = RumpyArray::zeros(x.shape().to_vec(), DType::int64());
+    let result_buffer = result.buffer_mut();
+    let buffer = Arc::get_mut(result_buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr() as *mut i64;
+
+    // Check if bins are monotonically decreasing
+    let bins_dtype = bins.dtype();
+    let bins_ops = bins_dtype.ops();
+    let bins_ptr = bins.data_ptr();
+
+    let is_decreasing = if bins_size >= 2 {
+        let first_offset = bins.byte_offset_for(&[0]);
+        let last_offset = bins.byte_offset_for(&[bins_size - 1]);
+        let first = unsafe { bins_ops.read_f64(bins_ptr, first_offset) }.unwrap_or(0.0);
+        let last = unsafe { bins_ops.read_f64(bins_ptr, last_offset) }.unwrap_or(0.0);
+        first > last
+    } else {
+        false
+    };
+
+    // Read bins into a Vec for binary search
+    let bins_values: Vec<f64> = bins.iter_offsets()
+        .map(|offset| unsafe { bins_ops.read_f64(bins_ptr, offset) }.unwrap_or(0.0))
+        .collect();
+
+    // Pre-compute reversed bins for decreasing case (avoid allocation in loop)
+    let reversed_bins: Vec<f64> = if is_decreasing {
+        bins_values.iter().rev().copied().collect()
+    } else {
+        Vec::new()
+    };
+
+    let x_dtype = x.dtype();
+    let x_ops = x_dtype.ops();
+    let x_ptr = x.data_ptr();
+
+    for (i, offset) in x.iter_offsets().enumerate() {
+        let val = unsafe { x_ops.read_f64(x_ptr, offset) }.unwrap_or(0.0);
+
+        let bin_idx = if is_decreasing {
+            // For decreasing bins: len(bins) - searchsorted(reversed_bins, val, side)
+            let search_idx = if right {
+                reversed_bins.partition_point(|&b| b <= val)
+            } else {
+                reversed_bins.partition_point(|&b| b < val)
+            };
+            bins_size - search_idx
+        } else {
+            // For increasing bins, standard binary search
+            if right {
+                bins_values.partition_point(|&b| b < val)
+            } else {
+                bins_values.partition_point(|&b| b <= val)
+            }
+        };
+
+        unsafe { *result_ptr.add(i) = bin_idx as i64; }
+    }
+
+    result
+}
+
+/// Pack binary values into uint8 array.
+///
+/// Elements are packed into bits in big-endian order by default.
+pub fn packbits(arr: &RumpyArray, axis: Option<usize>, bitorder: &str) -> RumpyArray {
+    let big_endian = bitorder != "little";
+
+    match axis {
+        None => packbits_flat(arr, big_endian),
+        Some(ax) => packbits_axis(arr, ax, big_endian),
+    }
+}
+
+fn packbits_flat(arr: &RumpyArray, big_endian: bool) -> RumpyArray {
+    let size = arr.size();
+    let out_size = (size + 7) / 8;
+
+    let mut result = RumpyArray::zeros(vec![out_size], DType::uint8());
+    if out_size == 0 {
+        return result;
+    }
+
+    let result_buffer = result.buffer_mut();
+    let buffer = Arc::get_mut(result_buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+
+    let ptr = arr.data_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+
+    let mut byte = 0u8;
+    let mut bit_pos = 0;
+    let mut out_idx = 0;
+
+    for offset in arr.iter_offsets() {
+        let val = if unsafe { ops.is_truthy(ptr, offset) } { 1u8 } else { 0u8 };
+
+        if big_endian {
+            byte |= val << (7 - bit_pos);
+        } else {
+            byte |= val << bit_pos;
+        }
+
+        bit_pos += 1;
+        if bit_pos == 8 {
+            unsafe { *result_ptr.add(out_idx) = byte; }
+            byte = 0;
+            bit_pos = 0;
+            out_idx += 1;
+        }
+    }
+
+    // Write remaining bits
+    if bit_pos > 0 {
+        unsafe { *result_ptr.add(out_idx) = byte; }
+    }
+
+    result
+}
+
+fn packbits_axis(arr: &RumpyArray, axis: usize, big_endian: bool) -> RumpyArray {
+    let shape = arr.shape();
+    let ndim = arr.ndim();
+
+    if axis >= ndim {
+        return packbits_flat(arr, big_endian);
+    }
+
+    let axis_len = shape[axis];
+    let out_axis_len = (axis_len + 7) / 8;
+
+    let mut out_shape = shape.to_vec();
+    out_shape[axis] = out_axis_len;
+
+    let mut result = RumpyArray::zeros(out_shape.clone(), DType::uint8());
+    if result.size() == 0 {
+        return result;
+    }
+
+    let result_buffer = result.buffer_mut();
+    let buffer = Arc::get_mut(result_buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+
+    let ptr = arr.data_ptr();
+    let dtype = arr.dtype();
+    let ops = dtype.ops();
+    let strides = arr.strides();
+
+    // Iterate over all output positions
+    let out_size: usize = out_shape.iter().product();
+    let mut out_indices = vec![0usize; ndim];
+
+    for out_idx in 0..out_size {
+        let out_axis_idx = out_indices[axis];
+        let start_bit = out_axis_idx * 8;
+        let end_bit = (start_bit + 8).min(axis_len);
+
+        let mut byte = 0u8;
+        for bit in start_bit..end_bit {
+            let mut src_indices = out_indices.clone();
+            src_indices[axis] = bit;
+
+            let src_offset: isize = src_indices.iter()
+                .zip(strides.iter())
+                .map(|(&i, &s)| i as isize * s)
+                .sum();
+
+            let val = if unsafe { ops.is_truthy(ptr, src_offset) } { 1u8 } else { 0u8 };
+
+            let bit_idx = bit - start_bit;
+            if big_endian {
+                byte |= val << (7 - bit_idx);
+            } else {
+                byte |= val << bit_idx;
+            }
+        }
+
+        unsafe { *result_ptr.add(out_idx) = byte; }
+
+        // Increment output indices
+        for d in (0..ndim).rev() {
+            out_indices[d] += 1;
+            if out_indices[d] < out_shape[d] {
+                break;
+            }
+            out_indices[d] = 0;
+        }
+    }
+
+    result
+}
+
+/// Unpack uint8 array to binary values.
+pub fn unpackbits(arr: &RumpyArray, axis: Option<usize>, count: Option<usize>, bitorder: &str) -> RumpyArray {
+    let big_endian = bitorder != "little";
+
+    match axis {
+        None => unpackbits_flat(arr, count, big_endian),
+        Some(ax) => unpackbits_axis(arr, ax, count, big_endian),
+    }
+}
+
+fn unpackbits_flat(arr: &RumpyArray, count: Option<usize>, big_endian: bool) -> RumpyArray {
+    let size = arr.size();
+    let full_out_size = size * 8;
+    let out_size = count.unwrap_or(full_out_size).min(full_out_size);
+
+    let mut result = RumpyArray::zeros(vec![out_size], DType::uint8());
+    if out_size == 0 {
+        return result;
+    }
+
+    let result_buffer = result.buffer_mut();
+    let buffer = Arc::get_mut(result_buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+
+    let ptr = arr.data_ptr();
+    let mut out_idx = 0;
+
+    for offset in arr.iter_offsets() {
+        let byte = unsafe { *ptr.add(offset as usize) };
+
+        for bit in 0..8 {
+            if out_idx >= out_size {
+                break;
+            }
+
+            let val = if big_endian {
+                (byte >> (7 - bit)) & 1
+            } else {
+                (byte >> bit) & 1
+            };
+
+            unsafe { *result_ptr.add(out_idx) = val; }
+            out_idx += 1;
+        }
+    }
+
+    result
+}
+
+fn unpackbits_axis(arr: &RumpyArray, axis: usize, count: Option<usize>, big_endian: bool) -> RumpyArray {
+    let shape = arr.shape();
+    let ndim = arr.ndim();
+
+    if axis >= ndim {
+        return unpackbits_flat(arr, count, big_endian);
+    }
+
+    let axis_len = shape[axis];
+    let full_out_axis_len = axis_len * 8;
+    let out_axis_len = count.unwrap_or(full_out_axis_len).min(full_out_axis_len);
+
+    let mut out_shape = shape.to_vec();
+    out_shape[axis] = out_axis_len;
+
+    let mut result = RumpyArray::zeros(out_shape.clone(), DType::uint8());
+    if result.size() == 0 {
+        return result;
+    }
+
+    let result_buffer = result.buffer_mut();
+    let buffer = Arc::get_mut(result_buffer).expect("buffer must be unique");
+    let result_ptr = buffer.as_mut_ptr();
+
+    let ptr = arr.data_ptr();
+    let strides = arr.strides();
+
+    // Iterate over all output positions
+    let out_size: usize = out_shape.iter().product();
+    let mut out_indices = vec![0usize; ndim];
+
+    for out_idx in 0..out_size {
+        let out_axis_idx = out_indices[axis];
+        let byte_idx = out_axis_idx / 8;
+        let bit_idx = out_axis_idx % 8;
+
+        let mut src_indices = out_indices.clone();
+        src_indices[axis] = byte_idx;
+
+        let src_offset: isize = src_indices.iter()
+            .zip(strides.iter())
+            .map(|(&i, &s)| i as isize * s)
+            .sum();
+
+        let byte = unsafe { *ptr.add(src_offset as usize) };
+        let val = if big_endian {
+            (byte >> (7 - bit_idx)) & 1
+        } else {
+            (byte >> bit_idx) & 1
+        };
+
+        unsafe { *result_ptr.add(out_idx) = val; }
+
+        // Increment output indices
+        for d in (0..ndim).rev() {
+            out_indices[d] += 1;
+            if out_indices[d] < out_shape[d] {
+                break;
+            }
+            out_indices[d] = 0;
+        }
+    }
+
+    result
+}

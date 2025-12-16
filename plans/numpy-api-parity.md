@@ -544,7 +544,7 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 23. ndarray Methods | 11 | Medium | None | ✅ |
 | 24. Linalg Extensions | 9 | High | Stream 14 | ✅ |
 | 25. Special Functions | 9 | Medium | None | ✅ |
-| 26. Index Utilities | 10 | Medium | None | |
+| 26. Index Utilities | 10 | Medium | None | ✅ |
 | 27. Array Inspection | 12 | Low | None | |
 | 28. Window Functions | 5 | Low | None | |
 | 29. Unique Extensions | 4 | Low | Stream 13 | |
@@ -552,8 +552,8 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 31. NaN Extensions | 5 | Medium | Stream 6 | |
 | 32. Miscellaneous | 13 | Medium | Various | |
 
-**Completed**: ~202 functions across 25 streams
-**Remaining**: ~91 functions across 7 new streams
+**Completed**: ~212 functions across 26 streams
+**Remaining**: ~81 functions across 6 new streams
 **Total**: ~293 functions across 32 streams
 
 ---
@@ -796,29 +796,34 @@ Mathematical special functions.
 
 ---
 
-## Stream 26: Index Utilities
+## Stream 26: Index Utilities ✅ COMPLETE
 
 Advanced indexing helpers.
 
 ### Index Conversion
-- [ ] `unravel_index` - flat index to multi-index
-- [ ] `ravel_multi_index` - multi-index to flat index
+- [x] `unravel_index` - flat index to multi-index
+- [x] `ravel_multi_index` - multi-index to flat index
 
 ### Index Generation
-- [ ] `diag_indices` - diagonal indices
-- [ ] `diag_indices_from` - diagonal indices matching array
-- [ ] `tril_indices` - lower triangle indices
-- [ ] `triu_indices` - upper triangle indices
-- [ ] `mask_indices` - indices from mask function
+- [x] `diag_indices` - diagonal indices
+- [x] `diag_indices_from` - diagonal indices matching array
+- [x] `tril_indices` - lower triangle indices
+- [x] `triu_indices` - upper triangle indices
+- [x] `tril_indices_from` - lower triangle indices from array
+- [x] `triu_indices_from` - upper triangle indices from array
+- [x] `mask_indices` - indices from mask function
 
 ### Binning
-- [ ] `digitize` - bin indices for values
+- [x] `digitize` - bin indices for values
 
 ### Bit Packing
-- [ ] `packbits` - pack binary values
-- [ ] `unpackbits` - unpack to binary array
+- [x] `packbits` - pack binary values
+- [x] `unpackbits` - unpack to binary array
 
-**Files**: `src/ops/indexing.rs`, `src/python/indexing.rs`, `tests/test_indexing_ops.py`
+**Performance Notes**: These are index utility functions used for setup, not hot loops.
+Performance is acceptable for typical use (5-350us per call).
+
+**Files**: `src/ops/indexing.rs`, `src/python/indexing.rs`, `tests/test_index_utils.py`
 
 ---
 

@@ -363,3 +363,368 @@ pub fn lexsort(py: Python<'_>, keys: &Bound<'_, pyo3::types::PyTuple>) -> PyResu
             "lexsort requires 1-D arrays of the same length"
         ))
 }
+
+// ============================================================================
+// Index utilities (Stream 26)
+// ============================================================================
+
+/// Convert flat indices into a tuple of coordinate arrays.
+#[pyfunction]
+#[pyo3(signature = (indices, shape, order="C"))]
+pub fn unravel_index(
+    py: Python<'_>,
+    indices: &Bound<'_, pyo3::PyAny>,
+    shape: Vec<usize>,
+    order: &str,
+) -> PyResult<pyo3::PyObject> {
+    // Check if input is scalar
+    let is_scalar = indices.extract::<i64>().is_ok();
+
+    // Extract indices as Vec<i64>
+    let idx_vec: Vec<i64> = if let Ok(scalar) = indices.extract::<i64>() {
+        vec![scalar]
+    } else if let Ok(list) = indices.extract::<Vec<i64>>() {
+        list
+    } else if let Ok(arr) = indices.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        let size = arr.inner.size();
+        let ptr = arr.inner.data_ptr();
+        let dtype = arr.inner.dtype();
+        let ops = dtype.ops();
+        (0..size)
+            .map(|i| unsafe { ops.read_i64(ptr, (i * dtype.itemsize()) as isize) }.unwrap_or(0))
+            .collect()
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "indices must be integer, list, or array",
+        ));
+    };
+
+    let order_char = if order.to_uppercase() == "F" { 'F' } else { 'C' };
+
+    let result = crate::ops::indexing::unravel_index(&idx_vec, &shape, order_char)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("index out of bounds"))?;
+
+    if is_scalar {
+        // Return tuple of scalars
+        let scalars: Vec<i64> = result.iter().map(|arr| {
+            let ptr = arr.data_ptr() as *const i64;
+            unsafe { *ptr }
+        }).collect();
+
+        let tuple = pyo3::types::PyTuple::new(
+            py,
+            scalars.into_iter().map(|v| v.into_pyobject(py).unwrap()),
+        )?;
+        Ok(tuple.into())
+    } else {
+        // Return tuple of arrays
+        let tuple = pyo3::types::PyTuple::new(
+            py,
+            result.into_iter().map(|arr| {
+                pyo3::Py::new(py, PyRumpyArray::new(arr)).unwrap()
+            }),
+        )?;
+        Ok(tuple.into())
+    }
+}
+
+/// Convert a tuple of coordinate arrays to an array of flat indices.
+#[pyfunction]
+#[pyo3(signature = (multi_index, dims, mode="raise", order="C"))]
+pub fn ravel_multi_index(
+    multi_index: &Bound<'_, pyo3::PyAny>,
+    dims: Vec<usize>,
+    mode: &str,
+    order: &str,
+) -> PyResult<PyRumpyArray> {
+    // Extract multi_index as Vec<Vec<i64>>
+    let multi_idx: Vec<Vec<i64>> = if let Ok(list) = multi_index.extract::<Vec<Vec<i64>>>() {
+        list
+    } else if let Ok(arr) = multi_index.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        // Handle 2D array input
+        let shape = arr.inner.shape();
+        if arr.inner.ndim() != 2 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "multi_index must be a sequence of arrays or 2D array",
+            ));
+        }
+        let n_dims = shape[0];
+        let n_elements = shape[1];
+        let ptr = arr.inner.data_ptr();
+        let dtype = arr.inner.dtype();
+        let ops = dtype.ops();
+        let strides = arr.inner.strides();
+
+        (0..n_dims)
+            .map(|d| {
+                (0..n_elements)
+                    .map(|e| {
+                        let offset = (d as isize) * strides[0] + (e as isize) * strides[1];
+                        unsafe { ops.read_i64(ptr, offset) }.unwrap_or(0)
+                    })
+                    .collect()
+            })
+            .collect()
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "multi_index must be array or list of lists",
+        ));
+    };
+
+    let order_char = if order.to_uppercase() == "F" { 'F' } else { 'C' };
+
+    crate::ops::indexing::ravel_multi_index(&multi_idx, &dims, mode, order_char)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("index out of bounds"))
+}
+
+/// Return the indices for the main diagonal of an array.
+#[pyfunction]
+#[pyo3(signature = (n, ndim=2))]
+pub fn diag_indices(py: Python<'_>, n: usize, ndim: usize) -> PyResult<pyo3::PyObject> {
+    let result = crate::ops::indexing::diag_indices(n, ndim);
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        result.into_iter().map(|arr| {
+            pyo3::Py::new(py, PyRumpyArray::new(arr)).unwrap()
+        }),
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices for the main diagonal of the given array.
+#[pyfunction]
+pub fn diag_indices_from(py: Python<'_>, arr: &PyRumpyArray) -> PyResult<pyo3::PyObject> {
+    let shape = arr.inner.shape();
+    let ndim = arr.inner.ndim();
+
+    if ndim < 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "input array must be at least 2-d",
+        ));
+    }
+
+    // All dimensions must be equal
+    let n = shape[0];
+    for &dim in &shape[1..] {
+        if dim != n {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "all dimensions must be of equal length",
+            ));
+        }
+    }
+
+    let result = crate::ops::indexing::diag_indices(n, ndim);
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        result.into_iter().map(|arr| {
+            pyo3::Py::new(py, PyRumpyArray::new(arr)).unwrap()
+        }),
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices for the lower-triangle of an (n, m) array.
+#[pyfunction]
+#[pyo3(signature = (n, k=0, m=None))]
+pub fn tril_indices(py: Python<'_>, n: usize, k: i64, m: Option<usize>) -> PyResult<pyo3::PyObject> {
+    let m = m.unwrap_or(n);
+    let (rows, cols) = crate::ops::indexing::tril_indices(n, k, m);
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        [
+            pyo3::Py::new(py, PyRumpyArray::new(rows))?,
+            pyo3::Py::new(py, PyRumpyArray::new(cols))?,
+        ],
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices for the upper-triangle of an (n, m) array.
+#[pyfunction]
+#[pyo3(signature = (n, k=0, m=None))]
+pub fn triu_indices(py: Python<'_>, n: usize, k: i64, m: Option<usize>) -> PyResult<pyo3::PyObject> {
+    let m = m.unwrap_or(n);
+    let (rows, cols) = crate::ops::indexing::triu_indices(n, k, m);
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        [
+            pyo3::Py::new(py, PyRumpyArray::new(rows))?,
+            pyo3::Py::new(py, PyRumpyArray::new(cols))?,
+        ],
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices for the lower-triangle of arr.
+#[pyfunction]
+#[pyo3(signature = (arr, k=0))]
+pub fn tril_indices_from(py: Python<'_>, arr: &PyRumpyArray, k: i64) -> PyResult<pyo3::PyObject> {
+    let shape = arr.inner.shape();
+    if arr.inner.ndim() != 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "input array must be 2-d",
+        ));
+    }
+
+    let n = shape[0];
+    let m = shape[1];
+    let (rows, cols) = crate::ops::indexing::tril_indices(n, k, m);
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        [
+            pyo3::Py::new(py, PyRumpyArray::new(rows))?,
+            pyo3::Py::new(py, PyRumpyArray::new(cols))?,
+        ],
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices for the upper-triangle of arr.
+#[pyfunction]
+#[pyo3(signature = (arr, k=0))]
+pub fn triu_indices_from(py: Python<'_>, arr: &PyRumpyArray, k: i64) -> PyResult<pyo3::PyObject> {
+    let shape = arr.inner.shape();
+    if arr.inner.ndim() != 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "input array must be 2-d",
+        ));
+    }
+
+    let n = shape[0];
+    let m = shape[1];
+    let (rows, cols) = crate::ops::indexing::triu_indices(n, k, m);
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        [
+            pyo3::Py::new(py, PyRumpyArray::new(rows))?,
+            pyo3::Py::new(py, PyRumpyArray::new(cols))?,
+        ],
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices to access (n, n) arrays using a mask function.
+#[pyfunction]
+#[pyo3(signature = (n, mask_func, k=0))]
+pub fn mask_indices(
+    py: Python<'_>,
+    n: usize,
+    mask_func: &Bound<'_, pyo3::PyAny>,
+    k: i64,
+) -> PyResult<pyo3::PyObject> {
+    // Create an n x n array of ones
+    let ones = crate::array::RumpyArray::full(vec![n, n], 1.0, crate::array::DType::float64());
+    let py_ones = pyo3::Py::new(py, PyRumpyArray::new(ones))?;
+
+    // Call the mask function with optional k parameter
+    let masked_result = if k != 0 {
+        mask_func.call1((py_ones, k))?
+    } else {
+        mask_func.call1((py_ones,))?
+    };
+    let masked: pyo3::PyRef<'_, PyRumpyArray> = masked_result.extract()?;
+
+    // Get indices where mask is true (nonzero)
+    let result = crate::ops::indexing::argwhere(&masked.inner);
+
+    // Convert to tuple of arrays (row_indices, col_indices)
+    let shape = result.shape();
+    if shape[0] == 0 {
+        let empty1 = crate::array::RumpyArray::zeros(vec![0], crate::array::DType::int64());
+        let empty2 = crate::array::RumpyArray::zeros(vec![0], crate::array::DType::int64());
+        let tuple = pyo3::types::PyTuple::new(
+            py,
+            [
+                pyo3::Py::new(py, PyRumpyArray::new(empty1))?,
+                pyo3::Py::new(py, PyRumpyArray::new(empty2))?,
+            ],
+        )?;
+        return Ok(tuple.into());
+    }
+
+    // Extract row and column indices
+    let n_indices = shape[0];
+    let ptr = result.data_ptr() as *const i64;
+
+    let mut rows: Vec<f64> = Vec::with_capacity(n_indices);
+    let mut cols: Vec<f64> = Vec::with_capacity(n_indices);
+
+    for i in 0..n_indices {
+        unsafe {
+            rows.push(*ptr.add(i * 2) as f64);
+            cols.push(*ptr.add(i * 2 + 1) as f64);
+        }
+    }
+
+    let row_arr = crate::array::RumpyArray::from_vec(rows, crate::array::DType::int64());
+    let col_arr = crate::array::RumpyArray::from_vec(cols, crate::array::DType::int64());
+
+    let tuple = pyo3::types::PyTuple::new(
+        py,
+        [
+            pyo3::Py::new(py, PyRumpyArray::new(row_arr))?,
+            pyo3::Py::new(py, PyRumpyArray::new(col_arr))?,
+        ],
+    )?;
+    Ok(tuple.into())
+}
+
+/// Return the indices of the bins to which each value in input belongs.
+#[pyfunction]
+#[pyo3(signature = (x, bins, right=false))]
+pub fn digitize(x: &PyRumpyArray, bins: &PyRumpyArray, right: bool) -> PyRumpyArray {
+    PyRumpyArray::new(crate::ops::indexing::digitize(&x.inner, &bins.inner, right))
+}
+
+/// Pack binary-valued array into uint8 array.
+#[pyfunction]
+#[pyo3(signature = (a, axis=None, bitorder="big"))]
+pub fn packbits(
+    a: &PyRumpyArray,
+    axis: Option<isize>,
+    bitorder: &str,
+) -> PyRumpyArray {
+    let resolved_axis = axis.map(|ax| {
+        if ax < 0 {
+            (a.inner.ndim() as isize + ax) as usize
+        } else {
+            ax as usize
+        }
+    });
+
+    // axis=None means flatten first (use default axis)
+    let actual_axis = if axis.is_none() {
+        None
+    } else {
+        resolved_axis
+    };
+
+    PyRumpyArray::new(crate::ops::indexing::packbits(&a.inner, actual_axis, bitorder))
+}
+
+/// Unpack elements of uint8 array into binary-valued output.
+#[pyfunction]
+#[pyo3(signature = (a, axis=None, count=None, bitorder="big"))]
+pub fn unpackbits(
+    a: &PyRumpyArray,
+    axis: Option<isize>,
+    count: Option<usize>,
+    bitorder: &str,
+) -> PyRumpyArray {
+    let resolved_axis = axis.map(|ax| {
+        if ax < 0 {
+            (a.inner.ndim() as isize + ax) as usize
+        } else {
+            ax as usize
+        }
+    });
+
+    PyRumpyArray::new(crate::ops::indexing::unpackbits(&a.inner, resolved_axis, count, bitorder))
+}
