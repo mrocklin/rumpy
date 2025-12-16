@@ -23,30 +23,13 @@ We want simple and fast tests comparing execution against numpy.  Read `designs/
 
 Here we implement our new functionality, testing against our simple tests from earlier to gauge correctness.
 
-**Avoid `to_vec()` in hot paths.** It converts all data to `Vec<f64>`, causing:
-- Unnecessary memory allocation and copying
-- dtype conversion overhead (especially f32→f64→f32)
-- Wrong results for dtype-dependent operations (like `spacing`/ULP)
+Avoid dtype-specific implementations, especially code that routes through f64.
+Instead, try to build dtype generic implementations.  We've managed this for
+ufuncs and reductions while also making them fast, such that the Rust compiler
+can identify loops as SIMD friendly.
 
-**Use typed dispatch instead.** Match on dtype and consider using typed pointer access:
-```rust
-match arr.dtype().kind() {
-    DTypeKind::Float32 => process_typed::<f32>(arr, DType::float32()),
-    DTypeKind::Float64 => process_typed::<f64>(arr, DType::float64()),
-    _ => { /* convert or error */ }
-}
-
-fn process_typed<T: Float>(arr: &RumpyArray, dtype: DType) -> RumpyArray {
-    let src_ptr = arr.data_ptr() as *const T;
-    let result_ptr = result_buffer.as_mut_ptr() as *mut T;
-    for i in 0..size {
-        let x = unsafe { *src_ptr.add(i) };
-        unsafe { *result_ptr.add(i) = /* compute */ };
-    }
-}
-```
-
-For generic math operations, define a trait (like `Float` with `sin()`, `exp()`, etc.) that f32 and f64 both implement. This lets generic code monomorphize to efficient type-specific code
+Instead dispatch on types and use macros if necessary.  Consider using typed
+pointer access.
 
 ## Phase 4: Simplification and Cleanup
 
