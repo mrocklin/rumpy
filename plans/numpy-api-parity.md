@@ -1130,28 +1130,31 @@ Vectorized string operations. **Large scope - new dtype required.**
 
 ---
 
-## Stream 40: Datetime Operations (numpy.datetime64)
+## Stream 40: Datetime Operations (numpy.datetime64) ✅ COMPLETE
 
 Date and time support. **Large scope - new dtype required.**
 
 ### Tier 1 - Core Types
-- [ ] `datetime64` dtype
-- [ ] `timedelta64` dtype
-- [ ] Arithmetic between datetime/timedelta
+- [x] `datetime64` dtype (all units: Y, M, W, D, h, m, s, ms, us, ns)
+- [x] `timedelta64` dtype (all units)
+- [x] Arithmetic between datetime/timedelta
+- [x] datetime - datetime => timedelta64
 
 ### Tier 2 - Conversion
-- [ ] `datetime_as_string` - convert to string array
-- [ ] `datetime_data` - get datetime type info
+- [x] `datetime_as_string` - convert to string array
+- [x] `datetime_data` - get datetime type info
+- [x] `isnat` - check for Not-a-Time values
+- [x] Unit conversion via astype
 
 ### Tier 3 - Business Days
-- [ ] `busdaycalendar` - business day calendar
-- [ ] `is_busday` - check if business day
-- [ ] `busday_offset` - offset by business days
-- [ ] `busday_count` - count business days
+- [x] `busdaycalendar` - business day calendar
+- [x] `is_busday` - check if business day
+- [x] `busday_offset` - offset by business days
+- [x] `busday_count` - count business days
 
 **Complexity**: Very High - requires new dtype with unit handling (Y, M, D, h, m, s, ms, us, ns).
 
-**Files**: `src/array/dtype/datetime.rs`, `src/ops/datetime.rs`, `src/python/datetime.rs`, `tests/test_datetime.py`
+**Files**: `src/array/dtype/datetime64.rs`, `src/python/datetime.rs`, `tests/test_datetime.py`
 
 ---
 

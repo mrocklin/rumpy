@@ -485,7 +485,7 @@ fn compute_max_bytes_length(list: &Bound<'_, PyList>) -> Option<usize> {
 
 /// Create array from Python list.
 pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
-    use crate::array::dtype::DTypeKind;
+    use crate::array::dtype::{DTypeKind, parse_datetime64};
 
     let dtype = match dtype {
         Some(dt) => parse_dtype(dt)?,
@@ -498,6 +498,34 @@ pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRu
     }
 
     let first = list.get_item(0)?;
+
+    // Handle datetime64 dtype - parse string inputs
+    if let DTypeKind::DateTime64(unit) = dtype.kind() {
+        if first.downcast::<PyList>().is_ok() {
+            let (shape, strings) = flatten_nested_list_str(list)?;
+            let data: Vec<i64> = strings.iter().map(|s| parse_datetime64(s, unit)).collect();
+            return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64_with_shape(data, shape, dtype)));
+        }
+        // Try to extract strings and parse them
+        let strings: Result<Vec<String>, _> = list.iter().map(|item| item.extract::<String>()).collect();
+        if let Ok(strings) = strings {
+            let data: Vec<i64> = strings.iter().map(|s| parse_datetime64(s, unit)).collect();
+            return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64(data, dtype)));
+        }
+        // Fall back to integer extraction
+        let data: Vec<i64> = list.iter().map(|item| item.extract::<i64>()).collect::<PyResult<Vec<_>>>()?;
+        return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64(data, dtype)));
+    }
+
+    // Handle timedelta64 dtype
+    if let DTypeKind::TimeDelta64(_unit) = dtype.kind() {
+        if first.downcast::<PyList>().is_ok() {
+            let (shape, data) = flatten_nested_list_i64(list)?;
+            return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64_with_shape(data, shape, dtype)));
+        }
+        let data: Vec<i64> = list.iter().map(|item| item.extract::<i64>()).collect::<PyResult<Vec<_>>>()?;
+        return Ok(PyRumpyArray::new(RumpyArray::from_vec_i64(data, dtype)));
+    }
 
     // Handle string dtype
     if let DTypeKind::Str(_) = dtype.kind() {
@@ -638,18 +666,41 @@ fn flatten_nested_list_bytes(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, 
 
 /// Parse dtype from numpy typestr.
 fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
+    use crate::array::dtype::TimeUnit;
+
     // Handle datetime64: "<M8[ns]", "<M8[us]", etc.
     if typestr.starts_with("<M8[") || typestr.starts_with(">M8[") {
-        return match typestr {
-            "<M8[ns]" | ">M8[ns]" => Ok(DType::datetime64_ns()),
-            "<M8[us]" | ">M8[us]" => Ok(DType::datetime64_us()),
-            "<M8[ms]" | ">M8[ms]" => Ok(DType::datetime64_ms()),
-            "<M8[s]" | ">M8[s]" => Ok(DType::datetime64_s()),
-            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Unsupported datetime64 unit: {}",
-                typestr
-            ))),
-        };
+        // Extract unit from M8[unit]
+        let unit_str = typestr.trim_start_matches('<').trim_start_matches('>');
+        if let Some(start) = unit_str.find('[') {
+            if let Some(end) = unit_str.find(']') {
+                let unit = &unit_str[start+1..end];
+                if let Some(tu) = TimeUnit::from_str(unit) {
+                    return Ok(DType::datetime64(tu));
+                }
+            }
+        }
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Unsupported datetime64 unit: {}",
+            typestr
+        )));
+    }
+
+    // Handle timedelta64: "<m8[ns]", "<m8[us]", etc.
+    if typestr.starts_with("<m8[") || typestr.starts_with(">m8[") {
+        let unit_str = typestr.trim_start_matches('<').trim_start_matches('>');
+        if let Some(start) = unit_str.find('[') {
+            if let Some(end) = unit_str.find(']') {
+                let unit = &unit_str[start+1..end];
+                if let Some(tu) = TimeUnit::from_str(unit) {
+                    return Ok(DType::timedelta64(tu));
+                }
+            }
+        }
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Unsupported timedelta64 unit: {}",
+            typestr
+        )));
     }
 
     // Handle Unicode strings: "<U5", ">U10", etc.

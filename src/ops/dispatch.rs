@@ -116,6 +116,50 @@ pub fn dispatch_binary_nextafter(a: &RumpyArray, b: &RumpyArray, out_shape: &[us
     dispatch_binary_kernel_float(a, b, out_shape, Nextafter)
 }
 
+/// Dispatch datetime + timedelta → datetime (fast path using i64 Add kernel).
+pub fn dispatch_datetime_add_timedelta(
+    datetime: &RumpyArray,
+    timedelta: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    // Both are i64 internally, result is datetime with same unit
+    let out_dtype = datetime.dtype();
+    dispatch_binary_typed::<i64, Add>(datetime, timedelta, out_shape, Add, out_dtype)
+}
+
+/// Dispatch timedelta + datetime → datetime (fast path using i64 Add kernel).
+pub fn dispatch_timedelta_add_datetime(
+    timedelta: &RumpyArray,
+    datetime: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    // Both are i64 internally, result is datetime with same unit
+    let out_dtype = datetime.dtype();
+    dispatch_binary_typed::<i64, Add>(timedelta, datetime, out_shape, Add, out_dtype)
+}
+
+/// Dispatch datetime - timedelta → datetime (fast path using i64 Sub kernel).
+pub fn dispatch_datetime_sub_timedelta(
+    datetime: &RumpyArray,
+    timedelta: &RumpyArray,
+    out_shape: &[usize],
+) -> Option<RumpyArray> {
+    // Both are i64 internally, result is datetime with same unit
+    let out_dtype = datetime.dtype();
+    dispatch_binary_typed::<i64, Sub>(datetime, timedelta, out_shape, Sub, out_dtype)
+}
+
+/// Dispatch datetime - datetime → timedelta (fast path using i64 Sub kernel).
+pub fn dispatch_datetime_sub_datetime(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+    out_dtype: DType,
+) -> Option<RumpyArray> {
+    // Both are i64 internally, result is timedelta with same unit
+    dispatch_binary_typed::<i64, Sub>(a, b, out_shape, Sub, out_dtype)
+}
+
 /// Dispatch float_power: power operation that always outputs f64 (or complex128).
 /// Accepts any numeric input type, converts to f64/complex128 inline.
 pub fn dispatch_float_power(a: &RumpyArray, b: &RumpyArray, out_shape: &[usize]) -> Option<RumpyArray> {
@@ -290,7 +334,10 @@ where
         DTypeKind::Uint8 => dispatch_binary_typed::<u8, K>(a, b, out_shape, kernel, DType::uint8()),
         DTypeKind::Complex128 => dispatch_binary_typed::<Complex<f64>, K>(a, b, out_shape, kernel, DType::complex128()),
         DTypeKind::Complex64 => dispatch_binary_typed::<Complex<f32>, K>(a, b, out_shape, kernel, DType::complex64()),
-        _ => None, // datetime, etc. fall back to trait dispatch
+        // datetime64/timedelta64 use i64 internally - route through fast path preserving dtype
+        DTypeKind::DateTime64(_) => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, a.dtype()),
+        DTypeKind::TimeDelta64(_) => dispatch_binary_typed::<i64, K>(a, b, out_shape, kernel, a.dtype()),
+        _ => None, // bool, str, etc. fall back to trait dispatch
     }
 }
 
@@ -1075,7 +1122,10 @@ where
         DTypeKind::Uint8 => dispatch_compare_typed::<u8, K>(a, b, out_shape, kernel),
         DTypeKind::Complex128 => dispatch_compare_typed::<Complex<f64>, K>(a, b, out_shape, kernel),
         DTypeKind::Complex64 => dispatch_compare_typed::<Complex<f32>, K>(a, b, out_shape, kernel),
-        _ => None, // datetime, bool fall back to trait dispatch
+        // datetime64/timedelta64 use i64 internally - route through fast path
+        DTypeKind::DateTime64(_) => dispatch_compare_typed::<i64, K>(a, b, out_shape, kernel),
+        DTypeKind::TimeDelta64(_) => dispatch_compare_typed::<i64, K>(a, b, out_shape, kernel),
+        _ => None, // bool fall back to trait dispatch
     }
 }
 

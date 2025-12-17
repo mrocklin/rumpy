@@ -210,13 +210,54 @@ pub fn map_binary_op_inplace(
     let a_bc = a.broadcast_to(&out_shape).ok_or(BinaryOpError::ShapeMismatch)?;
     let b_bc = b.broadcast_to(&out_shape).ok_or(BinaryOpError::ShapeMismatch)?;
 
-    // Validate datetime operations
+    // Fast dispatch for datetime/timedelta operations
     let a_is_datetime = matches!(a_bc.dtype().kind(), DTypeKind::DateTime64(_));
     let b_is_datetime = matches!(b_bc.dtype().kind(), DTypeKind::DateTime64(_));
-    if a_is_datetime || b_is_datetime {
+    let a_is_timedelta = matches!(a_bc.dtype().kind(), DTypeKind::TimeDelta64(_));
+    let b_is_timedelta = matches!(b_bc.dtype().kind(), DTypeKind::TimeDelta64(_));
+
+    if a_is_datetime || b_is_datetime || a_is_timedelta || b_is_timedelta {
+        use crate::ops::dispatch;
+
         match op {
-            BinaryOp::Add if a_is_datetime && b_is_datetime => return Err(BinaryOpError::UnsupportedDtype),
-            BinaryOp::Mul | BinaryOp::Div | BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv => return Err(BinaryOpError::UnsupportedDtype),
+            // datetime + datetime is invalid
+            BinaryOp::Add if a_is_datetime && b_is_datetime => {
+                return Err(BinaryOpError::UnsupportedDtype);
+            }
+            // datetime + timedelta => datetime (fast path)
+            BinaryOp::Add if a_is_datetime && b_is_timedelta => {
+                if let Some(result) = dispatch::dispatch_datetime_add_timedelta(&a_bc, &b_bc, &out_shape) {
+                    return Ok(result);
+                }
+            }
+            // timedelta + datetime => datetime (fast path)
+            BinaryOp::Add if a_is_timedelta && b_is_datetime => {
+                if let Some(result) = dispatch::dispatch_timedelta_add_datetime(&a_bc, &b_bc, &out_shape) {
+                    return Ok(result);
+                }
+            }
+            // datetime - datetime => timedelta (fast path)
+            BinaryOp::Sub if a_is_datetime && b_is_datetime => {
+                if let (DTypeKind::DateTime64(unit_a), DTypeKind::DateTime64(unit_b)) = (a_bc.dtype().kind(), b_bc.dtype().kind()) {
+                    if unit_a == unit_b {
+                        let result_dtype = DType::timedelta64(unit_a);
+                        if let Some(result) = dispatch::dispatch_datetime_sub_datetime(&a_bc, &b_bc, &out_shape, result_dtype) {
+                            return Ok(result);
+                        }
+                    }
+                }
+            }
+            // datetime - timedelta => datetime (fast path)
+            BinaryOp::Sub if a_is_datetime && b_is_timedelta => {
+                if let Some(result) = dispatch::dispatch_datetime_sub_timedelta(&a_bc, &b_bc, &out_shape) {
+                    return Ok(result);
+                }
+            }
+            // Invalid operations for datetime
+            BinaryOp::Mul | BinaryOp::Div | BinaryOp::Pow | BinaryOp::Mod | BinaryOp::FloorDiv
+                if a_is_datetime || b_is_datetime => {
+                return Err(BinaryOpError::UnsupportedDtype);
+            }
             _ => {}
         }
     }

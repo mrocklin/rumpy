@@ -10,7 +10,7 @@ pub mod views;
 use std::sync::Arc;
 
 pub use buffer::ArrayBuffer;
-pub use dtype::{promote_dtype, DType, DTypeOps};
+pub use dtype::{promote_dtype, DType, DTypeKind, DTypeOps};
 pub use flags::ArrayFlags;
 pub use iter::{AxisOffsetIter, StridedIter};
 pub use manipulation::{
@@ -387,10 +387,40 @@ impl RumpyArray {
                 unsafe { dst_ops.copy_element(src_ptr, offset, result_ptr, i); }
             }
         } else {
-            // Cross-dtype conversion via f64 (lossy for complex)
-            for (i, offset) in self.iter_offsets().enumerate() {
-                let val = unsafe { src_ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
-                unsafe { dst_ops.write_f64(result_ptr, i, val); }
+            // Check for datetime/timedelta conversion which requires special handling
+            let src_kind = self.dtype.kind();
+            let dst_kind = new_dtype.kind();
+
+            match (&src_kind, &dst_kind) {
+                (DTypeKind::DateTime64(from_unit), DTypeKind::DateTime64(to_unit)) => {
+                    // DateTime64 to DateTime64 conversion
+                    let src = src_ptr as *const i64;
+                    let dst = result_ptr as *mut i64;
+                    for (i, offset) in self.iter_offsets().enumerate() {
+                        let byte_offset = offset as isize / 8;
+                        let val = unsafe { *src.offset(byte_offset) };
+                        let converted = dtype::convert_datetime64(val, *from_unit, *to_unit);
+                        unsafe { *dst.add(i) = converted; }
+                    }
+                }
+                (DTypeKind::TimeDelta64(from_unit), DTypeKind::TimeDelta64(to_unit)) => {
+                    // TimeDelta64 to TimeDelta64 conversion
+                    let src = src_ptr as *const i64;
+                    let dst = result_ptr as *mut i64;
+                    for (i, offset) in self.iter_offsets().enumerate() {
+                        let byte_offset = offset as isize / 8;
+                        let val = unsafe { *src.offset(byte_offset) };
+                        let converted = dtype::convert_datetime64(val, *from_unit, *to_unit);
+                        unsafe { *dst.add(i) = converted; }
+                    }
+                }
+                _ => {
+                    // Cross-dtype conversion via f64 (lossy for complex)
+                    for (i, offset) in self.iter_offsets().enumerate() {
+                        let val = unsafe { src_ops.read_f64(src_ptr, offset) }.unwrap_or(0.0);
+                        unsafe { dst_ops.write_f64(result_ptr, i, val); }
+                    }
+                }
             }
         }
         result

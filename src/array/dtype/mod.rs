@@ -20,8 +20,8 @@ mod string;
 use self::bool::BoolOps;
 use complex64::Complex64Ops;
 use complex128::Complex128Ops;
-use datetime64::DateTime64Ops;
-pub use datetime64::TimeUnit;
+use datetime64::{DateTime64Ops, TimeDelta64Ops};
+pub use datetime64::{TimeUnit, NAT, parse_datetime64, format_datetime64, convert_datetime64};
 use float16::Float16Ops;
 use floats::{Float32Ops, Float64Ops};
 use integers::{Int8Ops, Int16Ops, Int32Ops, Int64Ops, Uint8Ops, Uint16Ops, Uint32Ops, Uint64Ops};
@@ -48,6 +48,7 @@ pub enum DTypeKind {
     Uint64,
     Bool,
     DateTime64(TimeUnit),
+    TimeDelta64(TimeUnit),
     Complex64,
     Complex128,
     /// Unicode string with max_chars characters (UTF-32, 4 bytes per char)
@@ -375,10 +376,29 @@ impl DType {
     pub fn uint64() -> Self { DType(Arc::new(Uint64Ops)) }
     pub fn bool() -> Self { DType(Arc::new(BoolOps)) }
     pub fn datetime64(unit: TimeUnit) -> Self { DType(Arc::new(DateTime64Ops { unit })) }
-    pub fn datetime64_ns() -> Self { Self::datetime64(TimeUnit::Nanoseconds) }
-    pub fn datetime64_us() -> Self { Self::datetime64(TimeUnit::Microseconds) }
-    pub fn datetime64_ms() -> Self { Self::datetime64(TimeUnit::Milliseconds) }
+    pub fn datetime64_y() -> Self { Self::datetime64(TimeUnit::Years) }
+    pub fn datetime64_m() -> Self { Self::datetime64(TimeUnit::Months) }
+    pub fn datetime64_w() -> Self { Self::datetime64(TimeUnit::Weeks) }
+    pub fn datetime64_d() -> Self { Self::datetime64(TimeUnit::Days) }
+    pub fn datetime64_h() -> Self { Self::datetime64(TimeUnit::Hours) }
+    pub fn datetime64_min() -> Self { Self::datetime64(TimeUnit::Minutes) }
     pub fn datetime64_s() -> Self { Self::datetime64(TimeUnit::Seconds) }
+    pub fn datetime64_ms() -> Self { Self::datetime64(TimeUnit::Milliseconds) }
+    pub fn datetime64_us() -> Self { Self::datetime64(TimeUnit::Microseconds) }
+    pub fn datetime64_ns() -> Self { Self::datetime64(TimeUnit::Nanoseconds) }
+
+    pub fn timedelta64(unit: TimeUnit) -> Self { DType(Arc::new(TimeDelta64Ops { unit })) }
+    pub fn timedelta64_y() -> Self { Self::timedelta64(TimeUnit::Years) }
+    pub fn timedelta64_m() -> Self { Self::timedelta64(TimeUnit::Months) }
+    pub fn timedelta64_w() -> Self { Self::timedelta64(TimeUnit::Weeks) }
+    pub fn timedelta64_d() -> Self { Self::timedelta64(TimeUnit::Days) }
+    pub fn timedelta64_h() -> Self { Self::timedelta64(TimeUnit::Hours) }
+    pub fn timedelta64_min() -> Self { Self::timedelta64(TimeUnit::Minutes) }
+    pub fn timedelta64_s() -> Self { Self::timedelta64(TimeUnit::Seconds) }
+    pub fn timedelta64_ms() -> Self { Self::timedelta64(TimeUnit::Milliseconds) }
+    pub fn timedelta64_us() -> Self { Self::timedelta64(TimeUnit::Microseconds) }
+    pub fn timedelta64_ns() -> Self { Self::timedelta64(TimeUnit::Nanoseconds) }
+
     pub fn complex64() -> Self { DType(Arc::new(Complex64Ops)) }
     pub fn complex128() -> Self { DType(Arc::new(Complex128Ops)) }
     /// Unicode string dtype with max_chars characters per element.
@@ -420,10 +440,28 @@ impl FromStr for DType {
             "uint32" | "u4" | "<u4" => Ok(Self::uint32()),
             "uint64" | "u8" | "<u8" => Ok(Self::uint64()),
             "bool" | "?" | "|b1" => Ok(Self::bool()),
-            "datetime64[ns]" | "<M8[ns]" => Ok(Self::datetime64_ns()),
-            "datetime64[us]" | "<M8[us]" => Ok(Self::datetime64_us()),
-            "datetime64[ms]" | "<M8[ms]" => Ok(Self::datetime64_ms()),
-            "datetime64[s]" | "<M8[s]" => Ok(Self::datetime64_s()),
+            // datetime64 - all units
+            "datetime64[Y]" | "<M8[Y]" | ">M8[Y]" => Ok(Self::datetime64_y()),
+            "datetime64[M]" | "<M8[M]" | ">M8[M]" => Ok(Self::datetime64_m()),
+            "datetime64[W]" | "<M8[W]" | ">M8[W]" => Ok(Self::datetime64_w()),
+            "datetime64[D]" | "<M8[D]" | ">M8[D]" => Ok(Self::datetime64_d()),
+            "datetime64[h]" | "<M8[h]" | ">M8[h]" => Ok(Self::datetime64_h()),
+            "datetime64[m]" | "<M8[m]" | ">M8[m]" => Ok(Self::datetime64_min()),
+            "datetime64[s]" | "<M8[s]" | ">M8[s]" => Ok(Self::datetime64_s()),
+            "datetime64[ms]" | "<M8[ms]" | ">M8[ms]" => Ok(Self::datetime64_ms()),
+            "datetime64[us]" | "<M8[us]" | ">M8[us]" => Ok(Self::datetime64_us()),
+            "datetime64[ns]" | "<M8[ns]" | ">M8[ns]" => Ok(Self::datetime64_ns()),
+            // timedelta64 - all units
+            "timedelta64[Y]" | "<m8[Y]" | ">m8[Y]" => Ok(Self::timedelta64_y()),
+            "timedelta64[M]" | "<m8[M]" | ">m8[M]" => Ok(Self::timedelta64_m()),
+            "timedelta64[W]" | "<m8[W]" | ">m8[W]" => Ok(Self::timedelta64_w()),
+            "timedelta64[D]" | "<m8[D]" | ">m8[D]" => Ok(Self::timedelta64_d()),
+            "timedelta64[h]" | "<m8[h]" | ">m8[h]" => Ok(Self::timedelta64_h()),
+            "timedelta64[m]" | "<m8[m]" | ">m8[m]" => Ok(Self::timedelta64_min()),
+            "timedelta64[s]" | "<m8[s]" | ">m8[s]" => Ok(Self::timedelta64_s()),
+            "timedelta64[ms]" | "<m8[ms]" | ">m8[ms]" => Ok(Self::timedelta64_ms()),
+            "timedelta64[us]" | "<m8[us]" | ">m8[us]" => Ok(Self::timedelta64_us()),
+            "timedelta64[ns]" | "<m8[ns]" | ">m8[ns]" => Ok(Self::timedelta64_ns()),
             "complex64" | "c8" | "<c8" => Ok(Self::complex64()),
             "complex128" | "c16" | "<c16" => Ok(Self::complex128()),
             "str" | "str_" => Ok(Self::str_(0)), // default to 0 (determined from data)

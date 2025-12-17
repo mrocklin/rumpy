@@ -1,5 +1,6 @@
 pub mod char;
 pub mod creation;
+pub mod datetime;
 pub mod dtype;
 pub mod einsum;
 pub mod fft;
@@ -34,6 +35,8 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     dtype::register_module(m)?;
     // Register einsum functions
     einsum::register_module(m)?;
+    // Register datetime functions
+    datetime::register_module(m)?;
     // Constructors (from creation module)
     m.add_function(wrap_pyfunction!(creation::zeros, m)?)?;
     m.add_function(wrap_pyfunction!(creation::ones, m)?)?;
