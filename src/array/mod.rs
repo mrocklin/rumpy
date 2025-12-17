@@ -186,6 +186,42 @@ impl RumpyArray {
         byte_offset
     }
 
+    /// Extract a 1D slice along an axis efficiently using stride-based access.
+    ///
+    /// `other_indices` contains indices for all dimensions except `axis`.
+    /// Returns a Vec<f64> of length shape[axis].
+    ///
+    /// This is much faster than calling get_element repeatedly because it
+    /// computes the base offset once and uses stride arithmetic.
+    pub fn get_slice_along_axis(&self, axis: usize, other_indices: &[usize]) -> Vec<f64> {
+        debug_assert!(axis < self.ndim());
+        debug_assert_eq!(other_indices.len(), self.ndim() - 1);
+
+        let axis_len = self.shape[axis];
+        let axis_stride = self.strides[axis];
+        let ptr = self.data_ptr();
+
+        // Compute base offset from other_indices
+        let mut base_offset: isize = 0;
+        let mut idx_pos = 0;
+        for (dim, &stride) in self.strides.iter().enumerate() {
+            if dim != axis {
+                base_offset += (other_indices[idx_pos] as isize) * stride;
+                idx_pos += 1;
+            }
+        }
+
+        // Extract elements using stride arithmetic
+        let mut result = Vec::with_capacity(axis_len);
+        let mut offset = base_offset;
+        for _ in 0..axis_len {
+            let val = unsafe { self.dtype.ops().read_f64(ptr, offset).unwrap_or(0.0) };
+            result.push(val);
+            offset += axis_stride;
+        }
+        result
+    }
+
     /// Select elements where mask is true. Returns a 1D array.
     /// Mask must have same shape as self (broadcasting not supported for boolean indexing).
     pub fn select_by_mask(&self, mask: &RumpyArray) -> Option<Self> {

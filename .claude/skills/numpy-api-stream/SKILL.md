@@ -31,9 +31,12 @@ can identify loops as SIMD friendly.
 Instead dispatch on types and use macros if necessary.  Consider using typed
 pointer access.
 
+Avoid using get_element if possible. (it's slow.)
+
 ## Phase 4: Simplification and Cleanup
 
-Run the `/cleanup` command to review our work and see if there is anything we can simplify or clean up.
+Review our work so far and see if there is anything we should clean up or
+simplify.  Then perform the work there that you think is best.
 
 ## Phase 5: Performance testing
 

@@ -1,6 +1,7 @@
 pub mod creation;
 pub mod dtype;
 pub mod fft;
+pub mod functional;
 pub mod indexing;
 pub mod io;
 pub mod linalg;
@@ -385,5 +386,12 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(misc::unwrap, m)?)?;
     m.add_function(wrap_pyfunction!(misc::angle, m)?)?;
     m.add_function(wrap_pyfunction!(misc::real_if_close, m)?)?;
+    // Functional programming operations (Stream 33)
+    m.add_function(wrap_pyfunction!(functional::apply_along_axis, m)?)?;
+    m.add_function(wrap_pyfunction!(functional::apply_over_axes, m)?)?;
+    m.add_function(wrap_pyfunction!(functional::vectorize, m)?)?;
+    m.add_function(wrap_pyfunction!(functional::frompyfunc, m)?)?;
+    m.add_class::<functional::PyVectorize>()?;
+    m.add_class::<functional::PyFrompyfunc>()?;
     Ok(())
 }
