@@ -1033,25 +1033,25 @@ Tensor contraction using Einstein notation - very popular for ML/physics.
 
 ---
 
-## Stream 36: Memory Layout Utilities
+## Stream 36: Memory Layout Utilities ✅ COMPLETE
 
 Array memory layout control and conversion.
 
 ### Conversion
-- [ ] `ascontiguousarray` - return C-contiguous array
-- [ ] `asfortranarray` - return Fortran-contiguous array
-- [ ] `require` - return array satisfying requirements
-- [ ] `copyto` - copy values from one array to another
+- [x] `ascontiguousarray` - return C-contiguous array
+- [x] `asfortranarray` - return Fortran-contiguous array
+- [x] `require` - return array satisfying requirements
+- [x] `copyto` - copy values from one array to another
 
 ### Inspection
-- [ ] `broadcast_shapes` - broadcast shapes without creating arrays
+- [x] `broadcast_shapes` - broadcast shapes without creating arrays
 
 ### NumPy 2.0 Aliases
-- [ ] `concat` - alias for concatenate
-- [ ] `permute_dims` - alias for transpose
-- [ ] `matrix_transpose` - transpose last two axes
+- [x] `concat` - alias for concatenate
+- [x] `permute_dims` - alias for transpose
+- [x] `matrix_transpose` - transpose last two axes
 
-**Files**: `src/python/creation.rs`, `src/array/mod.rs`, `tests/test_memory.py`
+**Files**: `src/python/creation.rs`, `src/python/shape.rs`, `tests/test_memory.py`
 
 ---
 

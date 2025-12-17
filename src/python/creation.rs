@@ -743,3 +743,195 @@ fn bessel_i0(x: f64) -> f64 {
                     + y * (0.02635537 + y * (-0.01647633 + y * 0.00392377))))))))
     }
 }
+
+// ============================================================================
+// Memory layout utilities
+// ============================================================================
+
+/// Return a contiguous array (ndim >= 1) in memory (C order).
+///
+/// If array is already C-contiguous and has the requested dtype, return it.
+/// Otherwise, return a copy with C-contiguous memory layout.
+#[pyfunction]
+#[pyo3(signature = (a, dtype=None))]
+pub fn ascontiguousarray(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let target_dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+
+    // If already C-contiguous and same dtype, can return view/clone
+    if a.inner.is_c_contiguous() && a.inner.dtype() == target_dtype {
+        return Ok(PyRumpyArray::new(a.inner.clone()));
+    }
+
+    // Otherwise make a contiguous copy with the target dtype
+    Ok(PyRumpyArray::new(a.inner.astype(target_dtype)))
+}
+
+/// Return an array laid out in Fortran order in memory.
+///
+/// Creates a copy of the array with Fortran (column-major) memory layout.
+#[pyfunction]
+#[pyo3(signature = (a, dtype=None))]
+pub fn asfortranarray(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    let target_dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+
+    // Create F-contiguous copy using transpose trick:
+    // F-contiguous(A) = C-contiguous(A.T).T
+    let transposed = a.inner.transpose();
+    let contiguous = transposed.astype(target_dtype);
+    Ok(PyRumpyArray::new(contiguous.transpose()))
+}
+
+/// Return an array satisfying the specified requirements.
+///
+/// Parameters
+/// ----------
+/// a : array
+///     Input array.
+/// dtype : dtype, optional
+///     Required data type.
+/// requirements : str or list of str, optional
+///     Flags: 'C' (C_CONTIGUOUS), 'F' (F_CONTIGUOUS), 'A' (ALIGNED),
+///     'W' (WRITEABLE), 'O' (OWNDATA), 'E' (ENSUREARRAY).
+#[pyfunction]
+#[pyo3(signature = (a, dtype=None, requirements=None))]
+pub fn require(
+    a: &PyRumpyArray,
+    dtype: Option<&str>,
+    requirements: Option<&str>,
+) -> PyResult<PyRumpyArray> {
+    let target_dtype = match dtype {
+        Some(dt) => parse_dtype(dt)?,
+        None => a.inner.dtype(),
+    };
+
+    let reqs = requirements.unwrap_or("");
+
+    // Check if we need C-contiguous
+    let need_c_contiguous = reqs.contains('C');
+    let need_f_contiguous = reqs.contains('F');
+
+    // Determine if array already satisfies requirements
+    let satisfies = if need_c_contiguous {
+        a.inner.is_c_contiguous() && a.inner.dtype() == target_dtype
+    } else if need_f_contiguous {
+        a.inner.is_f_contiguous() && a.inner.dtype() == target_dtype
+    } else {
+        a.inner.dtype() == target_dtype
+    };
+
+    if satisfies {
+        return Ok(PyRumpyArray::new(a.inner.clone()));
+    }
+
+    // Make appropriate copy
+    if need_f_contiguous {
+        asfortranarray(a, dtype)
+    } else {
+        // Default to C-contiguous
+        Ok(PyRumpyArray::new(a.inner.astype(target_dtype)))
+    }
+}
+
+/// Copy values from one array to another, broadcasting as necessary.
+///
+/// Parameters
+/// ----------
+/// dst : array
+///     Destination array.
+/// src : array
+///     Source array.
+/// casting : str, optional
+///     Casting rule. One of 'no', 'equiv', 'safe', 'same_kind', 'unsafe'.
+/// where : array of bool, optional
+///     Only copy where mask is True.
+#[pyfunction(signature = (dst, src, casting=None, r#where=None))]
+pub fn copyto(
+    dst: &mut PyRumpyArray,
+    src: &PyRumpyArray,
+    casting: Option<&str>,
+    r#where: Option<&PyRumpyArray>,
+) -> PyResult<()> {
+    let where_mask = r#where;
+    // For now, we support basic casting modes
+    let _casting = casting.unwrap_or("same_kind");
+
+    // Broadcast src to dst shape if needed
+    let src_broadcasted = if src.inner.shape() != dst.inner.shape() {
+        src.inner.broadcast_to(dst.inner.shape())
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(
+                    "could not broadcast input array to destination shape"
+                )
+            })?
+    } else {
+        src.inner.clone()
+    };
+
+    let size = dst.inner.size();
+    let shape = dst.inner.shape().to_vec();
+    if size == 0 {
+        return Ok(());
+    }
+
+    let dst_ptr = dst.inner.data_ptr() as *mut u8;
+    let src_ptr = src_broadcasted.data_ptr();
+    let dst_dtype = dst.inner.dtype();
+    let src_dtype = src_broadcasted.dtype();
+    let dst_ops = dst_dtype.ops();
+    let src_ops = src_dtype.ops();
+
+    match where_mask {
+        Some(mask) => {
+            // Copy only where mask is True
+            let mask_broadcasted = if mask.inner.shape() != &shape[..] {
+                mask.inner.broadcast_to(&shape)
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyValueError::new_err(
+                            "could not broadcast mask to destination shape"
+                        )
+                    })?
+            } else {
+                mask.inner.clone()
+            };
+
+            let mask_ptr = mask_broadcasted.data_ptr();
+            let mask_dtype = mask_broadcasted.dtype();
+            let mask_ops = mask_dtype.ops();
+
+            for ((dst_off, src_off), mask_off) in dst.inner.iter_offsets()
+                .zip(src_broadcasted.iter_offsets())
+                .zip(mask_broadcasted.iter_offsets())
+            {
+                let mask_val = unsafe { mask_ops.read_f64(mask_ptr, mask_off) }.unwrap_or(0.0);
+                if mask_val != 0.0 {
+                    let val = unsafe { src_ops.read_f64(src_ptr, src_off) }.unwrap_or(0.0);
+                    unsafe { dst_ops.write_f64_at_byte_offset(dst_ptr, dst_off, val); }
+                }
+            }
+        }
+        None => {
+            // Fast path: both contiguous and same dtype - use memcpy
+            if dst_dtype == src_dtype && dst.inner.is_c_contiguous() && src_broadcasted.is_c_contiguous() {
+                let nbytes = size * dst.inner.itemsize();
+                unsafe { std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, nbytes); }
+                return Ok(());
+            }
+
+            // General path: iterate with typed pointer access
+            for (dst_off, src_off) in dst.inner.iter_offsets()
+                .zip(src_broadcasted.iter_offsets())
+            {
+                let val = unsafe { src_ops.read_f64(src_ptr, src_off) }.unwrap_or(0.0);
+                unsafe { dst_ops.write_f64_at_byte_offset(dst_ptr, dst_off, val); }
+            }
+        }
+    }
+
+    Ok(())
+}

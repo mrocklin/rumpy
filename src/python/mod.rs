@@ -63,6 +63,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(creation::hamming, m)?)?;
     m.add_function(wrap_pyfunction!(creation::hanning, m)?)?;
     m.add_function(wrap_pyfunction!(creation::kaiser, m)?)?;
+    // Memory layout utilities (from creation module)
+    m.add_function(wrap_pyfunction!(creation::ascontiguousarray, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::asfortranarray, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::require, m)?)?;
+    m.add_function(wrap_pyfunction!(creation::copyto, m)?)?;
     // Reductions (from reductions module)
     m.add_function(wrap_pyfunction!(reductions::sum, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::prod, m)?)?;
@@ -185,6 +190,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // More shape ops (from shape module)
     m.add_function(wrap_pyfunction!(shape::diagonal, m)?)?;
     m.add_function(wrap_pyfunction!(shape::swapaxes, m)?)?;
+    // NumPy 2.0 aliases and broadcasting utilities (from shape module)
+    m.add_function(wrap_pyfunction!(shape::broadcast_shapes, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::concat, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::permute_dims, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::matrix_transpose, m)?)?;
     // Logical operations (from ufuncs module)
     m.add_function(wrap_pyfunction!(ufuncs::logical_and, m)?)?;
     m.add_function(wrap_pyfunction!(ufuncs::logical_or, m)?)?;

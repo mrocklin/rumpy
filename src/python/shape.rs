@@ -827,3 +827,82 @@ pub fn nonzero(arr: &PyRumpyArray) -> Vec<PyRumpyArray> {
 pub fn diagonal(x: &PyRumpyArray) -> PyRumpyArray {
     PyRumpyArray::new(x.inner.diagonal())
 }
+
+// ============================================================================
+// NumPy 2.0 aliases and broadcasting utilities
+// ============================================================================
+
+/// Broadcast shapes together to determine resulting shape.
+///
+/// Returns the shape resulting from broadcasting the input shapes together.
+/// Raises ValueError if shapes cannot be broadcast together.
+#[pyfunction]
+#[pyo3(signature = (*shapes))]
+pub fn broadcast_shapes(py: Python<'_>, shapes: &Bound<'_, pyo3::types::PyTuple>) -> PyResult<pyo3::PyObject> {
+    if shapes.is_empty() {
+        return Ok(pyo3::types::PyTuple::empty(py).into());
+    }
+
+    let mut result: Vec<usize> = vec![];
+
+    for shape_obj in shapes.iter() {
+        let shape: Vec<usize> = if let Ok(tuple) = shape_obj.downcast::<pyo3::types::PyTuple>() {
+            tuple.iter().map(|x| x.extract::<usize>()).collect::<PyResult<Vec<_>>>()?
+        } else if let Ok(list) = shape_obj.downcast::<pyo3::types::PyList>() {
+            list.iter().map(|x| x.extract::<usize>()).collect::<PyResult<Vec<_>>>()?
+        } else if let Ok(n) = shape_obj.extract::<usize>() {
+            vec![n]
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "shapes must be tuples of integers"
+            ));
+        };
+
+        if result.is_empty() {
+            result = shape;
+        } else {
+            result = crate::array::broadcast_shapes(&result, &shape)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err(
+                        "shape mismatch: objects cannot be broadcast to a single shape"
+                    )
+                })?;
+        }
+    }
+
+    // Convert to tuple
+    Ok(pyo3::types::PyTuple::new(py, result)?.into())
+}
+
+/// Concatenate arrays along an axis (NumPy 2.0 alias for concatenate).
+#[pyfunction]
+#[pyo3(signature = (arrays, axis=0))]
+pub fn concat(arrays: &Bound<'_, PyList>, axis: usize) -> PyResult<PyRumpyArray> {
+    concatenate(arrays, axis)
+}
+
+/// Permute the dimensions of an array (NumPy 2.0 alias for transpose).
+#[pyfunction]
+pub fn permute_dims(a: &PyRumpyArray, axes: Vec<usize>) -> PyRumpyArray {
+    PyRumpyArray::new(a.inner.transpose_axes(&axes))
+}
+
+/// Transpose the last two axes of an array.
+///
+/// For 2D arrays, this is equivalent to a regular transpose.
+/// For higher dimensional arrays, only the last two axes are swapped.
+#[pyfunction]
+pub fn matrix_transpose(a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    let ndim = a.inner.ndim();
+    if ndim < 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "matrix_transpose requires array with at least 2 dimensions"
+        ));
+    }
+
+    // Build permutation that swaps last two axes
+    let mut axes: Vec<usize> = (0..ndim).collect();
+    axes.swap(ndim - 2, ndim - 1);
+
+    Ok(PyRumpyArray::new(a.inner.transpose_axes(&axes)))
+}
