@@ -116,6 +116,111 @@ pub fn dispatch_binary_nextafter(a: &RumpyArray, b: &RumpyArray, out_shape: &[us
     dispatch_binary_kernel_float(a, b, out_shape, Nextafter)
 }
 
+/// Dispatch float_power: power operation that always outputs f64 (or complex128).
+/// Accepts any numeric input type, converts to f64/complex128 inline.
+pub fn dispatch_float_power(a: &RumpyArray, b: &RumpyArray, out_shape: &[usize]) -> Option<RumpyArray> {
+    let a_kind = a.dtype().kind();
+    let b_kind = b.dtype().kind();
+
+    // Both must have same dtype (after promotion in caller)
+    if a_kind != b_kind {
+        return None;
+    }
+
+    // Complex inputs -> complex128 output
+    if matches!(a_kind, DTypeKind::Complex64 | DTypeKind::Complex128) {
+        return match a_kind {
+            DTypeKind::Complex128 => dispatch_binary_typed::<Complex<f64>, Pow>(a, b, out_shape, Pow, DType::complex128()),
+            DTypeKind::Complex64 => dispatch_float_power_complex64(a, b, out_shape),
+            _ => None,
+        };
+    }
+
+    // Real inputs -> f64 output (use generic helper with appropriate conversion)
+    match a_kind {
+        DTypeKind::Float64 => dispatch_binary_typed::<f64, Pow>(a, b, out_shape, Pow, DType::float64()),
+        DTypeKind::Float32 => dispatch_float_power_to_f64::<f32, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Float16 => dispatch_float_power_to_f64::<f16, _>(a, b, out_shape, |x, y| f64::from(x).powf(f64::from(y))),
+        DTypeKind::Int64 => dispatch_float_power_to_f64::<i64, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Int32 => dispatch_float_power_to_f64::<i32, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Int16 => dispatch_float_power_to_f64::<i16, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Int8 => dispatch_float_power_to_f64::<i8, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Uint64 => dispatch_float_power_to_f64::<u64, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Uint32 => dispatch_float_power_to_f64::<u32, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Uint16 => dispatch_float_power_to_f64::<u16, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        DTypeKind::Uint8 => dispatch_float_power_to_f64::<u8, _>(a, b, out_shape, |x, y| (x as f64).powf(y as f64)),
+        _ => None,
+    }
+}
+
+/// Helper: ensure arrays are contiguous for float_power dispatch.
+fn ensure_contiguous<'a>(arr: &'a RumpyArray, out_shape: &[usize]) -> std::borrow::Cow<'a, RumpyArray> {
+    if arr.is_c_contiguous() && arr.shape() == out_shape {
+        std::borrow::Cow::Borrowed(arr)
+    } else {
+        std::borrow::Cow::Owned(arr.copy())
+    }
+}
+
+/// Generic float_power dispatch: input type T -> f64 output.
+fn dispatch_float_power_to_f64<T, F>(
+    a: &RumpyArray,
+    b: &RumpyArray,
+    out_shape: &[usize],
+    convert: F,
+) -> Option<RumpyArray>
+where
+    T: Copy,
+    F: Fn(T, T) -> f64,
+{
+    let size: usize = out_shape.iter().product();
+    if size == 0 {
+        return Some(RumpyArray::zeros(out_shape.to_vec(), DType::float64()));
+    }
+
+    let a = ensure_contiguous(a, out_shape);
+    let b = ensure_contiguous(b, out_shape);
+
+    let mut result = RumpyArray::zeros(out_shape.to_vec(), DType::float64());
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut f64;
+
+    let a_slice = unsafe { std::slice::from_raw_parts(a.data_ptr() as *const T, size) };
+    let b_slice = unsafe { std::slice::from_raw_parts(b.data_ptr() as *const T, size) };
+    let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+    for i in 0..size {
+        out_slice[i] = convert(a_slice[i], b_slice[i]);
+    }
+    Some(result)
+}
+
+/// Complex64 inputs -> complex128 output power.
+fn dispatch_float_power_complex64(a: &RumpyArray, b: &RumpyArray, out_shape: &[usize]) -> Option<RumpyArray> {
+    let size: usize = out_shape.iter().product();
+    if size == 0 {
+        return Some(RumpyArray::zeros(out_shape.to_vec(), DType::complex128()));
+    }
+
+    let a = ensure_contiguous(a, out_shape);
+    let b = ensure_contiguous(b, out_shape);
+
+    let mut result = RumpyArray::zeros(out_shape.to_vec(), DType::complex128());
+    let buffer = result.buffer_mut();
+    let result_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let result_ptr = result_buffer.as_mut_ptr() as *mut Complex<f64>;
+
+    let a_slice = unsafe { std::slice::from_raw_parts(a.data_ptr() as *const Complex<f32>, size) };
+    let b_slice = unsafe { std::slice::from_raw_parts(b.data_ptr() as *const Complex<f32>, size) };
+    let out_slice = unsafe { std::slice::from_raw_parts_mut(result_ptr, size) };
+    for i in 0..size {
+        let a64 = Complex::new(a_slice[i].re as f64, a_slice[i].im as f64);
+        let b64 = Complex::new(b_slice[i].re as f64, b_slice[i].im as f64);
+        out_slice[i] = a64.powc(b64);
+    }
+    Some(result)
+}
+
 /// Generic dispatch for binary kernels that support floats and complex.
 fn dispatch_binary_kernel_float<K>(
     a: &RumpyArray,

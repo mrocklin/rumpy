@@ -553,17 +553,17 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv tool run maturin develop
 | 32. Miscellaneous | 13 | Medium | Various | ✅ |
 | 33. Functional Programming | 4 | High | None | |
 | 34. Advanced Index Builders | 7 | Medium | None | |
-| 35. Einstein Summation | 2 | Very High | None | |
-| 36. Memory Layout | 8 | Low | None | |
-| 37. Extended Statistics | 5 | Medium | Stream 7 | |
-| 38. Additional Math | 3 | Low | None | |
+| 35. Einstein Summation | 2 | Very High | None | ✅ |
+| 36. Memory Layout | 8 | Low | None | ✅ |
+| 37. Extended Statistics | 5 | Medium | Stream 7 | ✅ |
+| 38. Additional Math | 3 | Low | None | ✅ |
 | 39. String Operations | ~40 | Very High | New dtype | |
 | 40. Datetime Operations | ~10 | Very High | New dtype | |
 | 41. Masked Arrays | ~25 | Extreme | New class | |
 | 42. Extended Math (emath) | 7 | Medium | None | |
 
-**Completed**: ~293 functions across 32 streams
-**Remaining**: ~111 functions across 10 streams
+**Completed**: ~296 functions across 36 streams
+**Remaining**: ~108 functions across 6 streams
 **Total**: ~404 functions across 42 streams
 
 ---
@@ -1072,16 +1072,21 @@ Complete histogram and statistical functions.
 
 ---
 
-## Stream 38: Additional Math
+## Stream 38: Additional Math ✅ COMPLETE
 
 Remaining math functions and constants.
 
 ### Functions
-- [ ] `float_power` - power with float64 result type
-- [ ] `divmod` - quotient and remainder as tuple
+- [x] `float_power` - power with float64 result type
+- [x] `divmod` - quotient and remainder as tuple
 
 ### Constants
-- [ ] `euler_gamma` - Euler-Mascheroni constant (0.5772...)
+- [x] `euler_gamma` - Euler-Mascheroni constant (0.5772...)
+
+**Performance Notes**:
+- `float_power`: 0.7-1.1x of NumPy (competitive, using dtype-generic dispatch)
+- `divmod`: 0.9-1.5x of NumPy (competitive performance)
+- `euler_gamma`: Identical (constant)
 
 **Files**: `src/python/ufuncs.rs`, `src/python/mod.rs`, `tests/test_math_extended.py`
 
@@ -1222,17 +1227,17 @@ Math functions with automatic complex domain extension.
 |--------|-----------|-------|------------|
 | 33. Functional Programming | 4 | apply_along_axis, vectorize | High |
 | 34. Advanced Index Builders | 7 | ix_, ogrid, fill_diagonal | Medium |
-| 35. Einstein Summation | 2 | einsum, einsum_path | Very High |
-| 36. Memory Layout | 8 | ascontiguousarray, copyto | Low |
-| 37. Extended Statistics | 5 | histogram2d, histogramdd | Medium |
-| 38. Additional Math | 3 | float_power, euler_gamma | Low |
-| 39. String Operations | ~40 | numpy.char module | Very High (new dtype) |
+| 35. Einstein Summation | 2 | einsum, einsum_path | Very High | ✅ |
+| 36. Memory Layout | 8 | ascontiguousarray, copyto | Low | ✅ |
+| 37. Extended Statistics | 5 | histogram2d, histogramdd | Medium | ✅ |
+| 38. Additional Math | 3 | float_power, euler_gamma | Low | ✅ |
+| 39. String Operations | ~40 | numpy.char module | Very High (new dtype) | |
 | 40. Datetime Operations | ~10 | datetime64, timedelta64 | Very High (new dtype) |
 | 41. Masked Arrays | ~25 | numpy.ma module | Extreme |
 | 42. Extended Math (emath) | 7 | Complex domain math | Medium |
 
-**Completed**: ~293 functions across 32 streams
-**Remaining**: ~111 functions across 10 streams (29 practical, 82 in large subsystems)
+**Completed**: ~296 functions across 36 streams
+**Remaining**: ~108 functions across 6 streams (26 practical, 82 in large subsystems)
 
 ---
 

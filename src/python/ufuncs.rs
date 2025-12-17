@@ -889,3 +889,83 @@ pub fn true_divide(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyR
 pub fn fabs(x: &Bound<'_, PyAny>) -> PyResult<UnaryResult> {
     abs(x)
 }
+
+// ============================================================================
+// Stream 38: Additional Math
+// ============================================================================
+
+/// Element-wise power, always returning float64 (or complex128 for complex inputs).
+/// Unlike regular power(), float_power() always produces floating point output.
+/// Uses dtype-generic dispatch that converts inline without intermediate allocations.
+#[pyfunction]
+pub fn float_power(x1: &Bound<'_, PyAny>, x2: &Bound<'_, PyAny>) -> PyResult<PyRumpyArray> {
+    use crate::ops::dispatch;
+
+    // Extract arrays (convert scalars/lists to arrays)
+    let arr1 = if let Ok(arr) = x1.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = x1.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, DType::float64())
+    } else if let Ok(list) = x1.extract::<Vec<f64>>() {
+        let mut arr = RumpyArray::zeros(vec![list.len()], DType::float64());
+        let ptr = arr.data_ptr_mut() as *mut f64;
+        for (i, &v) in list.iter().enumerate() {
+            unsafe { *ptr.add(i) = v; }
+        }
+        arr
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray, number, or sequence",
+        ));
+    };
+
+    let arr2 = if let Ok(arr) = x2.extract::<PyRef<'_, PyRumpyArray>>() {
+        arr.inner.clone()
+    } else if let Ok(scalar) = x2.extract::<f64>() {
+        RumpyArray::full(vec![1], scalar, DType::float64())
+    } else if let Ok(list) = x2.extract::<Vec<f64>>() {
+        let mut arr = RumpyArray::zeros(vec![list.len()], DType::float64());
+        let ptr = arr.data_ptr_mut() as *mut f64;
+        for (i, &v) in list.iter().enumerate() {
+            unsafe { *ptr.add(i) = v; }
+        }
+        arr
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "operand must be ndarray, number, or sequence",
+        ));
+    };
+
+    // Broadcast shapes
+    let out_shape = crate::array::broadcast_shapes(arr1.shape(), arr2.shape())
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("operands have incompatible shapes"))?;
+
+    // Promote dtypes to common type for same-type dispatch
+    let promoted_dtype = crate::array::dtype::promote_dtype(&arr1.dtype(), &arr2.dtype());
+    let arr1 = if arr1.dtype() != promoted_dtype { arr1.astype(promoted_dtype.clone()) } else { arr1 };
+    let arr2 = if arr2.dtype() != promoted_dtype { arr2.astype(promoted_dtype) } else { arr2 };
+
+    // Broadcast arrays
+    let arr1 = arr1.broadcast_to(&out_shape)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("broadcast failed"))?;
+    let arr2 = arr2.broadcast_to(&out_shape)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("broadcast failed"))?;
+
+    // Use dtype-generic dispatch that outputs f64/complex128
+    dispatch::dispatch_float_power(&arr1, &arr2, &out_shape)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("float_power not supported for this dtype"))
+}
+
+/// Return quotient and remainder from floor division, element-wise.
+/// Equivalent to (floor_divide(x1, x2), remainder(x1, x2)) but computed together.
+#[pyfunction]
+pub fn divmod_fn(
+    py: Python<'_>,
+    x1: &Bound<'_, PyAny>,
+    x2: &Bound<'_, PyAny>,
+) -> PyResult<Py<pyo3::types::PyTuple>> {
+    let q = floor_divide(x1, x2)?;
+    let r = remainder(x1, x2)?;
+    Ok(pyo3::types::PyTuple::new(py, [q.into_pyobject(py)?, r.into_pyobject(py)?])?.unbind())
+}

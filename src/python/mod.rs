@@ -384,6 +384,10 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ufuncs::fabs, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::amax, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::amin, m)?)?;
+    // Stream 38: Additional Math
+    m.add_function(wrap_pyfunction!(ufuncs::float_power, m)?)?;
+    m.add("divmod", wrap_pyfunction!(ufuncs::divmod_fn, m)?)?;
+    m.add("euler_gamma", 0.5772156649015329_f64)?;
     // NaN-aware extensions (Stream 31)
     m.add_function(wrap_pyfunction!(reductions::nanmedian, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::nanpercentile, m)?)?;
