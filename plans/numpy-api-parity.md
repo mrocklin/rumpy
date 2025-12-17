@@ -1092,31 +1092,37 @@ Remaining math functions and constants.
 
 ---
 
-## Stream 39: String Operations (numpy.char)
+## Stream 39: String Operations (numpy.char) ✅
 
 Vectorized string operations. **Large scope - new dtype required.**
 
 ### Tier 1 - Essential
-- [ ] String dtype support (`str_`, `bytes_`)
-- [ ] `char.add` - concatenate strings
-- [ ] `char.multiply` - repeat strings
-- [ ] `char.upper`, `char.lower` - case conversion
-- [ ] `char.strip`, `char.lstrip`, `char.rstrip` - whitespace removal
+- [x] String dtype support (`str_`, `bytes_`)
+- [x] `char.add` - concatenate strings
+- [x] `char.multiply` - repeat strings
+- [x] `char.upper`, `char.lower` - case conversion
+- [x] `char.strip`, `char.lstrip`, `char.rstrip` - whitespace removal
 
 ### Tier 2 - Search/Replace
-- [ ] `char.find`, `char.rfind` - find substring
-- [ ] `char.replace` - replace substring
-- [ ] `char.split`, `char.rsplit` - split strings
-- [ ] `char.count` - count occurrences
+- [x] `char.find`, `char.rfind` - find substring
+- [x] `char.replace` - replace substring
+- [ ] `char.split`, `char.rsplit` - split strings (returns object arrays, not implemented)
+- [x] `char.count` - count occurrences
 
 ### Tier 3 - Predicates
-- [ ] `char.isalpha`, `char.isdigit`, `char.isalnum`
-- [ ] `char.isupper`, `char.islower`, `char.isspace`
-- [ ] `char.startswith`, `char.endswith`
+- [x] `char.isalpha`, `char.isdigit`, `char.isalnum`
+- [x] `char.isupper`, `char.islower`, `char.isspace`
+- [x] `char.startswith`, `char.endswith`
 
 ### Tier 4 - Formatting
-- [ ] `char.center`, `char.ljust`, `char.rjust`, `char.zfill`
-- [ ] `char.capitalize`, `char.title`, `char.swapcase`
+- [x] `char.center`, `char.ljust`, `char.rjust`, `char.zfill`
+- [x] `char.capitalize`, `char.title`, `char.swapcase`
+
+### Additional Operations
+- [x] `char.str_len` - string length
+- [x] `char.expandtabs` - expand tabs to spaces
+- [x] `char.equal`, `char.not_equal`, `char.less`, `char.less_equal`, `char.greater`, `char.greater_equal` - comparisons
+- [x] `char.isdecimal`, `char.isnumeric`, `char.istitle` - additional predicates
 
 **Complexity**: Very High - requires new dtype, storage layout, and ~40 operations.
 

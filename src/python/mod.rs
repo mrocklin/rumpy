@@ -1,3 +1,4 @@
+pub mod char;
 pub mod creation;
 pub mod dtype;
 pub mod einsum;
@@ -28,6 +29,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     random::register_submodule(m)?;
     fft::register_submodule(m)?;
     linalg::register_submodule(m)?;
+    char::register_char_submodule(m)?;
     // Register dtype functions (finfo, iinfo, promote_types, etc.)
     dtype::register_module(m)?;
     // Register einsum functions

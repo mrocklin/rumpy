@@ -440,11 +440,53 @@ fn infer_dtype_from_list(list: &Bound<'_, PyList>) -> Option<DType> {
     if first.is_instance_of::<pyo3::types::PyFloat>() {
         return Some(DType::float64());
     }
+    // Check for strings - compute max length from all elements
+    if first.is_instance_of::<pyo3::types::PyString>() {
+        let max_len = compute_max_string_length(list).unwrap_or(0);
+        return Some(DType::str_(max_len));
+    }
+    // Check for bytes
+    if first.is_instance_of::<pyo3::types::PyBytes>() {
+        let max_len = compute_max_bytes_length(list).unwrap_or(0);
+        return Some(DType::bytes_(max_len));
+    }
     Some(DType::float64())
+}
+
+/// Compute the maximum string length in a (possibly nested) list.
+fn compute_max_string_length(list: &Bound<'_, PyList>) -> Option<usize> {
+    let mut max_len = 0usize;
+    for item in list.iter() {
+        if let Ok(sublist) = item.downcast::<PyList>() {
+            if let Some(sub_max) = compute_max_string_length(sublist) {
+                max_len = max_len.max(sub_max);
+            }
+        } else if let Ok(s) = item.extract::<String>() {
+            max_len = max_len.max(s.chars().count());
+        }
+    }
+    Some(max_len)
+}
+
+/// Compute the maximum bytes length in a (possibly nested) list.
+fn compute_max_bytes_length(list: &Bound<'_, PyList>) -> Option<usize> {
+    let mut max_len = 0usize;
+    for item in list.iter() {
+        if let Ok(sublist) = item.downcast::<PyList>() {
+            if let Some(sub_max) = compute_max_bytes_length(sublist) {
+                max_len = max_len.max(sub_max);
+            }
+        } else if let Ok(b) = item.extract::<Vec<u8>>() {
+            max_len = max_len.max(b.len());
+        }
+    }
+    Some(max_len)
 }
 
 /// Create array from Python list.
 pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+    use crate::array::dtype::DTypeKind;
+
     let dtype = match dtype {
         Some(dt) => parse_dtype(dt)?,
         None => infer_dtype_from_list(list).unwrap_or(DType::float64()),
@@ -456,6 +498,33 @@ pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRu
     }
 
     let first = list.get_item(0)?;
+
+    // Handle string dtype
+    if let DTypeKind::Str(_) = dtype.kind() {
+        if first.downcast::<PyList>().is_ok() {
+            let (shape, data) = flatten_nested_list_str(list)?;
+            return Ok(PyRumpyArray::new(RumpyArray::from_vec_str_with_shape(data, shape, dtype)));
+        }
+        let data: Vec<String> = list
+            .iter()
+            .map(|item| item.extract::<String>())
+            .collect::<PyResult<Vec<String>>>()?;
+        return Ok(PyRumpyArray::new(RumpyArray::from_vec_str(data, dtype)));
+    }
+
+    // Handle bytes dtype
+    if let DTypeKind::Bytes(_) = dtype.kind() {
+        if first.downcast::<PyList>().is_ok() {
+            let (shape, data) = flatten_nested_list_bytes(list)?;
+            return Ok(PyRumpyArray::new(RumpyArray::from_vec_bytes_with_shape(data, shape, dtype)));
+        }
+        let data: Vec<Vec<u8>> = list
+            .iter()
+            .map(|item| item.extract::<Vec<u8>>())
+            .collect::<PyResult<Vec<Vec<u8>>>>()?;
+        return Ok(PyRumpyArray::new(RumpyArray::from_vec_bytes(data, dtype)));
+    }
+
     if first.downcast::<PyList>().is_ok() {
         // Nested list - recursively get shape and flatten
         // Try integer path for integer dtypes, fall back to f64
@@ -527,6 +596,46 @@ fn flatten_nested_list_i64(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Ve
     Ok((shape, data))
 }
 
+/// Flatten nested Python list, returning shape and data as String.
+fn flatten_nested_list_str(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<String>)> {
+    let mut shape = vec![list.len()];
+    let mut data = Vec::new();
+
+    for item in list.iter() {
+        if let Ok(sublist) = item.downcast::<PyList>() {
+            let (sub_shape, sub_data) = flatten_nested_list_str(sublist)?;
+            if shape.len() == 1 {
+                shape.extend(sub_shape);
+            }
+            data.extend(sub_data);
+        } else {
+            data.push(item.extract::<String>()?);
+        }
+    }
+
+    Ok((shape, data))
+}
+
+/// Flatten nested Python list, returning shape and data as Vec<u8> (bytes).
+fn flatten_nested_list_bytes(list: &Bound<'_, PyList>) -> PyResult<(Vec<usize>, Vec<Vec<u8>>)> {
+    let mut shape = vec![list.len()];
+    let mut data = Vec::new();
+
+    for item in list.iter() {
+        if let Ok(sublist) = item.downcast::<PyList>() {
+            let (sub_shape, sub_data) = flatten_nested_list_bytes(sublist)?;
+            if shape.len() == 1 {
+                shape.extend(sub_shape);
+            }
+            data.extend(sub_data);
+        } else {
+            data.push(item.extract::<Vec<u8>>()?);
+        }
+    }
+
+    Ok((shape, data))
+}
+
 /// Parse dtype from numpy typestr.
 fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
     // Handle datetime64: "<M8[ns]", "<M8[us]", etc.
@@ -541,6 +650,24 @@ fn dtype_from_typestr(typestr: &str) -> PyResult<DType> {
                 typestr
             ))),
         };
+    }
+
+    // Handle Unicode strings: "<U5", ">U10", etc.
+    // Format: byte_order + 'U' + max_chars
+    let stripped = typestr.trim_start_matches('<').trim_start_matches('>');
+    if let Some(rest) = stripped.strip_prefix('U') {
+        if let Ok(max_chars) = rest.parse::<usize>() {
+            return Ok(DType::str_(max_chars));
+        }
+    }
+
+    // Handle byte strings: "|S5", "|S10", etc.
+    // Format: '|' + 'S' + max_bytes
+    let stripped2 = typestr.trim_start_matches('|');
+    if let Some(rest) = stripped2.strip_prefix('S') {
+        if let Ok(max_bytes) = rest.parse::<usize>() {
+            return Ok(DType::bytes_(max_bytes));
+        }
     }
 
     // Format: "<f8" (little-endian float64), ">i4" (big-endian int32), etc.

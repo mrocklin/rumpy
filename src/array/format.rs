@@ -118,6 +118,15 @@ impl RumpyArray {
         edgeitems: usize,
     ) {
         let depth = prefix.len();
+
+        // Handle 0D arrays (scalars)
+        if depth == self.ndim() {
+            let ptr = self.data_ptr();
+            let offset = self.byte_offset_for(prefix);
+            result.push(unsafe { self.dtype.ops().format_element(ptr, offset) });
+            return;
+        }
+
         let (indices, _) = self.display_indices(self.shape[depth], truncate, edgeitems);
         let ptr = self.data_ptr();
 

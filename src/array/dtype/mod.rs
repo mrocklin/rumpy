@@ -15,6 +15,7 @@ mod bool;
 mod complex64;
 mod complex128;
 mod datetime64;
+mod string;
 
 use self::bool::BoolOps;
 use complex64::Complex64Ops;
@@ -24,6 +25,7 @@ pub use datetime64::TimeUnit;
 use float16::Float16Ops;
 use floats::{Float32Ops, Float64Ops};
 use integers::{Int8Ops, Int16Ops, Int32Ops, Int64Ops, Uint8Ops, Uint16Ops, Uint32Ops, Uint64Ops};
+pub use string::{StrOps, BytesOps};
 
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
@@ -48,6 +50,10 @@ pub enum DTypeKind {
     DateTime64(TimeUnit),
     Complex64,
     Complex128,
+    /// Unicode string with max_chars characters (UTF-32, 4 bytes per char)
+    Str(usize),
+    /// Byte string with max_bytes bytes
+    Bytes(usize),
 }
 
 /// Unary operations.
@@ -375,6 +381,10 @@ impl DType {
     pub fn datetime64_s() -> Self { Self::datetime64(TimeUnit::Seconds) }
     pub fn complex64() -> Self { DType(Arc::new(Complex64Ops)) }
     pub fn complex128() -> Self { DType(Arc::new(Complex128Ops)) }
+    /// Unicode string dtype with max_chars characters per element.
+    pub fn str_(max_chars: usize) -> Self { DType(Arc::new(StrOps::new(max_chars))) }
+    /// Byte string dtype with max_bytes bytes per element.
+    pub fn bytes_(max_bytes: usize) -> Self { DType(Arc::new(BytesOps::new(max_bytes))) }
 
     // === Delegated methods ===
 
@@ -416,7 +426,23 @@ impl FromStr for DType {
             "datetime64[s]" | "<M8[s]" => Ok(Self::datetime64_s()),
             "complex64" | "c8" | "<c8" => Ok(Self::complex64()),
             "complex128" | "c16" | "<c16" => Ok(Self::complex128()),
-            _ => Err(()),
+            "str" | "str_" => Ok(Self::str_(0)), // default to 0 (determined from data)
+            "bytes" | "bytes_" => Ok(Self::bytes_(0)),
+            _ => {
+                // Try to parse string types: U5, <U5, S10, |S10
+                let s_stripped = s.trim_start_matches('<').trim_start_matches('|');
+                if let Some(rest) = s_stripped.strip_prefix('U') {
+                    if let Ok(n) = rest.parse::<usize>() {
+                        return Ok(Self::str_(n));
+                    }
+                }
+                if let Some(rest) = s_stripped.strip_prefix('S') {
+                    if let Ok(n) = rest.parse::<usize>() {
+                        return Ok(Self::bytes_(n));
+                    }
+                }
+                Err(())
+            }
         }
     }
 }

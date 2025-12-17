@@ -4,6 +4,7 @@
 
 pub mod array_methods;
 pub mod bitwise;
+pub mod char;
 pub mod comparison;
 pub mod dispatch;
 pub mod dot;

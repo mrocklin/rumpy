@@ -209,4 +209,83 @@ impl RumpyArray {
         }
         arr
     }
+
+    /// Create array from Vec of strings (1D).
+    /// The dtype must be a Str type with appropriate max_chars.
+    pub fn from_vec_str(data: Vec<String>, dtype: DType) -> Self {
+        use crate::array::dtype::DTypeKind;
+        let n = data.len();
+        let mut arr = Self::zeros(vec![n], dtype.clone());
+        if n == 0 {
+            return arr;
+        }
+
+        // Get max_chars from dtype
+        let max_chars = match dtype.kind() {
+            DTypeKind::Str(mc) => mc,
+            _ => return arr, // Invalid dtype for strings
+        };
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        // Write each string using UTF-32 encoding
+        for (i, s) in data.iter().enumerate() {
+            let start = unsafe { (ptr as *mut u32).add(i * max_chars) };
+            let mut written = 0;
+            for c in s.chars().take(max_chars) {
+                unsafe { *start.add(written) = c as u32; }
+                written += 1;
+            }
+            // Pad with nulls
+            for j in written..max_chars {
+                unsafe { *start.add(j) = 0; }
+            }
+        }
+        arr
+    }
+
+    /// Create array from Vec of strings with given shape.
+    pub fn from_vec_str_with_shape(data: Vec<String>, shape: Vec<usize>, dtype: DType) -> Self {
+        let arr = Self::from_vec_str(data, dtype);
+        arr.reshape(shape).unwrap_or(arr)
+    }
+
+    /// Create array from Vec of bytes (1D).
+    /// The dtype must be a Bytes type with appropriate max_bytes.
+    pub fn from_vec_bytes(data: Vec<Vec<u8>>, dtype: DType) -> Self {
+        use crate::array::dtype::DTypeKind;
+        let n = data.len();
+        let mut arr = Self::zeros(vec![n], dtype.clone());
+        if n == 0 {
+            return arr;
+        }
+
+        // Get max_bytes from dtype
+        let max_bytes = match dtype.kind() {
+            DTypeKind::Bytes(mb) => mb,
+            _ => return arr, // Invalid dtype for bytes
+        };
+
+        let buffer = Arc::get_mut(&mut arr.buffer).expect("buffer must be unique");
+        let ptr = buffer.as_mut_ptr();
+
+        // Write each byte array
+        for (i, b) in data.iter().enumerate() {
+            let start = unsafe { ptr.add(i * max_bytes) };
+            let len = b.len().min(max_bytes);
+            unsafe { std::ptr::copy_nonoverlapping(b.as_ptr(), start, len); }
+            // Pad with nulls
+            for j in len..max_bytes {
+                unsafe { *start.add(j) = 0; }
+            }
+        }
+        arr
+    }
+
+    /// Create array from Vec of bytes with given shape.
+    pub fn from_vec_bytes_with_shape(data: Vec<Vec<u8>>, shape: Vec<usize>, dtype: DType) -> Self {
+        let arr = Self::from_vec_bytes(data, dtype);
+        arr.reshape(shape).unwrap_or(arr)
+    }
 }
