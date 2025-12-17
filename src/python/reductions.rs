@@ -478,6 +478,24 @@ pub fn cumprod(x: &PyRumpyArray, axis: Option<isize>) -> PyResult<PyRumpyArray> 
     Ok(PyRumpyArray::new(x.inner.cumprod(normalized_axis)))
 }
 
+/// NumPy 2.0 cumulative_sum: cumulative sum along axis with optional initial element.
+#[pyfunction]
+#[pyo3(signature = (x, *, axis, include_initial=false))]
+pub fn cumulative_sum(x: &PyRumpyArray, axis: isize, include_initial: bool) -> PyResult<PyRumpyArray> {
+    let ax = resolve_axis(axis, x.inner.ndim());
+    check_axis(ax, x.inner.ndim())?;
+    Ok(PyRumpyArray::new(x.inner.cumulative_sum(ax, include_initial)))
+}
+
+/// NumPy 2.0 cumulative_prod: cumulative product along axis with optional initial element.
+#[pyfunction]
+#[pyo3(signature = (x, *, axis, include_initial=false))]
+pub fn cumulative_prod(x: &PyRumpyArray, axis: isize, include_initial: bool) -> PyResult<PyRumpyArray> {
+    let ax = resolve_axis(axis, x.inner.ndim());
+    check_axis(ax, x.inner.ndim())?;
+    Ok(PyRumpyArray::new(x.inner.cumulative_prod(ax, include_initial)))
+}
+
 // ============================================================================
 // Statistics
 // ============================================================================
@@ -550,6 +568,139 @@ pub fn histogram(
 ) -> PyResult<(PyRumpyArray, PyRumpyArray)> {
     let (counts, edges) = crate::ops::histogram(&x.inner, bins, range);
     Ok((PyRumpyArray::new(counts), PyRumpyArray::new(edges)))
+}
+
+/// Compute bin edges for histogram.
+#[pyfunction]
+#[pyo3(signature = (a, bins=None, range=None))]
+pub fn histogram_bin_edges(
+    a: &PyRumpyArray,
+    bins: Option<&pyo3::Bound<'_, pyo3::PyAny>>,
+    range: Option<(f64, f64)>,
+) -> PyResult<PyRumpyArray> {
+    let Some(bins) = bins else {
+        return Ok(PyRumpyArray::new(crate::ops::histogram_bin_edges(&a.inner, 10, range)));
+    };
+
+    // If bins is an array/list, return it directly as edges
+    if let Ok(edges_vec) = bins.extract::<Vec<f64>>() {
+        return Ok(PyRumpyArray::new(crate::array::RumpyArray::from_vec(
+            edges_vec,
+            crate::array::DType::float64(),
+        )));
+    }
+
+    // Otherwise interpret as number of bins
+    let nbins: usize = bins.extract().map_err(|_| {
+        pyo3::exceptions::PyTypeError::new_err("bins must be an integer or array-like")
+    })?;
+
+    Ok(PyRumpyArray::new(crate::ops::histogram_bin_edges(&a.inner, nbins, range)))
+}
+
+/// Compute 2D histogram.
+#[pyfunction]
+#[pyo3(signature = (x, y, bins=None, range=None, density=None))]
+pub fn histogram2d(
+    x: &PyRumpyArray,
+    y: &PyRumpyArray,
+    bins: Option<&pyo3::Bound<'_, pyo3::PyAny>>,
+    range: Option<Vec<Vec<f64>>>,
+    density: Option<bool>,
+) -> PyResult<(PyRumpyArray, PyRumpyArray, PyRumpyArray)> {
+    // Parse bins - can be single integer or [bins_x, bins_y]
+    let (bins_x, bins_y): (usize, usize) = match bins {
+        None => (10, 10),
+        Some(bins) => {
+            if let Ok(n) = bins.extract::<usize>() {
+                (n, n)
+            } else if let Ok(list) = bins.extract::<Vec<usize>>() {
+                if list.len() != 2 {
+                    return Err(pyo3::exceptions::PyValueError::new_err(
+                        "bins must be an integer or a list of 2 integers"
+                    ));
+                }
+                (list[0], list[1])
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "bins must be an integer or list of integers"
+                ));
+            }
+        }
+    };
+
+    // Parse range
+    let range_opt: Option<[[f64; 2]; 2]> = range.map(|r| {
+        if r.len() != 2 || r[0].len() != 2 || r[1].len() != 2 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "range must be [[xmin, xmax], [ymin, ymax]]"
+            ));
+        }
+        Ok([[r[0][0], r[0][1]], [r[1][0], r[1][1]]])
+    }).transpose()?;
+
+    let density_bool = density.unwrap_or(false);
+
+    match crate::ops::histogram2d(&x.inner, &y.inner, bins_x, bins_y, range_opt, density_bool) {
+        Ok((h, xe, ye)) => Ok((PyRumpyArray::new(h), PyRumpyArray::new(xe), PyRumpyArray::new(ye))),
+        Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
+    }
+}
+
+/// Compute N-dimensional histogram.
+#[pyfunction]
+#[pyo3(signature = (sample, bins=None, range=None, density=None))]
+pub fn histogramdd(
+    sample: &PyRumpyArray,
+    bins: Option<&pyo3::Bound<'_, pyo3::PyAny>>,
+    range: Option<Vec<Vec<f64>>>,
+    density: Option<bool>,
+) -> PyResult<(PyRumpyArray, Vec<PyRumpyArray>)> {
+    // Parse bins - can be single integer or list of integers per dimension
+    let bins_vec: Vec<usize> = match bins {
+        None => vec![10],
+        Some(bins) => {
+            if let Ok(n) = bins.extract::<usize>() {
+                vec![n]
+            } else if let Ok(list) = bins.extract::<Vec<usize>>() {
+                list
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "bins must be an integer or list of integers"
+                ));
+            }
+        }
+    };
+
+    // Parse range into fixed-size arrays
+    let range_vec: Option<Vec<[f64; 2]>> = range.map(|r| {
+        r.into_iter()
+            .map(|v| {
+                if v.len() != 2 {
+                    Err(pyo3::exceptions::PyValueError::new_err(
+                        "each range must be [min, max]"
+                    ))
+                } else {
+                    Ok([v[0], v[1]])
+                }
+            })
+            .collect::<PyResult<Vec<_>>>()
+    }).transpose()?;
+
+    let density_bool = density.unwrap_or(false);
+
+    match crate::ops::histogramdd(
+        &sample.inner,
+        &bins_vec,
+        range_vec.as_deref(),
+        density_bool,
+    ) {
+        Ok((h, edges)) => {
+            let py_edges: Vec<PyRumpyArray> = edges.into_iter().map(PyRumpyArray::new).collect();
+            Ok((PyRumpyArray::new(h), py_edges))
+        }
+        Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
+    }
 }
 
 /// Compute covariance matrix.

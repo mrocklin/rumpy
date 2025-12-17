@@ -271,6 +271,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(reductions::average, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::ptp, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::histogram, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::histogram_bin_edges, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::histogram2d, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::histogramdd, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::cumulative_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(reductions::cumulative_prod, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::cov_fn, m)?)?;
     m.add_function(wrap_pyfunction!(reductions::corrcoef, m)?)?;
     // Signal processing and numerical operations (from numerical module)

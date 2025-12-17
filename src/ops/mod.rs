@@ -41,7 +41,7 @@ pub use bitwise::{
     bitwise_and, bitwise_or, bitwise_xor, bitwise_not,
     left_shift, right_shift,
 };
-pub use statistics::{histogram, cov, corrcoef};
+pub use statistics::{histogram, histogram_bin_edges, histogram2d, histogramdd, cov, corrcoef};
 pub use set_ops::{isin, in1d, intersect1d, union1d, setdiff1d, setxor1d};
 pub use poly::{polyfit, polyval, polyder, polyint, roots};
 pub use numerical::{gradient, gradient_with_coords, trapezoid, interp, correlate};

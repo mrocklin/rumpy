@@ -223,6 +223,193 @@ impl RumpyArray {
         self.cumulative_op(axis, 1.0, |acc, x| acc * x)
     }
 
+    /// NumPy 2.0 cumulative_sum: cumulative sum along axis with optional initial element.
+    /// If include_initial is true, output has shape increased by 1 along axis.
+    pub fn cumulative_sum(&self, axis: usize, include_initial: bool) -> RumpyArray {
+        let base = self.cumsum(Some(axis));
+        if !include_initial {
+            return base;
+        }
+        // Insert zeros at the beginning of the axis
+        self.prepend_identity_along_axis(&base, axis, 0.0)
+    }
+
+    /// NumPy 2.0 cumulative_prod: cumulative product along axis with optional initial element.
+    /// If include_initial is true, output has shape increased by 1 along axis.
+    pub fn cumulative_prod(&self, axis: usize, include_initial: bool) -> RumpyArray {
+        let base = self.cumprod(Some(axis));
+        if !include_initial {
+            return base;
+        }
+        // Insert ones at the beginning of the axis
+        self.prepend_identity_along_axis(&base, axis, 1.0)
+    }
+
+    /// Helper to prepend identity values along an axis.
+    /// Uses typed dispatch for performance.
+    fn prepend_identity_along_axis(&self, cumulative: &RumpyArray, axis: usize, identity: f64) -> RumpyArray {
+        // Try typed dispatch for common dtypes using dtype kind
+        use crate::array::dtype::DTypeKind;
+        match cumulative.dtype().kind() {
+            DTypeKind::Float64 => self.prepend_identity_typed::<f64>(cumulative, axis, identity as f64),
+            DTypeKind::Float32 => self.prepend_identity_typed::<f32>(cumulative, axis, identity as f32),
+            DTypeKind::Int64 => self.prepend_identity_typed::<i64>(cumulative, axis, identity as i64),
+            DTypeKind::Int32 => self.prepend_identity_typed::<i32>(cumulative, axis, identity as i32),
+            DTypeKind::Uint64 => self.prepend_identity_typed::<u64>(cumulative, axis, identity as u64),
+            DTypeKind::Uint32 => self.prepend_identity_typed::<u32>(cumulative, axis, identity as u32),
+            _ => self.prepend_identity_fallback(cumulative, axis, identity),
+        }
+    }
+
+    /// Typed prepend implementation for maximum performance.
+    fn prepend_identity_typed<T: Copy + Default>(&self, cumulative: &RumpyArray, axis: usize, identity: T) -> RumpyArray
+    where
+        T: 'static,
+    {
+        let shape = cumulative.shape();
+        let ndim = shape.len();
+        let axis_len = shape[axis];
+
+        // New shape: increase axis dimension by 1
+        let mut new_shape = shape.to_vec();
+        new_shape[axis] += 1;
+
+        let dtype = cumulative.dtype().clone();
+        let mut result = RumpyArray::zeros(new_shape.clone(), dtype);
+
+        // Fast path: contiguous along last axis - use bulk copy
+        if axis == ndim - 1 && cumulative.is_c_contiguous() {
+            let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+            let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+            let cumul_ptr = cumulative.data_ptr() as *const T;
+
+            let outer_size: usize = if ndim > 1 { shape[..ndim - 1].iter().product() } else { 1 };
+
+            for i in 0..outer_size {
+                let result_base = i * (axis_len + 1);
+                let cumul_base = i * axis_len;
+                unsafe {
+                    *result_ptr.add(result_base) = identity;
+                    std::ptr::copy_nonoverlapping(
+                        cumul_ptr.add(cumul_base),
+                        result_ptr.add(result_base + 1),
+                        axis_len
+                    );
+                }
+            }
+            return result;
+        }
+
+        // General case: compute strides and iterate
+        let mut result_strides = vec![1usize; ndim];
+        let mut cumul_strides = vec![1usize; ndim];
+        for i in (0..ndim - 1).rev() {
+            result_strides[i] = result_strides[i + 1] * new_shape[i + 1];
+            cumul_strides[i] = cumul_strides[i + 1] * shape[i + 1];
+        }
+
+        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr() as *mut T;
+        let cumul_ptr = cumulative.data_ptr() as *const T;
+
+        let outer_shape: Vec<usize> = shape.iter().enumerate()
+            .filter(|&(i, _)| i != axis)
+            .map(|(_, &s)| s)
+            .collect();
+
+        let outer_size: usize = outer_shape.iter().product::<usize>().max(1);
+        let mut outer_indices = vec![0usize; outer_shape.len()];
+
+        for _ in 0..outer_size {
+            let mut result_base = 0usize;
+            let mut cumul_base = 0usize;
+            let mut oi = 0;
+            for i in 0..ndim {
+                if i != axis {
+                    result_base += outer_indices[oi] * result_strides[i];
+                    cumul_base += outer_indices[oi] * cumul_strides[i];
+                    oi += 1;
+                }
+            }
+
+            unsafe { *result_ptr.add(result_base) = identity; }
+
+            for j in 0..axis_len {
+                let cumul_idx = cumul_base + j * cumul_strides[axis];
+                let result_idx = result_base + (j + 1) * result_strides[axis];
+                unsafe { *result_ptr.add(result_idx) = *cumul_ptr.add(cumul_idx); }
+            }
+
+            increment_indices(&mut outer_indices, &outer_shape);
+        }
+
+        result
+    }
+
+    /// Fallback implementation for unsupported dtypes.
+    fn prepend_identity_fallback(&self, cumulative: &RumpyArray, axis: usize, identity: f64) -> RumpyArray {
+        let shape = cumulative.shape();
+        let ndim = shape.len();
+        let mut new_shape = shape.to_vec();
+        new_shape[axis] += 1;
+
+        let dtype = cumulative.dtype().clone();
+        let mut result = RumpyArray::zeros(new_shape.clone(), dtype.clone());
+
+        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
+        let result_ptr = result_buffer.as_mut_ptr();
+        let ops = dtype.ops();
+
+        let axis_len = shape[axis];
+
+        let mut strides = vec![1usize; ndim];
+        for i in (0..ndim - 1).rev() {
+            strides[i] = strides[i + 1] * new_shape[i + 1];
+        }
+        let axis_stride = strides[axis];
+
+        let outer_shape: Vec<usize> = shape.iter().enumerate()
+            .filter(|&(i, _)| i != axis)
+            .map(|(_, &s)| s)
+            .collect();
+
+        let outer_size: usize = outer_shape.iter().product::<usize>().max(1);
+        let mut outer_indices = vec![0usize; outer_shape.len()];
+
+        for _ in 0..outer_size {
+            let mut result_indices: Vec<usize> = Vec::with_capacity(ndim);
+            let mut oi = 0;
+            for i in 0..ndim {
+                if i == axis {
+                    result_indices.push(0);
+                } else {
+                    result_indices.push(outer_indices[oi]);
+                    oi += 1;
+                }
+            }
+
+            let mut base_flat = 0;
+            for i in 0..ndim {
+                base_flat += result_indices[i] * strides[i];
+            }
+
+            unsafe { ops.write_f64(result_ptr, base_flat, identity); }
+
+            for j in 0..axis_len {
+                let src_indices: Vec<usize> = result_indices.iter().enumerate()
+                    .map(|(i, &idx)| if i == axis { j } else { idx })
+                    .collect();
+                let src_val = cumulative.get_element(&src_indices);
+                let dst_flat = base_flat + (j + 1) * axis_stride;
+                unsafe { ops.write_f64(result_ptr, dst_flat, src_val); }
+            }
+
+            increment_indices(&mut outer_indices, &outer_shape);
+        }
+
+        result
+    }
+
     /// Calculate flat index for given n-dimensional indices (C-order).
     pub(crate) fn flat_index_for(&self, indices: &[usize]) -> usize {
         let shape = self.shape();
