@@ -1,5 +1,6 @@
 pub mod creation;
 pub mod dtype;
+pub mod einsum;
 pub mod fft;
 pub mod functional;
 pub mod indexing;
@@ -29,6 +30,8 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     linalg::register_submodule(m)?;
     // Register dtype functions (finfo, iinfo, promote_types, etc.)
     dtype::register_module(m)?;
+    // Register einsum functions
+    einsum::register_module(m)?;
     // Constructors (from creation module)
     m.add_function(wrap_pyfunction!(creation::zeros, m)?)?;
     m.add_function(wrap_pyfunction!(creation::ones, m)?)?;

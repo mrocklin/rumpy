@@ -7,6 +7,7 @@ pub mod bitwise;
 pub mod comparison;
 pub mod dispatch;
 pub mod dot;
+pub mod einsum;
 pub mod fft;
 pub mod gufunc;
 pub mod indexing;
@@ -157,46 +158,24 @@ impl RumpyArray {
 
     // Math ufuncs are in array_methods/unary.rs
 
-    /// Extract diagonal from a 2D array.
+    /// Extract diagonal from a 2D array. Returns a view.
     pub fn diagonal(&self) -> RumpyArray {
         assert!(self.ndim() >= 2, "diagonal requires at least 2D array");
         let shape = self.shape();
         let n = shape[0].min(shape[1]);
-        let dtype = self.dtype().clone();
+        let strides = self.strides();
 
-        let mut result = RumpyArray::zeros(vec![n], dtype.clone());
-        if n == 0 {
-            return result;
-        }
+        // Diagonal stride = row_stride + col_stride (step diagonally)
+        let diag_stride = strides[0] + strides[1];
 
-        let result_buffer = Arc::get_mut(result.buffer_mut()).expect("unique");
-        let result_ptr = result_buffer.as_mut_ptr();
-        let ops = dtype.ops();
-
-        for i in 0..n {
-            let mut indices = vec![0usize; self.ndim()];
-            indices[0] = i;
-            indices[1] = i;
-            let byte_offset = self.byte_offset_for(&indices);
-            unsafe { ops.copy_element(self.data_ptr(), byte_offset, result_ptr, i); }
-        }
-        result
+        // Return a 1D view with the diagonal stride
+        self.view_with(0, vec![n], vec![diag_stride])
     }
 
     /// Return sum of diagonal elements (trace).
     pub fn trace(&self) -> f64 {
-        assert!(self.ndim() >= 2, "trace requires at least 2D array");
-        let shape = self.shape();
-        let n = shape[0].min(shape[1]);
-
-        let mut sum = 0.0;
-        for i in 0..n {
-            let mut indices = vec![0usize; self.ndim()];
-            indices[0] = i;
-            indices[1] = i;
-            sum += self.get_element(&indices);
-        }
-        sum
+        // Use diagonal view for efficient traversal
+        self.diagonal().sum()
     }
 
     /// Swap two axes of the array.

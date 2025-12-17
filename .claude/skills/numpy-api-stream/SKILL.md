@@ -55,7 +55,10 @@ If float32 is significantly slower than float64 (relative to numpy), suspect dty
 
 ## Phase 6: Cleanup again
 
-Run the `/cleanup` operation again.
+Review again for simplicity and cleanliness.  Also check that our functions
+handle the depth that numpy does, including keyword arguments and other dtypes
+that numpy might support.
+
 
 ## Phase 7: Final review and commit
 

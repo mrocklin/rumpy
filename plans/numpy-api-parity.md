@@ -1013,18 +1013,23 @@ Index array construction utilities.
 
 ---
 
-## Stream 35: Einstein Summation
+## Stream 35: Einstein Summation ✅ COMPLETE
 
 Tensor contraction using Einstein notation - very popular for ML/physics.
 
-- [ ] `einsum` - Einstein summation (subscript notation)
-- [ ] `einsum_path` - optimal contraction order
+- [x] `einsum` - Einstein summation (subscript notation)
+- [x] `einsum_path` - optimal contraction order
 
 **Complexity**: Very High - requires parsing subscript strings and generating optimal contraction plans.
 
-**Reference**: Consider using `opt_einsum` crate or implementing from scratch.
+**Implementation Notes**:
+- Full subscript notation support (explicit `ij,jk->ik` and implicit modes)
+- Handles single, binary, and multi-operand contractions
+- Supports repeated indices (trace, diagonal)
+- Always outputs float64 (not dtype-preserving yet)
+- Performance not optimized - use `matmul` for matrix operations
 
-**Files**: `src/ops/einsum.rs`, `src/python/linalg.rs`, `tests/test_einsum.py`
+**Files**: `src/ops/einsum.rs`, `src/python/einsum.rs`, `tests/test_einsum.py`
 
 ---
 
