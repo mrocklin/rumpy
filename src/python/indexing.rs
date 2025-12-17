@@ -728,3 +728,483 @@ pub fn unpackbits(
 
     PyRumpyArray::new(crate::ops::indexing::unpackbits(&a.inner, resolved_axis, count, bitorder))
 }
+
+// ============================================================================
+// Index builders (Stream 34)
+// ============================================================================
+
+/// Construct an open mesh from multiple sequences.
+///
+/// Returns arrays that can be used to select from an array using
+/// advanced indexing. The arrays returned are broadcastable to the
+/// shape `(len(x1), len(x2), ...)`.
+#[pyfunction]
+#[pyo3(signature = (*args))]
+pub fn ix_(_py: Python<'_>, args: &Bound<'_, pyo3::types::PyTuple>) -> PyResult<Vec<PyRumpyArray>> {
+    let n = args.len();
+    if n == 0 {
+        return Ok(vec![]);
+    }
+
+    let mut result = Vec::with_capacity(n);
+
+    for (i, arg) in args.iter().enumerate() {
+        let arr: pyo3::PyRef<'_, PyRumpyArray> = arg.extract()?;
+
+        // Each array should be 1D
+        if arr.inner.ndim() != 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "input arrays must be 1-dimensional",
+            ));
+        }
+
+        // Build the shape: (1, 1, ..., len, ..., 1)
+        let mut new_shape = vec![1usize; n];
+        new_shape[i] = arr.inner.size();
+
+        // Reshape the array
+        let reshaped = arr.inner.reshape(new_shape).expect("reshape failed");
+        result.push(PyRumpyArray::new(reshaped));
+    }
+
+    Ok(result)
+}
+
+/// Fill the main diagonal of the given array in-place.
+#[pyfunction]
+#[pyo3(signature = (a, val, wrap=false))]
+pub fn fill_diagonal(
+    a: &mut PyRumpyArray,
+    val: &Bound<'_, pyo3::PyAny>,
+    wrap: bool,
+) -> PyResult<()> {
+    let shape = a.inner.shape().to_vec();
+    let ndim = a.inner.ndim();
+
+    if ndim < 2 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "array must be at least 2-d",
+        ));
+    }
+
+    // Convert val to a RumpyArray to handle all dtypes uniformly
+    let val_arr: RumpyArray = if let Ok(arr) = val.extract::<pyo3::PyRef<'_, PyRumpyArray>>() {
+        // Cast to target dtype if needed
+        if arr.inner.dtype().ops().name() != a.inner.dtype().ops().name() {
+            arr.inner.astype(a.inner.dtype())
+        } else {
+            arr.inner.clone()
+        }
+    } else if let Ok(scalar) = val.extract::<f64>() {
+        RumpyArray::from_vec(vec![scalar], a.inner.dtype().clone())
+    } else if let Ok(list) = val.extract::<Vec<f64>>() {
+        RumpyArray::from_vec(list, a.inner.dtype().clone())
+    } else {
+        // Try extracting as complex (Python complex type)
+        if let Ok(real_attr) = val.getattr("real") {
+            if let (Ok(real), Ok(imag)) = (real_attr.extract::<f64>(), val.getattr("imag").and_then(|i| i.extract::<f64>())) {
+                // Create a complex array using full() which handles complex dtypes
+                let target_dtype = a.inner.dtype();
+                if target_dtype.ops().name().contains("complex") {
+                    // Use full_complex which handles complex dtypes properly
+                    RumpyArray::full_complex(vec![1], real, imag, target_dtype.clone())
+                } else {
+                    // For non-complex target, just use the real part
+                    RumpyArray::from_vec(vec![real], target_dtype.clone())
+                }
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "val must be scalar, list, or array",
+                ));
+            }
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "val must be scalar, list, or array",
+            ));
+        }
+    };
+
+    let val_size = val_arr.size();
+    let val_ptr = val_arr.data_ptr();
+    let val_itemsize = val_arr.dtype().itemsize();
+
+    // Compute diagonal length
+    let min_dim = shape.iter().copied().min().unwrap_or(0);
+
+    // Get mutable access to buffer
+    let ptr = a.inner.data_ptr_mut();
+    let dtype = a.inner.dtype();
+    let strides = a.inner.strides();
+    let itemsize = dtype.itemsize();
+
+    if ndim == 2 {
+        // 2D case: fill diagonal with optional wrapping
+        let nrows = shape[0];
+        let ncols = shape[1];
+
+        // Compute step for wrapping (the row offset between diagonals)
+        // When wrap=True and nrows > ncols, we wrap every ncols+1 rows
+        let wrap_step = ncols + 1;
+
+        let mut val_idx = 0;
+        let mut row = 0;
+
+        while row < nrows {
+            let col = row % wrap_step;
+
+            // Only fill if within column bounds
+            if col < ncols {
+                let byte_offset = row as isize * strides[0] + col as isize * strides[1];
+                // Read from val array, write to target array
+                let src_offset = (val_idx % val_size) * val_itemsize;
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        val_ptr.add(src_offset),
+                        ptr.offset(byte_offset),
+                        itemsize
+                    );
+                }
+                val_idx += 1;
+            }
+
+            row += 1;
+
+            // If not wrapping, stop after first diagonal
+            if !wrap && row >= min_dim {
+                break;
+            }
+        }
+    } else {
+        // nD case: fill diagonal at [i, i, i, ...]
+        for idx in 0..min_dim {
+            let byte_offset: isize = strides.iter().map(|&s| (idx as isize) * s).sum();
+            let src_offset = (idx % val_size) * val_itemsize;
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    val_ptr.add(src_offset),
+                    ptr.offset(byte_offset),
+                    itemsize
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Multidimensional index iterator.
+///
+/// Returns an iterator yielding pairs of (index, value) for each element
+/// in the array.
+#[pyclass]
+pub struct NdEnumerate {
+    arr: RumpyArray,
+    shape: Vec<usize>,
+    indices: Vec<usize>,
+    flat_idx: usize,
+    size: usize,
+}
+
+#[pymethods]
+impl NdEnumerate {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(mut slf: PyRefMut<'py, Self>) -> Option<(pyo3::PyObject, f64)> {
+        if slf.flat_idx >= slf.size {
+            return None;
+        }
+
+        let indices = slf.indices.clone();
+        let ptr = slf.arr.data_ptr();
+        let dtype = slf.arr.dtype();
+        let ops = dtype.ops();
+
+        // Calculate offset from indices
+        let strides = slf.arr.strides();
+        let offset: isize = slf.indices.iter().zip(strides.iter())
+            .map(|(&i, &s)| (i as isize) * s)
+            .sum();
+
+        let val = unsafe { ops.read_f64(ptr, offset) }.unwrap_or(0.0);
+
+        // Increment indices (clone shape to avoid borrow conflict)
+        slf.flat_idx += 1;
+        let shape = slf.shape.clone();
+        crate::array::increment_indices(&mut slf.indices, &shape);
+
+        // Convert indices to Python tuple
+        let py = slf.py();
+        let tuple = pyo3::types::PyTuple::new(py, indices).ok()?.into();
+
+        Some((tuple, val))
+    }
+}
+
+/// Return an iterator yielding (index, value) pairs.
+#[pyfunction]
+pub fn ndenumerate(arr: &PyRumpyArray) -> NdEnumerate {
+    let shape = arr.inner.shape().to_vec();
+    let size = arr.inner.size();
+    NdEnumerate {
+        arr: arr.inner.clone(),
+        shape: shape.clone(),
+        indices: vec![0; shape.len()],
+        flat_idx: 0,
+        size,
+    }
+}
+
+/// N-dimensional index iterator.
+///
+/// An iterator yielding tuples of indices for iterating over an array
+/// of the given shape.
+#[pyclass]
+pub struct NdIndex {
+    shape: Vec<usize>,
+    indices: Vec<usize>,
+    flat_idx: usize,
+    size: usize,
+}
+
+#[pymethods]
+impl NdIndex {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(mut slf: PyRefMut<'py, Self>) -> Option<pyo3::PyObject> {
+        if slf.flat_idx >= slf.size {
+            return None;
+        }
+
+        let indices = slf.indices.clone();
+
+        // Increment indices (clone shape to avoid borrow conflict)
+        slf.flat_idx += 1;
+        let shape = slf.shape.clone();
+        crate::array::increment_indices(&mut slf.indices, &shape);
+
+        // Convert indices to Python tuple
+        let py = slf.py();
+        let tuple = pyo3::types::PyTuple::new(py, indices).ok()?.into();
+
+        Some(tuple)
+    }
+}
+
+/// Return an iterator yielding index tuples.
+#[pyfunction]
+#[pyo3(signature = (*args))]
+pub fn ndindex(args: &Bound<'_, pyo3::types::PyTuple>) -> PyResult<NdIndex> {
+    // Parse shape from args - can be ndindex(2, 3) or ndindex((2, 3))
+    let shape: Vec<usize> = if args.len() == 1 {
+        // Check if first arg is a tuple
+        if let Ok(tuple) = args.get_item(0)?.extract::<Vec<usize>>() {
+            tuple
+        } else if let Ok(val) = args.get_item(0)?.extract::<usize>() {
+            vec![val]
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "shape must be integers or tuple of integers",
+            ));
+        }
+    } else if args.is_empty() {
+        vec![]
+    } else {
+        args.iter()
+            .map(|item| item.extract::<usize>())
+            .collect::<PyResult<Vec<_>>>()?
+    };
+
+    let size: usize = shape.iter().product();
+    let ndim = shape.len();
+
+    // Handle empty shape case - yields single empty tuple
+    let (size, indices) = if ndim == 0 {
+        (1, vec![])
+    } else {
+        (size, vec![0; ndim])
+    };
+
+    Ok(NdIndex {
+        shape,
+        indices,
+        flat_idx: 0,
+        size,
+    })
+}
+
+/// Open grid class (sparse meshgrid).
+///
+/// Use: `ogrid[0:5, 0:3]` returns a list of arrays with shapes
+/// `[(5, 1), (1, 3)]`.
+#[pyclass]
+pub struct OGridClass;
+
+#[pymethods]
+impl OGridClass {
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, pyo3::PyAny>) -> PyResult<pyo3::PyObject> {
+        parse_grid_key(py, key, false)
+    }
+}
+
+/// Dense grid class (dense meshgrid).
+///
+/// Use: `mgrid[0:5, 0:3]` returns a list of arrays with shapes
+/// `[(5, 3), (5, 3)]`.
+#[pyclass]
+pub struct MGridClass;
+
+#[pymethods]
+impl MGridClass {
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, pyo3::PyAny>) -> PyResult<pyo3::PyObject> {
+        parse_grid_key(py, key, true)
+    }
+}
+
+/// Parse a grid key (slice or tuple of slices) and return arrays.
+fn parse_grid_key(py: Python<'_>, key: &Bound<'_, pyo3::PyAny>, dense: bool) -> PyResult<pyo3::PyObject> {
+    // Parse slices from key
+    let slices: Vec<GridSlice> = if let Ok(tuple) = key.downcast::<pyo3::types::PyTuple>() {
+        tuple.iter()
+            .map(|item| parse_single_slice(&item))
+            .collect::<PyResult<Vec<_>>>()?
+    } else {
+        // Single slice
+        vec![parse_single_slice(key)?]
+    };
+
+    if slices.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err("empty slice"));
+    }
+
+    // Generate arrays for each dimension
+    let mut arrays: Vec<RumpyArray> = slices.iter()
+        .map(|s| generate_range_array(s))
+        .collect();
+
+    // If single slice, return single array
+    if arrays.len() == 1 {
+        let arr = PyRumpyArray::new(arrays.remove(0));
+        return Ok(pyo3::Py::new(py, arr)?.into_any().into());
+    }
+
+    let n = arrays.len();
+    let shapes: Vec<usize> = arrays.iter().map(|a| a.size()).collect();
+
+    // Build result arrays - reshape each to have 1s in other dimensions
+    let mut result = Vec::with_capacity(n);
+    for (i, arr) in arrays.into_iter().enumerate() {
+        let mut new_shape = vec![1usize; n];
+        new_shape[i] = shapes[i];
+        let reshaped = arr.reshape(new_shape).expect("reshape failed");
+
+        // Dense grid: broadcast each array to full shape
+        let final_arr = if dense {
+            reshaped.broadcast_to(&shapes).expect("broadcast failed")
+        } else {
+            reshaped
+        };
+        result.push(PyRumpyArray::new(final_arr));
+    }
+
+    let list = pyo3::types::PyList::new(py, result.into_iter().map(|arr| {
+        pyo3::Py::new(py, arr).unwrap()
+    }))?;
+    Ok(list.into())
+}
+
+/// Represents a parsed slice: start:stop:step
+struct GridSlice {
+    start: f64,
+    stop: f64,
+    step: GridStep,
+}
+
+enum GridStep {
+    Integer(i64),      // Regular step (e.g., 0:10:2)
+    Complex(f64),      // Number of points (e.g., 0:1:5j means linspace)
+}
+
+fn parse_single_slice(item: &Bound<'_, pyo3::PyAny>) -> PyResult<GridSlice> {
+    let slice = item.downcast::<pyo3::types::PySlice>()?;
+
+    // Get start, stop
+    let start: f64 = slice.getattr("start")?.extract().unwrap_or(0.0);
+    let stop: f64 = slice.getattr("stop")?.extract()?;
+
+    // Get step - could be int, float, or complex
+    let step_obj = slice.getattr("step")?;
+    let step = if step_obj.is_none() {
+        GridStep::Integer(1)
+    } else {
+        // Check if it's a complex number (has .imag attribute)
+        if let Ok(imag_attr) = step_obj.getattr("imag") {
+            if let Ok(imag) = imag_attr.extract::<f64>() {
+                if imag != 0.0 {
+                    // Complex step means linspace-like behavior (use imaginary part)
+                    return Ok(GridSlice { start, stop, step: GridStep::Complex(imag) });
+                }
+            }
+        }
+        // Try integer or float
+        if let Ok(i) = step_obj.extract::<i64>() {
+            GridStep::Integer(i)
+        } else if let Ok(f) = step_obj.extract::<f64>() {
+            GridStep::Integer(f as i64)
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "step must be integer or complex",
+            ));
+        }
+    };
+
+    Ok(GridSlice { start, stop, step })
+}
+
+fn generate_range_array(slice: &GridSlice) -> RumpyArray {
+    match slice.step {
+        GridStep::Integer(step) => {
+            // arange-like behavior
+            let mut values = Vec::new();
+            let mut val = slice.start;
+            if step > 0 {
+                while val < slice.stop {
+                    values.push(val);
+                    val += step as f64;
+                }
+            } else if step < 0 {
+                while val > slice.stop {
+                    values.push(val);
+                    val += step as f64;
+                }
+            }
+
+            // Use int64 dtype for integer ranges, float64 otherwise
+            let dtype = if slice.start.fract() == 0.0 && slice.stop.fract() == 0.0 {
+                DType::int64()
+            } else {
+                DType::float64()
+            };
+            RumpyArray::from_vec(values, dtype)
+        }
+        GridStep::Complex(num_points) => {
+            // linspace-like behavior
+            let n = num_points as usize;
+            if n == 0 {
+                return RumpyArray::zeros(vec![0], DType::float64());
+            }
+            if n == 1 {
+                return RumpyArray::from_vec(vec![slice.start], DType::float64());
+            }
+
+            let step = (slice.stop - slice.start) / (n - 1) as f64;
+            let values: Vec<f64> = (0..n)
+                .map(|i| slice.start + i as f64 * step)
+                .collect();
+            RumpyArray::from_vec(values, DType::float64())
+        }
+    }
+}

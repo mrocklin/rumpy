@@ -393,5 +393,17 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(functional::frompyfunc, m)?)?;
     m.add_class::<functional::PyVectorize>()?;
     m.add_class::<functional::PyFrompyfunc>()?;
+    // Index builders (Stream 34)
+    m.add_function(wrap_pyfunction!(indexing::ix_, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::fill_diagonal, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::ndenumerate, m)?)?;
+    m.add_function(wrap_pyfunction!(indexing::ndindex, m)?)?;
+    m.add_class::<indexing::NdEnumerate>()?;
+    m.add_class::<indexing::NdIndex>()?;
+    m.add_class::<indexing::OGridClass>()?;
+    m.add_class::<indexing::MGridClass>()?;
+    // ogrid and mgrid are singleton instances (like numpy)
+    m.add("ogrid", indexing::OGridClass)?;
+    m.add("mgrid", indexing::MGridClass)?;
     Ok(())
 }
