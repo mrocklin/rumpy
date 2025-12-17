@@ -502,3 +502,134 @@ class TestCharMisc:
         for i in range(2):
             r_str = str(result[i]).strip("'")
             assert r_str == str(expected[i])
+
+
+class TestCharPartition:
+    """Test partition operations."""
+
+    def test_partition_found(self):
+        """Test partition when separator is found."""
+        r = rp.array(["hello-world", "foo-bar"])
+        result = rp.char.partition(r, "-")
+
+        n = np.array(["hello-world", "foo-bar"])
+        expected = np.char.partition(n, "-")
+
+        assert result.shape == expected.shape
+        for i in range(2):
+            for j in range(3):
+                r_str = str(result[i][j]).strip("'")
+                assert r_str == str(expected[i, j])
+
+    def test_partition_not_found(self):
+        """Test partition when separator is not found."""
+        r = rp.array(["hello", "world"])
+        result = rp.char.partition(r, "-")
+
+        n = np.array(["hello", "world"])
+        expected = np.char.partition(n, "-")
+
+        for i in range(2):
+            # When not found: (string, "", "")
+            assert str(result[i][0]).strip("'") == str(expected[i, 0])
+            assert str(result[i][1]).strip("'") == ""
+            assert str(result[i][2]).strip("'") == ""
+
+    def test_rpartition_found(self):
+        """Test rpartition at last occurrence."""
+        r = rp.array(["a-b-c", "x-y-z"])
+        result = rp.char.rpartition(r, "-")
+
+        n = np.array(["a-b-c", "x-y-z"])
+        expected = np.char.rpartition(n, "-")
+
+        for i in range(2):
+            for j in range(3):
+                r_str = str(result[i][j]).strip("'")
+                assert r_str == str(expected[i, j])
+
+    def test_rpartition_not_found(self):
+        """Test rpartition when separator is not found."""
+        r = rp.array(["hello", "world"])
+        result = rp.char.rpartition(r, "-")
+
+        n = np.array(["hello", "world"])
+        expected = np.char.rpartition(n, "-")
+
+        for i in range(2):
+            # When not found: ("", "", string)
+            assert str(result[i][0]).strip("'") == ""
+            assert str(result[i][1]).strip("'") == ""
+            assert str(result[i][2]).strip("'") == str(expected[i, 2])
+
+
+class TestCharJoin:
+    """Test join operation - inserts separator between each character."""
+
+    def test_join_basic(self):
+        """Test basic join - separator between characters."""
+        n = np.array(["ab", "cd"])
+        r = rp.array(["ab", "cd"])
+        result = rp.char.join("-", r)
+        expected = np.char.join("-", n)
+        assert result.shape == expected.shape
+        for i in range(len(expected)):
+            assert str(result[i]).strip("'") == str(expected[i])
+
+    def test_join_longer_strings(self):
+        """Test join with longer strings."""
+        n = np.array(["hello", "world"])
+        r = rp.array(["hello", "world"])
+        result = rp.char.join("-", r)
+        expected = np.char.join("-", n)
+        for i in range(len(expected)):
+            assert str(result[i]).strip("'") == str(expected[i])
+
+    def test_join_empty_separator(self):
+        """Test join with empty separator (no change)."""
+        n = np.array(["abc", "def"])
+        r = rp.array(["abc", "def"])
+        result = rp.char.join("", r)
+        expected = np.char.join("", n)
+        for i in range(len(expected)):
+            assert str(result[i]).strip("'") == str(expected[i])
+
+
+class TestCharIndex:
+    """Test index/rindex operations."""
+
+    def test_index_found(self):
+        """Test index when substring is found."""
+        r = rp.array(["hello world", "test world"])
+        result = rp.char.index(r, "world")
+
+        n = np.array(["hello world", "test world"])
+        expected = np.char.index(n, "world")
+
+        for i in range(2):
+            assert int(result[i]) == int(expected[i])
+
+    def test_index_not_found_raises(self):
+        """Test index raises ValueError when not found."""
+        r = rp.array(["hello", "world"])
+
+        with pytest.raises(ValueError):
+            rp.char.index(r, "xyz")
+
+    def test_rindex_found(self):
+        """Test rindex at last occurrence."""
+        r = rp.array(["hello hello", "test hello"])
+        result = rp.char.rindex(r, "hello")
+
+        n = np.array(["hello hello", "test hello"])
+        expected = np.char.rindex(n, "hello")
+
+        for i in range(2):
+            assert int(result[i]) == int(expected[i])
+
+    def test_rindex_not_found_raises(self):
+        """Test rindex raises ValueError when not found."""
+        r = rp.array(["hello", "world"])
+
+        with pytest.raises(ValueError):
+            rp.char.rindex(r, "xyz")

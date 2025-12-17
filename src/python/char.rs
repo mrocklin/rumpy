@@ -89,6 +89,71 @@ pub fn rfind(a: &PyRumpyArray, sub: &str, start: Option<usize>, end: Option<usiz
         .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("rfind requires a string array"))
 }
 
+/// Like find, but raises ValueError if substring is not found.
+#[pyfunction]
+#[pyo3(signature = (a, sub, start=None, end=None))]
+pub fn index(a: &PyRumpyArray, sub: &str, start: Option<usize>, end: Option<usize>) -> PyResult<PyRumpyArray> {
+    let _ = (start, end);
+    let result = char_ops::index(&a.inner, sub)
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("index requires a string array"))?;
+
+    // Check for -1 values directly from buffer (fast path)
+    let size = result.size();
+    if size > 0 {
+        let ptr = result.data_ptr() as *const i64;
+        for i in 0..size {
+            if unsafe { *ptr.add(i) } == -1 {
+                return Err(pyo3::exceptions::PyValueError::new_err("substring not found"));
+            }
+        }
+    }
+    Ok(PyRumpyArray::new(result))
+}
+
+/// Like rfind, but raises ValueError if substring is not found.
+#[pyfunction]
+#[pyo3(signature = (a, sub, start=None, end=None))]
+pub fn rindex(a: &PyRumpyArray, sub: &str, start: Option<usize>, end: Option<usize>) -> PyResult<PyRumpyArray> {
+    let _ = (start, end);
+    let result = char_ops::rindex(&a.inner, sub)
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("rindex requires a string array"))?;
+
+    let size = result.size();
+    if size > 0 {
+        let ptr = result.data_ptr() as *const i64;
+        for i in 0..size {
+            if unsafe { *ptr.add(i) } == -1 {
+                return Err(pyo3::exceptions::PyValueError::new_err("substring not found"));
+            }
+        }
+    }
+    Ok(PyRumpyArray::new(result))
+}
+
+/// Partition each string at first occurrence of separator.
+#[pyfunction]
+pub fn partition(a: &PyRumpyArray, sep: &str) -> PyResult<PyRumpyArray> {
+    char_ops::partition(&a.inner, sep)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("empty separator"))
+}
+
+/// Partition each string at last occurrence of separator.
+#[pyfunction]
+pub fn rpartition(a: &PyRumpyArray, sep: &str) -> PyResult<PyRumpyArray> {
+    char_ops::rpartition(&a.inner, sep)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("empty separator"))
+}
+
+/// Join array of strings with separator.
+#[pyfunction]
+pub fn join(sep: &str, a: &PyRumpyArray) -> PyResult<PyRumpyArray> {
+    char_ops::join(sep, &a.inner)
+        .map(PyRumpyArray::new)
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("join requires a string array"))
+}
+
 /// Replace occurrences of old with new.
 #[pyfunction]
 #[pyo3(signature = (a, old, new, count=None))]
@@ -347,6 +412,11 @@ pub fn register_char_submodule(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rstrip, &m)?)?;
     m.add_function(wrap_pyfunction!(find, &m)?)?;
     m.add_function(wrap_pyfunction!(rfind, &m)?)?;
+    m.add_function(wrap_pyfunction!(index, &m)?)?;
+    m.add_function(wrap_pyfunction!(rindex, &m)?)?;
+    m.add_function(wrap_pyfunction!(partition, &m)?)?;
+    m.add_function(wrap_pyfunction!(rpartition, &m)?)?;
+    m.add_function(wrap_pyfunction!(join, &m)?)?;
     m.add_function(wrap_pyfunction!(replace, &m)?)?;
     m.add_function(wrap_pyfunction!(char_count, &m)?)?;
     m.add_function(wrap_pyfunction!(str_len, &m)?)?;

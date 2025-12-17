@@ -708,6 +708,356 @@ pub fn rfind(arr: &RumpyArray, sub: &str) -> Option<RumpyArray> {
     Some(out)
 }
 
+/// Like find, but returns -1 sentinel for "not found" (Python wrapper raises ValueError).
+pub fn index(arr: &RumpyArray, sub: &str) -> Option<RumpyArray> {
+    // Same as find - Python wrapper checks for -1 and raises ValueError
+    find(arr, sub)
+}
+
+/// Like rfind, but returns -1 sentinel for "not found" (Python wrapper raises ValueError).
+pub fn rindex(arr: &RumpyArray, sub: &str) -> Option<RumpyArray> {
+    // Same as rfind - Python wrapper checks for -1 and raises ValueError
+    rfind(arr, sub)
+}
+
+/// Partition each string at first occurrence of separator.
+/// Returns array with shape (*input_shape, 3) containing [before, sep, after].
+pub fn partition(arr: &RumpyArray, sep: &str) -> Option<RumpyArray> {
+    let max_chars = match arr.dtype().kind() {
+        DTypeKind::Str(mc) => mc,
+        _ => return None,
+    };
+
+    let sep_cps: Vec<u32> = sep.chars().map(|c| c as u32).collect();
+    let sep_len = sep_cps.len();
+
+    if sep_len == 0 {
+        return None; // Empty separator not allowed
+    }
+
+    let size = arr.size();
+    let mut out_shape = arr.shape().to_vec();
+    out_shape.push(3);
+
+    let out_dtype = DType::str_(max_chars);
+    let mut out = RumpyArray::zeros(out_shape, out_dtype);
+
+    if size == 0 {
+        return Some(out);
+    }
+
+    let buffer = out.buffer_mut();
+    let out_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let dst_base = out_buffer.as_mut_ptr() as *mut u32;
+
+    if arr.is_c_contiguous() {
+        let src_base = arr.data_ptr() as *const u32;
+        for elem_idx in 0..size {
+            let src_str = unsafe { src_base.add(elem_idx * max_chars) };
+            let len = unsafe { utf32_strlen(src_str, max_chars) };
+
+            // Find separator
+            let mut found_at: Option<usize> = None;
+            if len >= sep_len {
+                'outer: for i in 0..=(len - sep_len) {
+                    for j in 0..sep_len {
+                        if unsafe { *src_str.add(i + j) } != sep_cps[j] {
+                            continue 'outer;
+                        }
+                    }
+                    found_at = Some(i);
+                    break;
+                }
+            }
+
+            let dst_before = unsafe { dst_base.add((elem_idx * 3) * max_chars) };
+            let dst_sep = unsafe { dst_base.add((elem_idx * 3 + 1) * max_chars) };
+            let dst_after = unsafe { dst_base.add((elem_idx * 3 + 2) * max_chars) };
+
+            match found_at {
+                Some(idx) => {
+                    // Copy before
+                    for i in 0..idx {
+                        unsafe { *dst_before.add(i) = *src_str.add(i); }
+                    }
+                    // Copy separator
+                    for i in 0..sep_len {
+                        unsafe { *dst_sep.add(i) = sep_cps[i]; }
+                    }
+                    // Copy after
+                    let after_start = idx + sep_len;
+                    for i in after_start..len {
+                        unsafe { *dst_after.add(i - after_start) = *src_str.add(i); }
+                    }
+                }
+                None => {
+                    // No separator found: (string, "", "")
+                    for i in 0..len {
+                        unsafe { *dst_before.add(i) = *src_str.add(i); }
+                    }
+                }
+            }
+        }
+    } else {
+        let src_base = arr.data_ptr();
+        for (elem_idx, src_offset) in arr.iter_offsets().enumerate() {
+            let src_str = unsafe { src_base.offset(src_offset) as *const u32 };
+            let len = unsafe { utf32_strlen(src_str, max_chars) };
+
+            let mut found_at: Option<usize> = None;
+            if len >= sep_len {
+                'outer: for i in 0..=(len - sep_len) {
+                    for j in 0..sep_len {
+                        if unsafe { *src_str.add(i + j) } != sep_cps[j] {
+                            continue 'outer;
+                        }
+                    }
+                    found_at = Some(i);
+                    break;
+                }
+            }
+
+            let dst_before = unsafe { dst_base.add((elem_idx * 3) * max_chars) };
+            let dst_sep = unsafe { dst_base.add((elem_idx * 3 + 1) * max_chars) };
+            let dst_after = unsafe { dst_base.add((elem_idx * 3 + 2) * max_chars) };
+
+            match found_at {
+                Some(idx) => {
+                    for i in 0..idx {
+                        unsafe { *dst_before.add(i) = *src_str.add(i); }
+                    }
+                    for i in 0..sep_len {
+                        unsafe { *dst_sep.add(i) = sep_cps[i]; }
+                    }
+                    let after_start = idx + sep_len;
+                    for i in after_start..len {
+                        unsafe { *dst_after.add(i - after_start) = *src_str.add(i); }
+                    }
+                }
+                None => {
+                    for i in 0..len {
+                        unsafe { *dst_before.add(i) = *src_str.add(i); }
+                    }
+                }
+            }
+        }
+    }
+
+    Some(out)
+}
+
+/// Partition each string at last occurrence of separator.
+/// Returns array with shape (*input_shape, 3) containing [before, sep, after].
+pub fn rpartition(arr: &RumpyArray, sep: &str) -> Option<RumpyArray> {
+    let max_chars = match arr.dtype().kind() {
+        DTypeKind::Str(mc) => mc,
+        _ => return None,
+    };
+
+    let sep_cps: Vec<u32> = sep.chars().map(|c| c as u32).collect();
+    let sep_len = sep_cps.len();
+
+    if sep_len == 0 {
+        return None;
+    }
+
+    let size = arr.size();
+    let mut out_shape = arr.shape().to_vec();
+    out_shape.push(3);
+
+    let out_dtype = DType::str_(max_chars);
+    let mut out = RumpyArray::zeros(out_shape, out_dtype);
+
+    if size == 0 {
+        return Some(out);
+    }
+
+    let buffer = out.buffer_mut();
+    let out_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let dst_base = out_buffer.as_mut_ptr() as *mut u32;
+
+    if arr.is_c_contiguous() {
+        let src_base = arr.data_ptr() as *const u32;
+        for elem_idx in 0..size {
+            let src_str = unsafe { src_base.add(elem_idx * max_chars) };
+            let len = unsafe { utf32_strlen(src_str, max_chars) };
+
+            // Find last separator
+            let mut found_at: Option<usize> = None;
+            if len >= sep_len {
+                for i in (0..=(len - sep_len)).rev() {
+                    let mut matches = true;
+                    for j in 0..sep_len {
+                        if unsafe { *src_str.add(i + j) } != sep_cps[j] {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if matches {
+                        found_at = Some(i);
+                        break;
+                    }
+                }
+            }
+
+            let dst_before = unsafe { dst_base.add((elem_idx * 3) * max_chars) };
+            let dst_sep = unsafe { dst_base.add((elem_idx * 3 + 1) * max_chars) };
+            let dst_after = unsafe { dst_base.add((elem_idx * 3 + 2) * max_chars) };
+
+            match found_at {
+                Some(idx) => {
+                    for i in 0..idx {
+                        unsafe { *dst_before.add(i) = *src_str.add(i); }
+                    }
+                    for i in 0..sep_len {
+                        unsafe { *dst_sep.add(i) = sep_cps[i]; }
+                    }
+                    let after_start = idx + sep_len;
+                    for i in after_start..len {
+                        unsafe { *dst_after.add(i - after_start) = *src_str.add(i); }
+                    }
+                }
+                None => {
+                    // No separator found: ("", "", string)
+                    for i in 0..len {
+                        unsafe { *dst_after.add(i) = *src_str.add(i); }
+                    }
+                }
+            }
+        }
+    } else {
+        let src_base = arr.data_ptr();
+        for (elem_idx, src_offset) in arr.iter_offsets().enumerate() {
+            let src_str = unsafe { src_base.offset(src_offset) as *const u32 };
+            let len = unsafe { utf32_strlen(src_str, max_chars) };
+
+            let mut found_at: Option<usize> = None;
+            if len >= sep_len {
+                for i in (0..=(len - sep_len)).rev() {
+                    let mut matches = true;
+                    for j in 0..sep_len {
+                        if unsafe { *src_str.add(i + j) } != sep_cps[j] {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if matches {
+                        found_at = Some(i);
+                        break;
+                    }
+                }
+            }
+
+            let dst_before = unsafe { dst_base.add((elem_idx * 3) * max_chars) };
+            let dst_sep = unsafe { dst_base.add((elem_idx * 3 + 1) * max_chars) };
+            let dst_after = unsafe { dst_base.add((elem_idx * 3 + 2) * max_chars) };
+
+            match found_at {
+                Some(idx) => {
+                    for i in 0..idx {
+                        unsafe { *dst_before.add(i) = *src_str.add(i); }
+                    }
+                    for i in 0..sep_len {
+                        unsafe { *dst_sep.add(i) = sep_cps[i]; }
+                    }
+                    let after_start = idx + sep_len;
+                    for i in after_start..len {
+                        unsafe { *dst_after.add(i - after_start) = *src_str.add(i); }
+                    }
+                }
+                None => {
+                    for i in 0..len {
+                        unsafe { *dst_after.add(i) = *src_str.add(i); }
+                    }
+                }
+            }
+        }
+    }
+
+    Some(out)
+}
+
+/// Join: insert separator between each character of each string.
+/// E.g., join('-', ['ab', 'cd']) -> ['a-b', 'c-d']
+pub fn join(sep: &str, arr: &RumpyArray) -> Option<RumpyArray> {
+    let max_chars = match arr.dtype().kind() {
+        DTypeKind::Str(mc) => mc,
+        _ => return None,
+    };
+
+    let sep_cps: Vec<u32> = sep.chars().map(|c| c as u32).collect();
+    let sep_len = sep_cps.len();
+
+    let size = arr.size();
+    if size == 0 {
+        return Some(RumpyArray::zeros(arr.shape().to_vec(), arr.dtype().clone()));
+    }
+
+    // Compute max output length: for string of length n, result is n + (n-1)*sep_len
+    // max_out = max_chars + (max_chars - 1) * sep_len = max_chars * (1 + sep_len) - sep_len
+    let max_out_chars = if max_chars == 0 { 0 } else { max_chars + (max_chars - 1) * sep_len };
+    let out_dtype = DType::str_(max_out_chars);
+    let mut out = RumpyArray::zeros(arr.shape().to_vec(), out_dtype);
+
+    let buffer = out.buffer_mut();
+    let out_buffer = Arc::get_mut(buffer).expect("buffer must be unique");
+    let dst_base = out_buffer.as_mut_ptr() as *mut u32;
+
+    if arr.is_c_contiguous() {
+        let src_base = arr.data_ptr() as *const u32;
+        for elem_idx in 0..size {
+            let src_str = unsafe { src_base.add(elem_idx * max_chars) };
+            let dst_str = unsafe { dst_base.add(elem_idx * max_out_chars) };
+            let len = unsafe { utf32_strlen(src_str, max_chars) };
+
+            if len == 0 {
+                continue;
+            }
+
+            let mut dst_idx = 0;
+            // First character
+            unsafe { *dst_str.add(dst_idx) = *src_str; }
+            dst_idx += 1;
+
+            // Remaining characters with separator
+            for i in 1..len {
+                for &cp in &sep_cps {
+                    unsafe { *dst_str.add(dst_idx) = cp; }
+                    dst_idx += 1;
+                }
+                unsafe { *dst_str.add(dst_idx) = *src_str.add(i); }
+                dst_idx += 1;
+            }
+        }
+    } else {
+        let src_base = arr.data_ptr();
+        for (elem_idx, src_offset) in arr.iter_offsets().enumerate() {
+            let src_str = unsafe { src_base.offset(src_offset) as *const u32 };
+            let dst_str = unsafe { dst_base.add(elem_idx * max_out_chars) };
+            let len = unsafe { utf32_strlen(src_str, max_chars) };
+
+            if len == 0 {
+                continue;
+            }
+
+            let mut dst_idx = 0;
+            unsafe { *dst_str.add(dst_idx) = *src_str; }
+            dst_idx += 1;
+
+            for i in 1..len {
+                for &cp in &sep_cps {
+                    unsafe { *dst_str.add(dst_idx) = cp; }
+                    dst_idx += 1;
+                }
+                unsafe { *dst_str.add(dst_idx) = *src_str.add(i); }
+                dst_idx += 1;
+            }
+        }
+    }
+
+    Some(out)
+}
+
 /// Replace occurrences of old with new in each string.
 pub fn replace(arr: &RumpyArray, old: &str, new: &str, count: Option<usize>) -> Option<RumpyArray> {
     let max_chars = match arr.dtype().kind() {
@@ -1431,8 +1781,12 @@ pub fn swapcase(arr: &RumpyArray) -> Option<RumpyArray> {
 // Additional Operations
 // ============================================================================
 
-/// Compare two string arrays element-wise for equality.
-pub fn equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+/// String comparison mode.
+#[derive(Clone, Copy)]
+enum StrCmp { Eq, Ne, Lt, Le, Gt, Ge }
+
+/// Compare two string arrays element-wise with given comparison.
+fn compare_strings(a: &RumpyArray, b: &RumpyArray, cmp: StrCmp) -> Option<RumpyArray> {
     if a.shape() != b.shape() {
         return None;
     }
@@ -1445,116 +1799,48 @@ pub fn equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
     for i in 0..size {
         let sa = unsafe { read_string(a, i) };
         let sb = unsafe { read_string(b, i) };
-        let val = if sa == sb { 1u8 } else { 0u8 };
-        unsafe { *ptr.add(i) = val };
+        let result = match cmp {
+            StrCmp::Eq => sa == sb,
+            StrCmp::Ne => sa != sb,
+            StrCmp::Lt => sa < sb,
+            StrCmp::Le => sa <= sb,
+            StrCmp::Gt => sa > sb,
+            StrCmp::Ge => sa >= sb,
+        };
+        unsafe { *ptr.add(i) = if result { 1 } else { 0 } };
     }
 
     Some(out)
+}
+
+/// Compare two string arrays element-wise for equality.
+pub fn equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
+    compare_strings(a, b, StrCmp::Eq)
 }
 
 /// Compare two string arrays element-wise for inequality.
 pub fn not_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    if a.shape() != b.shape() {
-        return None;
-    }
-
-    let size = a.size();
-    let mut out = RumpyArray::zeros(a.shape().to_vec(), DType::bool());
-    let buffer = Arc::get_mut(&mut out.buffer).expect("buffer must be unique");
-    let ptr = buffer.as_mut_ptr();
-
-    for i in 0..size {
-        let sa = unsafe { read_string(a, i) };
-        let sb = unsafe { read_string(b, i) };
-        let val = if sa != sb { 1u8 } else { 0u8 };
-        unsafe { *ptr.add(i) = val };
-    }
-
-    Some(out)
+    compare_strings(a, b, StrCmp::Ne)
 }
 
 /// Compare two string arrays element-wise (less than).
 pub fn less(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    if a.shape() != b.shape() {
-        return None;
-    }
-
-    let size = a.size();
-    let mut out = RumpyArray::zeros(a.shape().to_vec(), DType::bool());
-    let buffer = Arc::get_mut(&mut out.buffer).expect("buffer must be unique");
-    let ptr = buffer.as_mut_ptr();
-
-    for i in 0..size {
-        let sa = unsafe { read_string(a, i) };
-        let sb = unsafe { read_string(b, i) };
-        let val = if sa < sb { 1u8 } else { 0u8 };
-        unsafe { *ptr.add(i) = val };
-    }
-
-    Some(out)
+    compare_strings(a, b, StrCmp::Lt)
 }
 
 /// Compare two string arrays element-wise (less than or equal).
 pub fn less_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    if a.shape() != b.shape() {
-        return None;
-    }
-
-    let size = a.size();
-    let mut out = RumpyArray::zeros(a.shape().to_vec(), DType::bool());
-    let buffer = Arc::get_mut(&mut out.buffer).expect("buffer must be unique");
-    let ptr = buffer.as_mut_ptr();
-
-    for i in 0..size {
-        let sa = unsafe { read_string(a, i) };
-        let sb = unsafe { read_string(b, i) };
-        let val = if sa <= sb { 1u8 } else { 0u8 };
-        unsafe { *ptr.add(i) = val };
-    }
-
-    Some(out)
+    compare_strings(a, b, StrCmp::Le)
 }
 
 /// Compare two string arrays element-wise (greater than).
 pub fn greater(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    if a.shape() != b.shape() {
-        return None;
-    }
-
-    let size = a.size();
-    let mut out = RumpyArray::zeros(a.shape().to_vec(), DType::bool());
-    let buffer = Arc::get_mut(&mut out.buffer).expect("buffer must be unique");
-    let ptr = buffer.as_mut_ptr();
-
-    for i in 0..size {
-        let sa = unsafe { read_string(a, i) };
-        let sb = unsafe { read_string(b, i) };
-        let val = if sa > sb { 1u8 } else { 0u8 };
-        unsafe { *ptr.add(i) = val };
-    }
-
-    Some(out)
+    compare_strings(a, b, StrCmp::Gt)
 }
 
 /// Compare two string arrays element-wise (greater than or equal).
 pub fn greater_equal(a: &RumpyArray, b: &RumpyArray) -> Option<RumpyArray> {
-    if a.shape() != b.shape() {
-        return None;
-    }
-
-    let size = a.size();
-    let mut out = RumpyArray::zeros(a.shape().to_vec(), DType::bool());
-    let buffer = Arc::get_mut(&mut out.buffer).expect("buffer must be unique");
-    let ptr = buffer.as_mut_ptr();
-
-    for i in 0..size {
-        let sa = unsafe { read_string(a, i) };
-        let sb = unsafe { read_string(b, i) };
-        let val = if sa >= sb { 1u8 } else { 0u8 };
-        unsafe { *ptr.add(i) = val };
-    }
-
-    Some(out)
+    compare_strings(a, b, StrCmp::Ge)
 }
 
 /// Expand tabs to spaces.
