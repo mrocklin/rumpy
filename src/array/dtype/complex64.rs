@@ -39,14 +39,32 @@ impl Complex64Ops {
         (exp_r * prod_i.cos(), exp_r * prod_i.sin())
     }
 
+    /// Complex square root using the principal branch.
+    /// Handles signed zero: sqrt(-3-0j) vs sqrt(-3+0j) differ in sign.
+    #[inline]
+    fn complex_sqrt(re: f32, im: f32) -> (f32, f32) {
+        if re == 0.0 && im == 0.0 {
+            // Preserve signed zero in imaginary part
+            return (0.0, im);
+        }
+        let mag = (re * re + im * im).sqrt();
+        let sqrt_r = ((mag + re) / 2.0).sqrt();
+        let sqrt_i = ((mag - re) / 2.0).sqrt();
+        // For principal square root: imaginary part has same sign as input imaginary part.
+        // Use is_sign_negative to correctly detect -0.0 vs +0.0.
+        if im.is_sign_negative() {
+            (sqrt_r, -sqrt_i)
+        } else {
+            (sqrt_r, sqrt_i)
+        }
+    }
+
     /// Complex arcsin: arcsin(z) = -i * log(iz + sqrt(1 - z^2))
     #[inline]
     fn arcsin(r: f32, i: f32) -> (f32, f32) {
         let iz = (-i, r);
         let one_minus_z2 = (1.0 - r * r + i * i, -2.0 * r * i);
-        let mag = (one_minus_z2.0 * one_minus_z2.0 + one_minus_z2.1 * one_minus_z2.1).sqrt();
-        let sqrt_r = ((mag + one_minus_z2.0) / 2.0).sqrt();
-        let sqrt_i = one_minus_z2.1.signum() * ((mag - one_minus_z2.0) / 2.0).sqrt();
+        let (sqrt_r, sqrt_i) = Self::complex_sqrt(one_minus_z2.0, one_minus_z2.1);
         let sum = (iz.0 + sqrt_r, iz.1 + sqrt_i);
         let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
         let log_r = log_mag.ln();
@@ -121,9 +139,14 @@ impl DTypeOps for Complex64Ops {
             UnaryOp::Ceil => (r.ceil(), i.ceil()),
             UnaryOp::Arcsin => Self::arcsin(r, i),
             UnaryOp::Arccos => {
-                // arccos(z) = pi/2 - arcsin(z)
-                let asin = Self::arcsin(r, i);
-                (std::f32::consts::FRAC_PI_2 - asin.0, -asin.1)
+                // arccos(z) = -i * ln(z + sqrt(z^2 - 1))
+                let z2_minus_1 = (r * r - i * i - 1.0, 2.0 * r * i);
+                let (sqrt_r, sqrt_i) = Self::complex_sqrt(z2_minus_1.0, z2_minus_1.1);
+                let sum = (r + sqrt_r, i + sqrt_i);
+                let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
+                let log_r = log_mag.ln();
+                let log_i = sum.1.atan2(sum.0);
+                (log_i, -log_r)
             }
             UnaryOp::Arctan => {
                 // arctan(z) = (i/2) * log((1-iz)/(1+iz))
@@ -213,9 +236,7 @@ impl DTypeOps for Complex64Ops {
             UnaryOp::Arcsinh => {
                 // arcsinh(z) = log(z + sqrt(z^2 + 1))
                 let z2_plus_1 = (r * r - i * i + 1.0, 2.0 * r * i);
-                let mag = (z2_plus_1.0 * z2_plus_1.0 + z2_plus_1.1 * z2_plus_1.1).sqrt();
-                let sqrt_r = ((mag + z2_plus_1.0) / 2.0).sqrt();
-                let sqrt_i = z2_plus_1.1.signum() * ((mag - z2_plus_1.0) / 2.0).sqrt();
+                let (sqrt_r, sqrt_i) = Self::complex_sqrt(z2_plus_1.0, z2_plus_1.1);
                 let sum = (r + sqrt_r, i + sqrt_i);
                 let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
                 (log_mag.ln(), sum.1.atan2(sum.0))
@@ -223,9 +244,7 @@ impl DTypeOps for Complex64Ops {
             UnaryOp::Arccosh => {
                 // arccosh(z) = log(z + sqrt(z^2 - 1))
                 let z2_minus_1 = (r * r - i * i - 1.0, 2.0 * r * i);
-                let mag = (z2_minus_1.0 * z2_minus_1.0 + z2_minus_1.1 * z2_minus_1.1).sqrt();
-                let sqrt_r = ((mag + z2_minus_1.0) / 2.0).sqrt();
-                let sqrt_i = z2_minus_1.1.signum() * ((mag - z2_minus_1.0) / 2.0).sqrt();
+                let (sqrt_r, sqrt_i) = Self::complex_sqrt(z2_minus_1.0, z2_minus_1.1);
                 let sum = (r + sqrt_r, i + sqrt_i);
                 let log_mag = (sum.0 * sum.0 + sum.1 * sum.1).sqrt();
                 (log_mag.ln(), sum.1.atan2(sum.0))

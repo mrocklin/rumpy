@@ -1,6 +1,7 @@
 //! Math kernels: Neg, Abs, Sqrt, Exp, Sin, etc.
 
 use super::UnaryKernel;
+use rustfft::num_traits::{Float, FloatConst};
 
 // ============================================================================
 // Kernel structs (zero-sized types)
@@ -453,6 +454,28 @@ impl_unsigned_int_math!(u8);
 
 use num_complex::Complex;
 
+/// Complex square root that matches numpy's branch cut conventions.
+/// The imaginary part of the result has the same sign as the input imaginary part.
+/// This correctly handles signed zero: sqrt(-3-0j) != sqrt(-3+0j).
+#[inline]
+fn numpy_sqrt<F: Float + FloatConst>(z: Complex<F>) -> Complex<F> {
+    let re = z.re;
+    let im = z.im;
+    if re == F::zero() && im == F::zero() {
+        return Complex::new(F::zero(), im); // Preserve signed zero
+    }
+    let two = F::from(2.0).unwrap();
+    let mag = (re * re + im * im).sqrt();
+    let sqrt_r = ((mag + re) / two).sqrt();
+    let sqrt_i = ((mag - re) / two).sqrt();
+    // Sign of imaginary result matches sign of input imaginary (using is_sign_negative for -0.0)
+    if im.is_sign_negative() {
+        Complex::new(sqrt_r, -sqrt_i)
+    } else {
+        Complex::new(sqrt_r, sqrt_i)
+    }
+}
+
 macro_rules! impl_complex_math {
     ($F:ty) => {
         impl UnaryKernel<Complex<$F>> for Neg {
@@ -528,11 +551,53 @@ macro_rules! impl_complex_math {
         }
         impl UnaryKernel<Complex<$F>> for Arcsin {
             #[inline(always)]
-            fn apply(v: Complex<$F>) -> Complex<$F> { v.asin() }
+            fn apply(v: Complex<$F>) -> Complex<$F> {
+                // arcsin(z) = -i * log(iz + sqrt(1 - z^2))
+                // Using numpy-compatible branch cuts
+                //
+                // Key issue: when computing 1 - z^2 for real z outside [-1,1],
+                // the imaginary part should be -0.0 (negative zero) to get correct
+                // sqrt branch. But complex arithmetic loses this sign.
+                //
+                // For real z with |z| > 1: 1-z^2 is negative real.
+                // The sqrt branch cut gives sqrt(negative) = +i*sqrt(|negative|)
+                // when computed from above the branch cut, but the formula requires
+                // we approach from below for z > 1.
+                //
+                // Solution: Manually compute with proper signed zero handling.
+                let one = 1.0 as $F;
+                let zero = 0.0 as $F;
+
+                // z^2 = (re^2 - im^2, 2*re*im)
+                let z2_re = v.re * v.re - v.im * v.im;
+                let z2_im = (2.0 as $F) * v.re * v.im;
+
+                // 1 - z^2 = (1 - z2_re, -z2_im)
+                // The key is: for z = x+0j with x > 0:
+                //   z^2 = x^2 + 0j, z2_im = 0
+                //   -z2_im should be -0.0 to preserve the sign
+                let one_minus_z2_re = one - z2_re;
+                let one_minus_z2_im = -z2_im;  // This preserves -0.0 when z2_im = +0.0
+
+                let one_minus_z2 = Complex::new(one_minus_z2_re, one_minus_z2_im);
+                let sqrt_val = numpy_sqrt(one_minus_z2);
+
+                // iz = (-im, re)
+                let iz = Complex::new(-v.im, v.re);
+
+                let log_arg = iz + sqrt_val;
+                let i = Complex::new(zero, one);
+                -i * log_arg.ln()
+            }
         }
         impl UnaryKernel<Complex<$F>> for Arccos {
             #[inline(always)]
-            fn apply(v: Complex<$F>) -> Complex<$F> { v.acos() }
+            fn apply(v: Complex<$F>) -> Complex<$F> {
+                // arccos(z) = pi/2 - arcsin(z)
+                let pi_over_2 = <$F as FloatConst>::FRAC_PI_2();
+                let arcsin_v = <Arcsin as UnaryKernel<Complex<$F>>>::apply(v);
+                Complex::new(pi_over_2, 0.0 as $F) - arcsin_v
+            }
         }
         impl UnaryKernel<Complex<$F>> for Arctan {
             #[inline(always)]
@@ -589,15 +654,52 @@ macro_rules! impl_complex_math {
         }
         impl UnaryKernel<Complex<$F>> for Arcsinh {
             #[inline(always)]
-            fn apply(v: Complex<$F>) -> Complex<$F> { v.asinh() }
+            fn apply(v: Complex<$F>) -> Complex<$F> {
+                // arcsinh(z) = log(z + sqrt(z^2 + 1))
+                let z2_plus_1 = v * v + Complex::new(1.0 as $F, 0.0 as $F);
+                let sqrt_val = numpy_sqrt(z2_plus_1);
+                (v + sqrt_val).ln()
+            }
         }
         impl UnaryKernel<Complex<$F>> for Arccosh {
             #[inline(always)]
-            fn apply(v: Complex<$F>) -> Complex<$F> { v.acosh() }
+            fn apply(v: Complex<$F>) -> Complex<$F> {
+                // arccosh(z) = log(z + sqrt(z^2 - 1))
+                // For real x in [0, 1], result should be purely imaginary
+                let z2_minus_1 = v * v - Complex::new(1.0 as $F, 0.0 as $F);
+                let sqrt_val = numpy_sqrt(z2_minus_1);
+                (v + sqrt_val).ln()
+            }
         }
         impl UnaryKernel<Complex<$F>> for Arctanh {
             #[inline(always)]
-            fn apply(v: Complex<$F>) -> Complex<$F> { v.atanh() }
+            fn apply(v: Complex<$F>) -> Complex<$F> {
+                // arctanh(z) = 0.5 * log((1+z)/(1-z))
+                // For numpy compatibility, both z>1 and z<-1 give positive imaginary part.
+                let one = 1.0 as $F;
+                let half = 0.5 as $F;
+
+                let num_re = one + v.re;
+                let num_im = v.im;
+                let den_re = one - v.re;
+                let den_im = -v.im;
+
+                // Complex division
+                let den_mag2 = den_re * den_re + den_im * den_im;
+                let ratio_re = (num_re * den_re + num_im * den_im) / den_mag2;
+                let ratio_im = (num_im * den_re - num_re * den_im) / den_mag2;
+
+                let ratio = Complex::new(ratio_re, ratio_im);
+
+                // For negative real ratio, use +pi branch for numpy compatibility
+                let log_val = if ratio_re < 0.0 as $F && ratio_im == 0.0 as $F {
+                    Complex::new((-ratio_re).ln(), <$F as FloatConst>::PI())
+                } else {
+                    ratio.ln()
+                };
+
+                Complex::new(half * log_val.re, half * log_val.im)
+            }
         }
     };
 }

@@ -3,6 +3,7 @@ pub mod creation;
 pub mod datetime;
 pub mod dtype;
 pub mod einsum;
+pub mod emath;
 pub mod fft;
 pub mod functional;
 pub mod indexing;
@@ -31,6 +32,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fft::register_submodule(m)?;
     linalg::register_submodule(m)?;
     char::register_char_submodule(m)?;
+    emath::register_submodule(m)?;
     // Register dtype functions (finfo, iinfo, promote_types, etc.)
     dtype::register_module(m)?;
     // Register einsum functions
