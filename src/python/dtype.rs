@@ -223,7 +223,7 @@ fn parse_dtype_arg(arg: &Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 /// Normalize dtype string to canonical form.
-fn normalize_dtype_string(s: &str) -> String {
+pub fn normalize_dtype_string(s: &str) -> String {
     match s {
         "f2" | "<f2" | "float16" => "float16".to_string(),
         "f4" | "<f4" | "float32" => "float32".to_string(),

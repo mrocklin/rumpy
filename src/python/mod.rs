@@ -20,7 +20,7 @@ pub mod ufuncs;
 
 use pyo3::prelude::*;
 
-pub use pyarray::{parse_dtype, parse_shape, PyRumpyArray};
+pub use pyarray::{parse_dtype, parse_dtype_any, parse_shape, PyRumpyArray};
 
 /// Register Python module contents.
 pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -4,23 +4,31 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 
 use crate::array::{increment_indices, DType, RumpyArray};
-use super::{parse_dtype, parse_shape, PyRumpyArray};
+use super::{parse_dtype, parse_dtype_any, parse_shape, PyRumpyArray};
+
+/// Helper to parse optional dtype argument.
+fn resolve_dtype(dtype: Option<&Bound<'_, PyAny>>, default: &str) -> PyResult<DType> {
+    match dtype {
+        Some(dt) => parse_dtype_any(dt),
+        None => parse_dtype(default),
+    }
+}
 
 /// Create an array filled with zeros.
 #[pyfunction]
 #[pyo3(signature = (shape, dtype=None))]
-pub fn zeros(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn zeros(shape: &Bound<'_, PyAny>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = parse_shape(shape)?;
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
 }
 
 /// Create an array filled with ones.
 #[pyfunction]
 #[pyo3(signature = (shape, dtype=None))]
-pub fn ones(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn ones(shape: &Bound<'_, PyAny>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = parse_shape(shape)?;
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(RumpyArray::ones(shape, dtype)))
 }
 
@@ -31,13 +39,13 @@ pub fn arange(
     start_or_stop: f64,
     stop: Option<f64>,
     step: Option<f64>,
-    dtype: Option<&str>,
+    dtype: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyRumpyArray> {
     let (start, stop, step) = match stop {
         Some(stop) => (start_or_stop, stop, step.unwrap_or(1.0)),
         None => (0.0, start_or_stop, step.unwrap_or(1.0)),
     };
-    let dtype = parse_dtype(dtype.unwrap_or("int64"))?;
+    let dtype = resolve_dtype(dtype, "int64")?;
     Ok(PyRumpyArray::new(RumpyArray::arange(start, stop, step, dtype)))
 }
 
@@ -48,35 +56,35 @@ pub fn linspace(
     start: f64,
     stop: f64,
     num: usize,
-    dtype: Option<&str>,
+    dtype: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(RumpyArray::linspace(start, stop, num, dtype)))
 }
 
 /// Create an identity matrix.
 #[pyfunction]
 #[pyo3(signature = (n, dtype=None))]
-pub fn eye(n: usize, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+pub fn eye(n: usize, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(RumpyArray::eye(n, dtype)))
 }
 
 /// Create array filled with given value.
 #[pyfunction]
 #[pyo3(signature = (shape, fill_value, dtype=None))]
-pub fn full(shape: &Bound<'_, PyAny>, fill_value: f64, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn full(shape: &Bound<'_, PyAny>, fill_value: f64, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = parse_shape(shape)?;
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(RumpyArray::full(shape, fill_value, dtype)))
 }
 
 /// Create uninitialized array.
 #[pyfunction]
 #[pyo3(signature = (shape, dtype=None))]
-pub fn empty(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn empty(shape: &Bound<'_, PyAny>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = parse_shape(shape)?;
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     // For simplicity, we just create zeros - truly uninitialized would require unsafe
     Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
 }
@@ -84,10 +92,10 @@ pub fn empty(shape: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyA
 /// Create array of zeros with same shape and dtype as input.
 #[pyfunction]
 #[pyo3(signature = (a, dtype=None))]
-pub fn zeros_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn zeros_like(a: &PyRumpyArray, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = a.inner.shape().to_vec();
     let dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
     Ok(PyRumpyArray::new(RumpyArray::zeros(shape, dtype)))
@@ -96,10 +104,10 @@ pub fn zeros_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArra
 /// Create array of ones with same shape and dtype as input.
 #[pyfunction]
 #[pyo3(signature = (a, dtype=None))]
-pub fn ones_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn ones_like(a: &PyRumpyArray, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = a.inner.shape().to_vec();
     let dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
     Ok(PyRumpyArray::new(RumpyArray::ones(shape, dtype)))
@@ -108,10 +116,10 @@ pub fn ones_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray
 /// Create uninitialized array with same shape and dtype as input.
 #[pyfunction]
 #[pyo3(signature = (a, dtype=None))]
-pub fn empty_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn empty_like(a: &PyRumpyArray, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = a.inner.shape().to_vec();
     let dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
     // For simplicity, we just create zeros - truly uninitialized would require unsafe
@@ -121,10 +129,10 @@ pub fn empty_like(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArra
 /// Create array filled with given value, with same shape and dtype as input.
 #[pyfunction]
 #[pyo3(signature = (a, fill_value, dtype=None))]
-pub fn full_like(a: &PyRumpyArray, fill_value: f64, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn full_like(a: &PyRumpyArray, fill_value: f64, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let shape = a.inner.shape().to_vec();
     let dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
     Ok(PyRumpyArray::new(RumpyArray::full(shape, fill_value, dtype)))
@@ -133,8 +141,8 @@ pub fn full_like(a: &PyRumpyArray, fill_value: f64, dtype: Option<&str>) -> PyRe
 /// Create an n x n identity matrix.
 #[pyfunction]
 #[pyo3(signature = (n, dtype=None))]
-pub fn identity(n: usize, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+pub fn identity(n: usize, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(RumpyArray::eye(n, dtype)))
 }
 
@@ -146,9 +154,9 @@ pub fn logspace(
     stop: f64,
     num: usize,
     base: f64,
-    dtype: Option<&str>,
+    dtype: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(crate::array::logspace(start, stop, num, base, dtype)))
 }
 
@@ -159,9 +167,9 @@ pub fn geomspace(
     start: f64,
     stop: f64,
     num: usize,
-    dtype: Option<&str>,
+    dtype: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     crate::array::geomspace(start, stop, num, dtype)
         .map(PyRumpyArray::new)
         .ok_or_else(|| {
@@ -172,9 +180,9 @@ pub fn geomspace(
 /// Create a triangular matrix of ones.
 #[pyfunction]
 #[pyo3(signature = (n, m=None, k=0, dtype=None))]
-pub fn tri(n: usize, m: Option<usize>, k: isize, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn tri(n: usize, m: Option<usize>, k: isize, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let m = m.unwrap_or(n);
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     Ok(PyRumpyArray::new(crate::array::tri(n, m, k, dtype)))
 }
 
@@ -225,8 +233,8 @@ pub fn meshgrid(xi: &Bound<'_, pyo3::types::PyTuple>, indexing: &str) -> PyResul
 /// Return an array representing indices of a grid.
 #[pyfunction]
 #[pyo3(signature = (dimensions, dtype=None))]
-pub fn indices(dimensions: Vec<usize>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("int64"))?;
+pub fn indices(dimensions: Vec<usize>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
+    let dtype = resolve_dtype(dtype, "int64")?;
     Ok(PyRumpyArray::new(crate::array::indices(&dimensions, dtype)))
 }
 
@@ -237,9 +245,9 @@ pub fn fromfunction(
     py: Python<'_>,
     shape: Vec<usize>,
     function: &Bound<'_, pyo3::PyAny>,
-    dtype: Option<&str>,
+    dtype: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyRumpyArray> {
-    let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+    let dtype = resolve_dtype(dtype, "float64")?;
     let ndim = shape.len();
     let size: usize = shape.iter().product();
 
@@ -290,24 +298,24 @@ pub fn copy(a: &PyRumpyArray) -> PyRumpyArray {
 /// Supports: PyRumpyArray, objects with __array_interface__, and Python lists.
 #[pyfunction]
 #[pyo3(signature = (obj, dtype=None))]
-pub fn asarray(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn asarray(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     array_impl(py, obj, dtype)
 }
 
 /// Create an array (alias for asarray).
 #[pyfunction]
 #[pyo3(signature = (obj, dtype=None))]
-pub fn array(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn array(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     array_impl(py, obj, dtype)
 }
 
 /// Implementation for array/asarray.
-pub fn array_impl(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn array_impl(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     // Already a rumpy array?
     if let Ok(arr) = obj.extract::<PyRef<'_, PyRumpyArray>>() {
         // Convert dtype if requested
-        if let Some(dtype_str) = dtype {
-            let target_dtype = parse_dtype(dtype_str)?;
+        if let Some(dt) = &dtype {
+            let target_dtype = parse_dtype_any(dt)?;
             if arr.inner.dtype() != target_dtype {
                 return Ok(PyRumpyArray::new(arr.inner.astype(target_dtype)));
             }
@@ -330,7 +338,7 @@ pub fn array_impl(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -
         let items: Vec<f64> = seq
             .map(|item| item.and_then(|i| i.extract::<f64>()))
             .collect::<PyResult<Vec<f64>>>()?;
-        let dtype = parse_dtype(dtype.unwrap_or("float64"))?;
+        let dtype = resolve_dtype(dtype, "float64")?;
         return Ok(PyRumpyArray::new(RumpyArray::from_vec(items, dtype)));
     }
 
@@ -343,7 +351,7 @@ pub fn array_impl(py: Python<'_>, obj: &Bound<'_, PyAny>, dtype: Option<&str>) -
 fn from_array_interface(
     _py: Python<'_>,
     interface: &Bound<'_, PyAny>,
-    dtype_override: Option<&str>,
+    dtype_override: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyRumpyArray> {
     use pyo3::types::PyTuple;
 
@@ -358,7 +366,7 @@ fn from_array_interface(
     // Extract typestr to determine dtype
     let typestr: String = interface.get_item("typestr")?.extract()?;
     let dtype = if let Some(dt) = dtype_override {
-        parse_dtype(dt)?
+        parse_dtype_any(dt)?
     } else {
         dtype_from_typestr(&typestr)?
     };
@@ -484,11 +492,11 @@ fn compute_max_bytes_length(list: &Bound<'_, PyList>) -> Option<usize> {
 }
 
 /// Create array from Python list.
-pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn from_list(list: &Bound<'_, PyList>, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     use crate::array::dtype::{DTypeKind, parse_datetime64};
 
     let dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(dt)?,
         None => infer_dtype_from_list(list).unwrap_or(DType::float64()),
     };
 
@@ -932,9 +940,9 @@ fn bessel_i0(x: f64) -> f64 {
 /// Otherwise, return a copy with C-contiguous memory layout.
 #[pyfunction]
 #[pyo3(signature = (a, dtype=None))]
-pub fn ascontiguousarray(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn ascontiguousarray(a: &PyRumpyArray, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let target_dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
 
@@ -952,9 +960,9 @@ pub fn ascontiguousarray(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRu
 /// Creates a copy of the array with Fortran (column-major) memory layout.
 #[pyfunction]
 #[pyo3(signature = (a, dtype=None))]
-pub fn asfortranarray(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpyArray> {
+pub fn asfortranarray(a: &PyRumpyArray, dtype: Option<&Bound<'_, PyAny>>) -> PyResult<PyRumpyArray> {
     let target_dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
 
@@ -980,11 +988,11 @@ pub fn asfortranarray(a: &PyRumpyArray, dtype: Option<&str>) -> PyResult<PyRumpy
 #[pyo3(signature = (a, dtype=None, requirements=None))]
 pub fn require(
     a: &PyRumpyArray,
-    dtype: Option<&str>,
+    dtype: Option<&Bound<'_, PyAny>>,
     requirements: Option<&str>,
 ) -> PyResult<PyRumpyArray> {
     let target_dtype = match dtype {
-        Some(dt) => parse_dtype(dt)?,
+        Some(dt) => parse_dtype_any(&dt)?,
         None => a.inner.dtype(),
     };
 

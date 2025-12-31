@@ -14,6 +14,7 @@ use pyo3::types::{PyDict, PyEllipsis, PyList, PySlice, PyString, PyTuple};
 
 use crate::array::{promote_dtype, DType, RumpyArray};
 use crate::ops::{map_binary_op_inplace, BinaryOp, ComparisonOp};
+use super::dtype::normalize_dtype_string;
 
 /// Minimum array size (in elements) for temporary elision optimization.
 /// Arrays smaller than this won't have their buffers reused in-place.
@@ -935,6 +936,38 @@ pub fn parse_dtype(s: &str) -> PyResult<DType> {
         pyo3::exceptions::PyValueError::new_err(format!("Unknown dtype: {}", s))
     })
 }
+
+/// Parse dtype from any Python object (string, numpy dtype, or our dtype).
+pub fn parse_dtype_any(arg: &Bound<'_, PyAny>) -> PyResult<DType> {
+    // Try string first
+    if let Ok(s) = arg.extract::<String>() {
+        return parse_dtype(&normalize_dtype_string(&s));
+    }
+
+    // Try extracting from numpy dtype instance via name attribute (e.g., np.dtype('float64'))
+    if let Ok(name) = arg.getattr("name") {
+        if let Ok(s) = name.extract::<String>() {
+            return parse_dtype(&normalize_dtype_string(&s));
+        }
+    }
+
+    // Try extracting from numpy type via __name__ attribute (e.g., np.float64)
+    if let Ok(name) = arg.getattr("__name__") {
+        if let Ok(s) = name.extract::<String>() {
+            return parse_dtype(&normalize_dtype_string(&s));
+        }
+    }
+
+    // Try extracting from numpy dtype via str()
+    if let Ok(s) = arg.str() {
+        return parse_dtype(&normalize_dtype_string(&s.to_string()));
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "dtype argument must be a string or numpy dtype"
+    ))
+}
+
 
 /// Extract start, stop, step from a Python slice object.
 fn extract_slice_indices(

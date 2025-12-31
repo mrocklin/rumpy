@@ -67,28 +67,21 @@ n = np.asarray(b)  # rumpy -> numpy
 r = rp.asarray(n)  # numpy -> rumpy
 ```
 
-## Supported Features
+## API Coverage
 
-| Category | Functions |
-|----------|-----------|
-| Creation | `zeros`, `ones`, `empty`, `full`, `arange`, `linspace`, `eye`, `*_like` |
-| Math | `sqrt`, `exp`, `log`, `sin`, `cos`, `tan`, `arcsin`, `abs`, `sign`, ... |
-| Arithmetic | `+`, `-`, `*`, `/`, `**`, `//`, `%`, `@` (matmul) |
-| Comparison | `==`, `!=`, `<`, `>`, `<=`, `>=`, `isclose`, `allclose` |
-| Reductions | `sum`, `mean`, `std`, `var`, `min`, `max`, `argmin`, `argmax`, `all`, `any` |
-| Shape | `reshape`, `transpose`, `stack`, `concatenate`, `split`, `flip`, `squeeze` |
-| Indexing | Slicing, `take`, `put`, `searchsorted`, `where`, `compress` |
-| Sorting | `sort`, `argsort`, `partition`, `unique`, `lexsort` |
-| Linear algebra | `matmul`, `dot`, `solve`, `inv`, `det`, `eig`, `svd`, `qr`, `lstsq` |
-| FFT | `fft`, `ifft`, `fft2`, `ifft2`, `rfft`, `irfft` |
-| Random | `random`, `integers`, `normal`, `uniform`, `choice`, `shuffle` |
-| Statistics | `histogram`, `cov`, `corrcoef`, `median`, `percentile` |
-| Polynomials | `polyfit`, `polyval`, `polyder`, `polyint`, `roots` |
-| Set operations | `unique`, `isin`, `intersect1d`, `union1d`, `setdiff1d` |
+~300 NumPy functions implemented across all major categories: array creation, math, reductions, shape manipulation, indexing, sorting, linear algebra (`linalg`), FFT (`fft`), random (`random`), statistics, polynomials, set operations, I/O, string operations (`char`), datetime, and einsum.
+
+**Not supported:**
+- Masked arrays (`numpy.ma`)
+- `char.split`/`rsplit` (return object arrays)
+- Structured arrays / record arrays
+- Memory-mapped arrays (`memmap`)
 
 ## DTypes
 
-Supported: `bool`, `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `complex64`, `complex128`
+All standard numeric types, plus `datetime64`, `timedelta64`, and Unicode strings.
+
+**Not supported:** `float128`, `object`, structured dtypes, void
 
 ## Repository Structure
 

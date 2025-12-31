@@ -599,3 +599,43 @@ class TestDtypeConstants:
         dtype_const = getattr(rp, attr)
         arr = rp.zeros(5, dtype=dtype_const)
         assert arr.dtype == expected
+
+
+class TestNumpyDtypeObjects:
+    """Test that numpy dtype objects work as dtype arguments."""
+
+    @pytest.mark.parametrize(
+        "np_dtype,expected",
+        [
+            (np.float32, "float32"),
+            (np.float64, "float64"),
+            (np.int32, "int32"),
+            (np.int64, "int64"),
+            (np.complex128, "complex128"),
+        ],
+    )
+    def test_numpy_type_with_zeros(self, np_dtype, expected):
+        """Test np.float64 style type objects."""
+        arr = rp.zeros(5, dtype=np_dtype)
+        assert arr.dtype == expected
+
+    @pytest.mark.parametrize(
+        "dtype_str",
+        ["float32", "float64", "int32", "int64"],
+    )
+    def test_numpy_dtype_instance(self, dtype_str):
+        """Test np.dtype('float64') style instances."""
+        arr = rp.zeros(5, dtype=np.dtype(dtype_str))
+        assert arr.dtype == dtype_str
+
+    def test_numpy_dtype_with_arange(self):
+        """Test numpy dtype with arange."""
+        r = rp.arange(10, dtype=np.float32)
+        n = np.arange(10, dtype=np.float32)
+        assert_eq(r, n)
+
+    def test_numpy_dtype_with_linspace(self):
+        """Test numpy dtype with linspace."""
+        r = rp.linspace(0, 1, 5, dtype=np.float32)
+        n = np.linspace(0, 1, 5, dtype=np.float32)
+        assert_eq(r, n)
