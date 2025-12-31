@@ -27,6 +27,8 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRumpyArray>()?;
     m.add_class::<pyarray::PyArrayFlags>()?;
     m.add_class::<pyarray::PyFlatIter>()?;
+    // Register C-API compatibility layer
+    crate::capi::register_capi(m)?;
     // Register submodules
     random::register_submodule(m)?;
     fft::register_submodule(m)?;

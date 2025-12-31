@@ -1,4 +1,5 @@
 pub mod array;
+pub mod capi;
 pub mod ops;
 pub mod python;
 pub mod random;
